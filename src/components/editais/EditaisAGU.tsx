@@ -83,7 +83,7 @@ function SimuladosModal({ simulados, onSave, onDelete, onClose }: {
             ].map(([k, l, t]) => (
               <label key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{l}</span>
-                <input type={t as string} value={(form as Record<string,unknown>)[k as string] as string}
+                <input type={t as string} value={(form (form as unknown as Record<string, string | number>)[k as string]}
                   onChange={e => setForm(f => ({ ...f, [k as string]: t === 'number' ? Number(e.target.value) : e.target.value }))}
                   style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13 }} />
               </label>

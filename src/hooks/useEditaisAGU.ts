@@ -1,15 +1,14 @@
 import { useEffect, useState, useCallback } from 'react'
-import { collection, doc, setDoc, onSnapshot, query, where } from 'firebase/firestore'
+import { doc, setDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from './useAuth'
 
 export type StatusMaterial = 'nao_iniciado' | 'iniciado' | 'concluido'
-export type StatusResumo = 'nao_iniciado' | 'iniciado' | 'concluido'
 
 export interface SubtopicoProgress {
   subtId: string
   statusMaterial: StatusMaterial
-  statusResumo: StatusResumo
+  statusResumo: StatusMaterial
   fichado: boolean
   dataRevisao?: string
   questoes: number
@@ -57,8 +56,8 @@ export function useEditaisAGU() {
     if (!user) return
     const current = progress[subtId] ?? {
       subtId,
-      statusMaterial: 'nao_iniciado',
-      statusResumo: 'nao_iniciado',
+      statusMaterial: 'nao_iniciado' as StatusMaterial,
+      statusResumo: 'nao_iniciado' as StatusMaterial,
       fichado: false,
       questoes: 0,
       acertos: 0,
@@ -86,8 +85,6 @@ export function useEditaisAGU() {
     await setDoc(doc(db, 'editaisAGU', user.uid), { progress, simulados: updated }, { merge: true })
   }, [user, progress, simulados])
 
-  // Stats
-  const totalSubt = Object.keys(progress).length
   const concluidos = Object.values(progress).filter(p => p.statusMaterial === 'concluido').length
   const iniciados = Object.values(progress).filter(p => p.statusMaterial === 'iniciado').length
   const totalQuestoes = Object.values(progress).reduce((s, p) => s + (p.questoes || 0), 0)
