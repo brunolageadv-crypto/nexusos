@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from './hooks/useAuth'
-import LoginPage from './components/auth/LoginPage'
+import LoginPage from './auth/LoginPage'
 import EditaisAGU from './components/editais/EditaisAGU'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 
