@@ -535,3 +535,81 @@ body, .sidebar, .topbar, .card, .kpi-card, .nav-item {
   transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
 }
 
+
+/* ═══ Sidebar refinada — paleta NEXIS.OS ═══════════════════════
+   Navy profundo com acento arco ciano→roxo, inspirado na logo
+═══════════════════════════════════════════════════════════════ */
+
+/* Override sidebar para paleta naval */
+[data-theme="dark"] .sidebar {
+  background: linear-gradient(170deg, #05101e 0%, #071525 60%, #090e1e 100%);
+}
+
+[data-theme="dark"] .sidebar-logo {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid rgba(0,229,255,0.08);
+  background: linear-gradient(180deg, rgba(0,229,255,0.04) 0%, transparent 100%);
+}
+
+/* Logo glow */
+[data-theme="dark"] .sidebar-logo svg {
+  filter: drop-shadow(0 0 12px rgba(0,229,255,0.25));
+}
+
+/* Nav active — arco gradiente na borda */
+[data-theme="dark"] .nav-item.active {
+  border-left: 3px solid transparent;
+  border-image: linear-gradient(to bottom, #00e5ff, #7c3aed) 1;
+  background: linear-gradient(90deg, rgba(0,229,255,0.09) 0%, transparent 80%);
+}
+
+/* Section labels mais sutis */
+[data-theme="dark"] .sidebar-section-label {
+  color: rgba(0,229,255,0.22);
+  letter-spacing: 0.2em;
+}
+
+/* Divider entre seções */
+[data-theme="dark"] .sidebar-section:not(:first-of-type) {
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+
+/* Light mode sidebar mantém navy escuro */
+[data-theme="light"] .sidebar {
+  background: linear-gradient(170deg, #0d1f38 0%, #0f2545 60%, #0b1a30 100%);
+}
+
+[data-theme="light"] .sidebar-logo {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+[data-theme="light"] .nav-item {
+  color: rgba(255,255,255,0.45);
+}
+
+[data-theme="light"] .nav-item:hover {
+  color: #fff;
+  border-left-color: #00e5ff;
+  background: linear-gradient(90deg, rgba(0,229,255,0.1) 0%, transparent 80%);
+}
+
+[data-theme="light"] .nav-item.active {
+  color: #fff;
+  background: linear-gradient(90deg, rgba(0,229,255,0.12) 0%, transparent 80%);
+}
+
+[data-theme="light"] .sidebar-section-label {
+  color: rgba(255,255,255,0.22);
+}
+
+[data-theme="light"] .theme-btn {
+  color: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.1);
+}
+
+[data-theme="light"] .theme-btn:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.1);
+}
