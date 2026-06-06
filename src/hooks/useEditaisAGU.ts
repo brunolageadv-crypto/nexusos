@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { db } from '../firebase'
+import { db } from '../lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 
 export interface SubtopicoState {

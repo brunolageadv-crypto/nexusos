@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS, Disciplina, Topico } from './aguData'
+import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS, Topico } from './aguData'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 
 /* ── helpers ──────────────────────────────────────────────────── */
