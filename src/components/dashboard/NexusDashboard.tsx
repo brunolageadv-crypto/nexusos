@@ -94,7 +94,7 @@ export default function NexusDashboard({ onNavigate }: Props) {
         ].map(k=>(
           <div key={k.label} className="kpi-card" style={{'--kpi-color':k.color} as React.CSSProperties}>
             <div className="kpi-label">{k.label}</div>
-            <div className="kpi-value" style={{color:k.color,fontSize:'clamp(1.4rem,3vw,2.2rem)'}}>{k.v||k.value}</div>
+            <div className="kpi-value" style={{color:k.color,fontSize:'clamp(1.4rem,3vw,2.2rem)'}}>{k.value}</div>
             <div className="kpi-sub">{k.sub}</div>
           </div>
         ))}

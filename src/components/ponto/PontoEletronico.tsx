@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { db, auth } from '../../lib/firebase'
 import { collection, doc, setDoc, onSnapshot, query, orderBy } from 'firebase/firestore'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from 'recharts'
 
 /* ═══ Types ══════════════════════════════════════════════════ */
 interface Registro {
@@ -45,7 +45,6 @@ function weekOf(iso: string) {
   const mon = new Date(d.setDate(diff))
   return mon.toISOString().slice(0,10)
 }
-function monthOf(iso: string) { return iso.slice(0,7) }
 const COLORS = ['#00e5ff','#7c3aed','#10b981','#f59e0b','#ef4444','#3b82f6','#ec4899']
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
@@ -428,9 +427,7 @@ export default function PontoEletronico() {
                     </tr>
                   </thead>
                   <tbody>
-                    {dadosMes.map((m,i)=>{
-                      const mReg = registros.filter(r=>r.data.slice(0,7)===Object.entries({}).length.toString())
-                      const totalMin = dadosMes[i] ? dadosMes[i].horas * 60 : 0
+                    {dadosMes.map((m)=>{
                       return (
                         <tr key={m.name} style={{ borderBottom:'1px solid var(--border)', transition:'background 0.15s' }}
                           onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='var(--bg-hover)'}
