@@ -4,6 +4,7 @@ import LoginPage from './auth/LoginPage'
 import EditaisAGU from './components/editais/EditaisAGU'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
+import PontoEletronico from './components/ponto/PontoEletronico'
 
 /* ═══ Theme ══════════════════════════════════════════════════ */
 type Theme = 'dark' | 'light'
@@ -175,7 +176,7 @@ function AppShell() {
           {active === 'editais'    && <EditaisAGU />}
           {active === 'concursos'  && <Concursos />}
           {active === 'financeiro' && <Placeholder title="Financeiro"        icon="◎" />}
-          {active === 'ponto'      && <Placeholder title="Ponto Eletrônico"  icon="⊙" />}
+          {active === 'ponto'      && <PontoEletronico />}
           {active === 'journal'    && <Placeholder title="Diário"            icon="✦" />}
           {active === 'media'      && <Placeholder title="Media Tracker"     icon="▶" />}
         </div>

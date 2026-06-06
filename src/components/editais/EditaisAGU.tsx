@@ -226,7 +226,7 @@ function SubRow({ subId, nome, hooks }: {
 
 /* ── TopicBlock ──────────────────────────────────────────────── */
 function TopicBlock({ topico, hooks }: { topico: Topico; hooks: ReturnType<typeof useEditaisAGU> }) {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const ids = topico.subtopicos.map(s => s.id)
   const stats = hooks.getStats(ids)
 
