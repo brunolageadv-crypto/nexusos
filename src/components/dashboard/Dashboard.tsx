@@ -1,45 +1,18 @@
 import { useMemo } from 'react'
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { useAuth } from '../../hooks/useAuth'
-import { useMedia } from '../../hooks/useFirestore'
-import { usePonto } from '../../hooks/useFirestore'
-import { useFinance } from '../../hooks/useFirestore'
-import { useJournal } from '../../hooks/useFirestore'
-import {
-  calcMediaProgress,
-  formatMinutesAsHours,
-  formatBRL,
-  currentMonth,
-} from '../../utils'
+import { useMedia, usePonto, useFinance, useJournal } from '../../hooks/useFirestore'
+import { calcMediaProgress, formatMinutesAsHours, formatBRL } from '../../utils'
 
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-
-function StatCard({
-  label,
-  value,
-  sub,
-  accent,
-}: {
-  label: string
-  value: string
-  sub?: string
-  accent?: string
+function StatCard({ label, value, sub, accent }: {
+  label: string; value: string; sub?: string; accent?: string
 }) {
   return (
     <div className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-1">
       <span className="text-xs font-medium text-muted uppercase tracking-widest">{label}</span>
-      <span
-        className="text-2xl font-bold font-mono"
-        style={accent ? { color: accent } : undefined}
-      >
+      <span className="text-2xl font-bold font-mono" style={accent ? { color: accent } : undefined}>
         {value}
       </span>
       {sub && <span className="text-xs text-muted">{sub}</span>}
@@ -47,25 +20,13 @@ function StatCard({
   )
 }
 
-// ─── Module Card ──────────────────────────────────────────────────────────────
-
-function ModuleCard({
-  title,
-  icon,
-  accentColor,
-  children,
-}: {
-  title: string
-  icon: string
-  accentColor: string
-  children: React.ReactNode
+function ModuleCard({ title, icon, accentColor, children }: {
+  title: string; icon: string; accentColor: string; children: React.ReactNode
 }) {
   return (
     <div className="bg-surface border border-border rounded-xl overflow-hidden">
-      <div
-        className="flex items-center gap-3 px-5 py-3 border-b border-border"
-        style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}
-      >
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-border"
+        style={{ borderLeftWidth: 3, borderLeftColor: accentColor }}>
         <span style={{ color: accentColor }}>{icon}</span>
         <h2 className="font-semibold text-sm tracking-wide">{title}</h2>
       </div>
@@ -74,23 +35,17 @@ function ModuleCard({
   )
 }
 
-// ─── Progress Bar ─────────────────────────────────────────────────────────────
-
 function ProgressBar({ pct, color }: { pct: number; color: string }) {
   return (
     <div className="h-1.5 w-full bg-border-dim rounded-full overflow-hidden">
-      <div
-        className="h-full rounded-full transition-all duration-500"
-        style={{ width: `${pct}%`, background: color }}
-      />
+      <div className="h-full rounded-full transition-all duration-500"
+        style={{ width: `${pct}%`, background: color }} />
     </div>
   )
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
-
 export default function Dashboard() {
-  const { user } = useAuth()
+  const { user: _user } = useAuth()
   const { items: mediaItems } = useMedia()
   const { todayBalance, weekBalance, checkedIn, clockIn, activeEntry, clockOut } = usePonto()
   const { transactions, monthlySummary } = useFinance()
@@ -99,11 +54,6 @@ export default function Dashboard() {
   const inProgressMedia = useMemo(
     () => mediaItems.filter((m) => m.status === 'watching' || m.status === 'paused').slice(0, 4),
     [mediaItems]
-  )
-
-  const recentTransactions = useMemo(
-    () => transactions.slice(0, 5),
-    [transactions]
   )
 
   const chartData = useMemo(() => {
@@ -127,38 +77,21 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Top Stats Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          label="Saldo hoje"
-          value={formatMinutesAsHours(todayBalance)}
+        <StatCard label="Saldo hoje" value={formatMinutesAsHours(todayBalance)}
           sub={checkedIn ? '● Trabalhando agora' : 'Ponto encerrado'}
-          accent={todayBalance >= 0 ? '#1D9E75' : '#E24B4A'}
-        />
-        <StatCard
-          label="Saldo semana"
-          value={formatMinutesAsHours(weekBalance)}
-          sub="Últimos 7 dias"
-          accent={weekBalance >= 0 ? '#1D9E75' : '#E24B4A'}
-        />
-        <StatCard
-          label="Saldo mensal"
-          value={formatBRL(monthlySummary.balance)}
+          accent={todayBalance >= 0 ? '#1D9E75' : '#E24B4A'} />
+        <StatCard label="Saldo semana" value={formatMinutesAsHours(weekBalance)}
+          sub="Últimos 7 dias" accent={weekBalance >= 0 ? '#1D9E75' : '#E24B4A'} />
+        <StatCard label="Saldo mensal" value={formatBRL(monthlySummary.balance)}
           sub={`Receitas: ${formatBRL(monthlySummary.totalIncome)}`}
-          accent={monthlySummary.balance >= 0 ? '#1D9E75' : '#E24B4A'}
-        />
-        <StatCard
-          label="Streak journal"
-          value={`${streak}d`}
+          accent={monthlySummary.balance >= 0 ? '#1D9E75' : '#E24B4A'} />
+        <StatCard label="Streak journal" value={`${streak}d`}
           sub={lastJournalEntry ? `Último: ${lastJournalEntry.date}` : 'Sem entradas'}
-          accent="#7F77DD"
-        />
+          accent="#7F77DD" />
       </div>
 
-      {/* Main Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-        {/* Ponto */}
         <ModuleCard title="Ponto Eletrônico" icon="⏱" accentColor="#1D9E75">
           <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
@@ -169,17 +102,10 @@ export default function Dashboard() {
                 </p>
               </div>
               <button
-                onClick={() =>
-                  checkedIn && activeEntry
-                    ? clockOut(activeEntry.id)
-                    : clockIn()
-                }
+                onClick={() => checkedIn && activeEntry ? clockOut(activeEntry.id) : clockIn()}
                 className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                  checkedIn
-                    ? 'bg-red-dim text-red border border-red'
-                    : 'bg-green-dim text-green border border-green'
-                }`}
-              >
+                  checkedIn ? 'bg-red-dim text-red border border-red' : 'bg-green-dim text-green border border-green'
+                }`}>
                 {checkedIn ? 'Bater Saída' : 'Bater Entrada'}
               </button>
             </div>
@@ -196,7 +122,6 @@ export default function Dashboard() {
           </div>
         </ModuleCard>
 
-        {/* Media Tracker */}
         <ModuleCard title="Media em Andamento" icon="🎬" accentColor="#7F77DD">
           <div className="space-y-3">
             {inProgressMedia.length === 0 && (
@@ -217,7 +142,6 @@ export default function Dashboard() {
           </div>
         </ModuleCard>
 
-        {/* Finance Chart */}
         <ModuleCard title="Fluxo Financeiro — 7 dias" icon="💰" accentColor="#EF9F27">
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -225,14 +149,8 @@ export default function Dashboard() {
               <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="transparent" />
               <YAxis tick={{ fontSize: 11 }} stroke="transparent" />
               <Tooltip
-                contentStyle={{
-                  background: '#1a1a2e',
-                  border: '1px solid #333',
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-                formatter={(v: number) => formatBRL(v)}
-              />
+                contentStyle={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: 8, fontSize: 12 }}
+                formatter={(v: number) => formatBRL(v)} />
               <Line type="monotone" dataKey="Receita" stroke="#1D9E75" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="Despesa" stroke="#E24B4A" strokeWidth={2} dot={false} />
             </LineChart>
@@ -249,7 +167,6 @@ export default function Dashboard() {
           </div>
         </ModuleCard>
 
-        {/* Journal */}
         <ModuleCard title="Diário" icon="📓" accentColor="#D85A30">
           <div className="space-y-3">
             {lastJournalEntry ? (
@@ -258,7 +175,7 @@ export default function Dashboard() {
                   <p className="text-xs text-muted">{lastJournalEntry.date}</p>
                   {lastJournalEntry.mood && (
                     <span className="text-lg">
-                      {['😞', '😕', '😐', '🙂', '😄'][lastJournalEntry.mood - 1]}
+                      {(['😞', '😕', '😐', '🙂', '😄'] as const)[lastJournalEntry.mood - 1]}
                     </span>
                   )}
                 </div>
@@ -274,9 +191,7 @@ export default function Dashboard() {
               <span className="font-mono text-sm font-bold" style={{ color: '#D85A30' }}>
                 {streak} dia{streak !== 1 ? 's' : ''}
               </span>
-              <span className="text-xs text-muted ml-auto">
-                {journalEntries.length} entradas no total
-              </span>
+              <span className="text-xs text-muted ml-auto">{journalEntries.length} entradas no total</span>
             </div>
           </div>
         </ModuleCard>

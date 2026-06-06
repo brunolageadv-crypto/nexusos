@@ -10,14 +10,11 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
-  Timestamp,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from './useAuth'
 import type { MediaItem, TimeEntry, Transaction, JournalEntry } from '../types'
 import {
-  calcWorkedMinutes,
-  calcBalanceMinutes,
   calcTotalBalance,
   isCurrentlyCheckedIn,
   calcMonthlySummary,
@@ -111,9 +108,7 @@ export function usePonto() {
   }
 
   const checkedIn = isCurrentlyCheckedIn(entries)
-  const activeEntry = checkedIn
-    ? entries.find((e) => !e.clockOut)
-    : undefined
+  const activeEntry = checkedIn ? entries.find((e) => !e.clockOut) : undefined
 
   const todayEntries = entries.filter((e) => e.date === todayString())
   const todayBalance = calcTotalBalance(todayEntries)
@@ -126,16 +121,7 @@ export function usePonto() {
   })
   const weekBalance = calcTotalBalance(thisWeek)
 
-  return {
-    entries,
-    loading,
-    checkedIn,
-    activeEntry,
-    todayBalance,
-    weekBalance,
-    clockIn,
-    clockOut,
-  }
+  return { entries, loading, checkedIn, activeEntry, todayBalance, weekBalance, clockIn, clockOut }
 }
 
 // ─── Finance Hook ─────────────────────────────────────────────────────────────
@@ -159,9 +145,7 @@ export function useFinance() {
     return unsub
   }, [user])
 
-  async function addTransaction(
-    data: Omit<Transaction, 'id' | 'userId' | 'createdAt'>
-  ) {
+  async function addTransaction(data: Omit<Transaction, 'id' | 'userId' | 'createdAt'>) {
     if (!user) return
     await addDoc(collection(db, 'transactions'), {
       ...data,
@@ -176,13 +160,7 @@ export function useFinance() {
 
   const monthlySummary = calcMonthlySummary(transactions, currentMonth())
 
-  return {
-    transactions,
-    loading,
-    monthlySummary,
-    addTransaction,
-    deleteTransaction,
-  }
+  return { transactions, loading, monthlySummary, addTransaction, deleteTransaction }
 }
 
 // ─── Journal Hook ─────────────────────────────────────────────────────────────
