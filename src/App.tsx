@@ -1,108 +1,124 @@
-import { useState } from 'react'
-import { AuthProvider, useAuth } from './hooks/useAuth'
-import { ThemeProvider, useTheme } from './hooks/useTheme'
-import LoginPage from './pages/LoginPage'
-import Dashboard from './components/dashboard/Dashboard'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import EditaisAGU from './components/editais/EditaisAGU'
+import NexusDashboard from './components/dashboard/NexusDashboard'
 
-type NavPage = 'dashboard' | 'media' | 'ponto' | 'finance' | 'journal' | 'concursos' | 'editais'
+/* ═══ Theme ═══════════════════════════════════════════════════ */
+type Theme = 'dark' | 'light'
+const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
+export const useTheme = () => useContext(ThemeCtx)
 
-const NAV_ITEMS: { id: NavPage; icon: string; label: string; group?: string }[] = [
-  { id: 'dashboard', icon: '◈', label: 'Dashboard' },
-  { id: 'ponto',     icon: '⏱', label: 'Ponto' },
-  { id: 'finance',   icon: '💰', label: 'Finanças' },
-  { id: 'media',     icon: '🎬', label: 'Mídia' },
-  { id: 'journal',   icon: '📓', label: 'Diário' },
-  { id: 'concursos', icon: '🏛', label: 'Concursos', group: 'Jurídico' },
-  { id: 'editais',   icon: '📋', label: 'Editais AGU', group: 'Jurídico' },
+function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<Theme>(() =>
+    (localStorage.getItem('nexusos-theme') as Theme) ?? 'dark'
+  )
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('nexusos-theme', theme)
+  }, [theme])
+  return (
+    <ThemeCtx.Provider value={{ theme, toggle: () => setTheme(t => t === 'dark' ? 'light' : 'dark') }}>
+      {children}
+    </ThemeCtx.Provider>
+  )
+}
+
+/* ═══ Nav config ══════════════════════════════════════════════ */
+const NAV = [
+  {
+    section: 'PRINCIPAL',
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: '◈' },
+    ],
+  },
+  {
+    section: 'JURÍDICO',
+    items: [
+      { id: 'editais', label: 'Editais AGU', icon: '⚖' },
+      { id: 'concursos', label: 'Concursos', icon: '🎯' },
+    ],
+  },
+  {
+    section: 'PESSOAL',
+    items: [
+      { id: 'financeiro', label: 'Financeiro', icon: '◎' },
+      { id: 'ponto', label: 'Ponto Eletrônico', icon: '⊙' },
+      { id: 'journal', label: 'Diário', icon: '✦' },
+      { id: 'media', label: 'Media Tracker', icon: '▶' },
+    ],
+  },
 ]
 
-function ComingSoon({ name }: { name: string }) {
+/* ═══ AppShell ════════════════════════════════════════════════ */
+function AppShell() {
+  const [active, setActive] = useState('dashboard')
+  const { theme, toggle } = useTheme()
+
+  const currentLabel = NAV.flatMap(g => g.items).find(i => i.id === active)?.label ?? ''
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 240, gap: 12, color: 'var(--text-muted)' }}>
-      <span style={{ fontSize: 40 }}>🚧</span>
-      <p style={{ fontWeight: 600 }}>{name} — em construção</p>
-      <p style={{ fontSize: 13 }}>Implementando em breve</p>
+    <div className="app-shell">
+
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="logo-wordmark">NexusOS</div>
+          <div className="logo-tagline">Operating System · Bruno</div>
+        </div>
+
+        {NAV.map(group => (
+          <div key={group.section} className="sidebar-section">
+            <div className="sidebar-section-label">{group.section}</div>
+            {group.items.map(item => (
+              <button
+                key={item.id}
+                className={`nav-item ${active === item.id ? 'active' : ''}`}
+                onClick={() => setActive(item.id)}
+              >
+                <span className="nav-icon">{item.icon}</span>
+                <span className="nav-label">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+
+        <div className="sidebar-bottom">
+          <button className="theme-btn" onClick={toggle}>
+            <span>{theme === 'dark' ? '☀' : '◑'}</span>
+            <span>{theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Main ── */}
+      <div className="main-area">
+        <header className="topbar">
+          <span className="topbar-breadcrumb">nexusos /</span>
+          <span className="topbar-title">{currentLabel}</span>
+          <div className="topbar-right">
+            <div className="sync-dot" />
+            <span className="topbar-status">ONLINE</span>
+          </div>
+        </header>
+
+        <div className="page-content">
+          {active === 'dashboard' && <NexusDashboard onNavigate={setActive} />}
+          {active === 'editais'   && <EditaisAGU />}
+          {active === 'concursos' && <PlaceholderPage title="Concursos" icon="🎯" />}
+          {active === 'financeiro' && <PlaceholderPage title="Financeiro" icon="◎" />}
+          {active === 'ponto'     && <PlaceholderPage title="Ponto Eletrônico" icon="⊙" />}
+          {active === 'journal'   && <PlaceholderPage title="Diário" icon="✦" />}
+          {active === 'media'     && <PlaceholderPage title="Media Tracker" icon="▶" />}
+        </div>
+      </div>
     </div>
   )
 }
 
-function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme()
+function PlaceholderPage({ title, icon }: { title: string; icon: string }) {
   return (
-    <button onClick={toggleTheme} title={theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
-      style={{ width: 34, height: 34, borderRadius: 8, border: '0.5px solid var(--border)', background: 'var(--surface2)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, transition: 'all 0.15s', flexShrink: 0 }}>
-      {theme === 'dark' ? '☀️' : '🌙'}
-    </button>
-  )
-}
-
-function AppShell() {
-  const { user, nexusUser, logout } = useAuth()
-  const [page, setPage] = useState<NavPage>('dashboard')
-
-  if (!user) return <LoginPage />
-
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--bg)' }}>
-      {/* Sidebar */}
-      <nav style={{ width: 220, flexShrink: 0, borderRight: '0.5px solid var(--border)', background: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '18px 16px 14px', borderBottom: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontFamily: "'Space Mono',monospace", fontWeight: 900, fontSize: 18, color: 'var(--text-primary)' }}>
-            Nexus<span style={{ color: 'var(--purple)' }}>OS</span>
-          </span>
-          <ThemeToggle />
-        </div>
-
-        <div style={{ flex: 1, padding: '10px 8px', overflowY: 'auto' }}>
-          {['', 'Jurídico'].map(group => {
-            const items = NAV_ITEMS.filter(n => (n.group ?? '') === group)
-            return (
-              <div key={group} style={{ marginBottom: 14 }}>
-                {group && <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-muted)', padding: '0 8px', marginBottom: 4 }}>{group}</p>}
-                {items.map(item => (
-                  <button key={item.id} onClick={() => setPage(item.id)}
-                    style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, border: 'none',
-                      background: page === item.id ? 'var(--purple-dim)' : 'transparent',
-                      color: page === item.id ? 'var(--purple)' : 'var(--text-muted)',
-                      cursor: 'pointer', fontSize: 13, fontWeight: page === item.id ? 700 : 500, textAlign: 'left', marginBottom: 2, transition: 'all 0.15s' }}>
-                    <span style={{ fontSize: 15 }}>{item.icon}</span>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )
-          })}
-        </div>
-
-        <div style={{ padding: 12, borderTop: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          {nexusUser?.photoURL && <img src={nexusUser.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nexusUser?.displayName}</p>
-            <button onClick={logout} style={{ fontSize: 11, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>Sair</button>
-          </div>
-        </div>
-      </nav>
-
-      {/* Main */}
-      <main style={{ flex: 1, overflow: 'auto' }}>
-        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '28px 24px' }}>
-          <header style={{ marginBottom: 20 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)' }}>{NAV_ITEMS.find(n => n.id === page)?.label}</h1>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-              {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-          </header>
-
-          {page === 'dashboard'  && <Dashboard />}
-          {page === 'ponto'      && <ComingSoon name="Ponto Eletrônico" />}
-          {page === 'finance'    && <ComingSoon name="Controle Financeiro" />}
-          {page === 'media'      && <ComingSoon name="Media Tracker" />}
-          {page === 'journal'    && <ComingSoon name="Diário" />}
-          {page === 'concursos'  && <ComingSoon name="Concursos" />}
-          {page === 'editais'    && <EditaisAGU />}
-        </div>
-      </main>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 16, color: 'var(--text-muted)' }}>
+      <span style={{ fontSize: 48 }}>{icon}</span>
+      <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.8rem', letterSpacing: '0.2em', textTransform: 'uppercase' }}>{title} — Em breve</span>
     </div>
   )
 }
@@ -110,9 +126,7 @@ function AppShell() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <AppShell />
-      </AuthProvider>
+      <AppShell />
     </ThemeProvider>
   )
 }
