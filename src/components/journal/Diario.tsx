@@ -482,7 +482,7 @@ function SecaoGratidao({ gratidao, reflexao, meta, onChange }: {
 // ─── Seção 10 — Metas & Hábitos ──────────────────────────────────────────────
 function SecaoHabitos({ uid, data }: { uid: string | null; data: string }) {
   const [habitos, setHabitos] = useState<Habito[]>([])
-  const [registros, setRegistros] = useState<Record<string, Record<string, boolean>>>({})
+  const [registros, setRegistros] = useState<Record<string, boolean>>({})
   const [novoNome, setNovoNome] = useState('')
   const [novoIcon, setNovoIcon] = useState('⭐')
 
@@ -501,7 +501,8 @@ function SecaoHabitos({ uid, data }: { uid: string | null; data: string }) {
   const toggle = async (habitoId: string) => {
     if (!uid) return
     const db = getDB()
-    const novo: Record<string, boolean> = { ...registros, [habitoId]: !registros[habitoId] as boolean }
+    const atual = registros[habitoId] === true
+    const novo: Record<string, boolean> = { ...registros, [habitoId]: !atual }
     setRegistros(novo)
     await setDoc(doc(db, 'users', uid, 'habitosRegistros', data), novo)
   }
@@ -812,7 +813,7 @@ export default function Diario({ onNavigate }: Props) {
         {secaoAtiva === 'dashboard' && (
           <Card>
             <SectionTitle icon="◈" title="Visão Geral do Dia" />
-            <SecaoDashboard dia={dia} data={dataSelecionada} />
+            <SecaoDashboard dia={dia} />
           </Card>
         )}
 
