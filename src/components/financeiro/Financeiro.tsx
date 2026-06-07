@@ -207,7 +207,6 @@ export default function Financeiro() {
   const[editC,setEditC]=useState<ContaPagar|null>(null)
   const[filtroMes,setFiltroMes]=useState(todayISO().slice(0,7))
 
-  const hoje=todayISO()
   const inicioSemana=()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10)}
 
   const tMes=useMemo(()=>transacoes.filter(t=>t.data.startsWith(filtroMes)),[transacoes,filtroMes])
