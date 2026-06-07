@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { db, auth } from '../../lib/firebase'
+import { db } from '../../lib/firebase'
+import { useUid } from '../../hooks/useUid'
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'firebase/firestore'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts'
 
@@ -18,14 +19,23 @@ interface Categoria { nome: string; subs: string[] }
 
 /* ═══ Default cats ═══════════════════════════════════════════ */
 const CATS_DEFAULT: Categoria[] = [
-  {nome:'Moradia',subs:['Aluguel','Condomínio','IPTU','Água','Luz','Gás','Internet']},
-  {nome:'Alimentação',subs:['Supermercado','Restaurante','Delivery','Padaria']},
-  {nome:'Transporte',subs:['Combustível','Estacionamento','Uber/Taxi','Transporte Público','IPVA','Seguro Auto']},
-  {nome:'Saúde',subs:['Plano de Saúde','Consultas','Medicamentos','Academia']},
-  {nome:'Educação',subs:['Cursos','Livros','Concursos','Material']},
-  {nome:'Lazer',subs:['Streaming','Viagens','Cinema','Eventos']},
-  {nome:'Receitas',subs:['Salário','Freelance','Investimentos','Outros']},
-  {nome:'Outros',subs:['Impostos','Seguros','Doações','Miscellaneous']},
+  {nome:'Moradia',subs:['Aluguel','Financiamento Imóvel','Condomínio','IPTU','Água','Luz','Gás','Internet','TV a Cabo','Telefone Fixo','Seguro Residencial','Reforma/Manutenção']},
+  {nome:'Alimentação',subs:['Supermercado','Feira/Hortifruti','Açougue','Padaria/Confeitaria','Almoço no Trabalho','Lanche da Tarde','Café da Manhã','Restaurante','Delivery/iFood','Lanches Rápidos','Bebidas','Doces/Guloseimas']},
+  {nome:'Transporte',subs:['Combustível','Estacionamento','Pedágio','Manutenção Veículo','IPVA','Licenciamento','Seguro Auto','Uber/99','Taxi','Ônibus/Metrô','VLT/Trem','Aplicativo de Bicicleta']},
+  {nome:'Saúde',subs:['Plano de Saúde','Consulta Médica','Consulta Dentista','Consulta Psicólogo','Exames/Laboratório','Medicamentos','Farmácia','Óculos/Lentes','Academia/Musculação','Personal Trainer','Yoga/Pilates']},
+  {nome:'Educação',subs:['Faculdade/Pós-Graduação','Cursos Online','Cursinhos/Preparatórios','Concurso Público (Taxa)','Livros Técnicos','Material Escolar','Idiomas','Certificações/Provas']},
+  {nome:'Vestuário',subs:['Roupas Cotidianas','Roupas Formais','Calçados','Acessórios','Roupas Esportivas','Alfaiataria/Ajuste']},
+  {nome:'Lazer e Entretenimento',subs:['Netflix/Streaming','Spotify/Música','Games','Cinema/Teatro','Shows/Eventos','Viagens','Hotéis/Airbnb','Parques/Atrações','Livros/Revistas','Hobbies']},
+  {nome:'Supérfluos',subs:['Compras por Impulso','Presentes Não Planejados','Apostas/Loterias','Itens Desnecessários','Luxos Ocasionais']},
+  {nome:'Pessoal e Bem-Estar',subs:['Cabeleireiro/Barbearia','Salão de Beleza','Manicure/Pedicure','Produtos de Higiene','Cosméticos/Perfumes','Spa/Massagem']},
+  {nome:'Casa e Equipamentos',subs:['Móveis','Eletrodomésticos','Eletrônicos','Utensílios Domésticos','Decoração','Jardinagem']},
+  {nome:'Pets',subs:['Ração','Veterinário','Banho e Tosa','Remédios Pet','Acessórios Pet']},
+  {nome:'Finanças',subs:['Parcelas/Prestações','Cartão de Crédito','Empréstimo','Juros Bancários','Tarifas Bancárias','Seguros (Geral)','Previdência Privada','Investimentos']},
+  {nome:'Impostos e Taxas',subs:['Imposto de Renda','IPTU','IPVA','Taxas Governamentais','Cartório']},
+  {nome:'Profissional',subs:['Material de Trabalho','Assinaturas Profissionais','Equipamentos','Transporte a Trabalho','Alimentação no Trabalho']},
+  {nome:'Receitas',subs:['Salário Principal','Salário Secundário','Freelance/Consultoria','13º Salário','Férias','Décimo','PLR/Bônus','Aluguel Recebido','Investimentos/Dividendos','Venda de Bens','Outros']},
+  {nome:'Doações e Presentes',subs:['Presentes Aniversário','Presentes Natal','Doações Sociais','Dízimo/Oferta']},
+  {nome:'Outros',subs:['Não Classificado','Miscellaneous']},
 ]
 const COLORS = ['#00e5ff','#7c3aed','#10b981','#f59e0b','#ef4444','#3b82f6','#ec4899','#8b5cf6','#06b6d4','#84cc16']
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -48,7 +58,7 @@ function useFinanceiro() {
   const [contas,setContas]=useState<ContaPagar[]>([])
   const [cats,setCats]=useState<Categoria[]>(CATS_DEFAULT)
   const [loading,setLoading]=useState(true)
-  const uid=auth?.currentUser?.uid
+  const uid=useUid()
 
   useEffect(()=>{
     if(!uid||!db){setLoading(false);return}
@@ -198,7 +208,6 @@ export default function Financeiro() {
   const[filtroMes,setFiltroMes]=useState(todayISO().slice(0,7))
 
   const hoje=todayISO()
-  const _mesAtual=hoje.slice(0,7); void _mesAtual
   const inicioSemana=()=>{const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10)}
 
   const tMes=useMemo(()=>transacoes.filter(t=>t.data.startsWith(filtroMes)),[transacoes,filtroMes])

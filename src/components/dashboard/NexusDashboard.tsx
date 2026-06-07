@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
-import { auth, db } from '../../lib/firebase'
+import { db } from '../../lib/firebase'
+import { useUid } from '../../hooks/useUid'
 import { useState, useEffect } from 'react'
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore'
 
@@ -23,7 +24,7 @@ function RingGauge({ pct, color, size=72 }: { pct:number; color:string; size?:nu
 /* ── usePontoStats ── */
 function usePontoStats() {
   const [registros, setRegistros] = useState<any[]>([])
-  const uid = auth?.currentUser?.uid
+  const uid = useUid()
   useEffect(()=>{
     if(!uid||!db) return
     const q = query(collection(db,`users/${uid}/ponto`),orderBy('data','desc'))

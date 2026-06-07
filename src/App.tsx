@@ -4,8 +4,8 @@ import LoginPage from './auth/LoginPage'
 import EditaisAGU from './components/editais/EditaisAGU'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
-import Financeiro from './components/financeiro/Financeiro'
 import PontoEletronico from './components/ponto/PontoEletronico'
+import Financeiro from './components/financeiro/Financeiro'
 
 /* ═══ Theme ══════════════════════════════════════════════════ */
 type Theme = 'dark' | 'light'
@@ -30,28 +30,28 @@ function ThemeProvider({ children }: { children: ReactNode }) {
 /* ═══ Logo SVG ════════════════════════════════════════════════ */
 function NexisLogo() {
   return (
-    <div style={{ padding: "2px 0", userSelect: "none" }}>
-      <svg width="160" height="40" viewBox="0 0 160 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <div style={{ padding: '4px 0 2px', userSelect: 'none' }}>
+      <svg width="164" height="42" viewBox="0 0 164 42" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="arcG" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#c8cdd7"/>
-            <stop offset="100%" stopColor="#8892a4"/>
+          <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#b0b8c8"/>
+            <stop offset="100%" stopColor="#6e7a8a"/>
           </linearGradient>
-          <linearGradient id="dotG" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#a0a8b8"/>
-            <stop offset="100%" stopColor="#7c8499"/>
+          <linearGradient id="lg2" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#8892a4"/>
+            <stop offset="100%" stopColor="#5a6478"/>
           </linearGradient>
         </defs>
-        {/* Ring — clean circle with gap */}
-        <circle cx="20" cy="20" r="13" stroke="#3a3f47" strokeWidth="2" fill="none"/>
-        {/* Arc highlight */}
-        <path d="M 9.5 12 A 13 13 0 0 1 30.5 12" stroke="url(#arcG)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-        {/* N initial */}
-        <text x="20" y="25" textAnchor="middle" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="13" fill="#c8cdd7">N</text>
-        {/* NEXIS wordmark */}
-        <text x="42" y="25" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="17" letterSpacing="2" fill="#dde1e9">NEXIS</text>
-        {/* .OS */}
-        <text x="108" y="25" fontFamily="Syne,sans-serif" fontWeight="300" fontSize="17" letterSpacing="1" fill="url(#dotG)">.OS</text>
+        {/* Anel externo */}
+        <circle cx="21" cy="21" r="15" stroke="#2e333c" strokeWidth="1.5" fill="none"/>
+        {/* Arco superior destacado */}
+        <path d="M 8.5 13 A 15 15 0 0 1 33.5 13" stroke="url(#lg1)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+        {/* N */}
+        <text x="21" y="26.5" textAnchor="middle" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="14" fill="#c4cad6" letterSpacing="-0.5">N</text>
+        {/* NEXIS */}
+        <text x="44" y="27" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="18" letterSpacing="3" fill="#d8dce6">NEXIS</text>
+        {/* .OS — fonte fina */}
+        <text x="112" y="27" fontFamily="Syne,sans-serif" fontWeight="300" fontSize="17" letterSpacing="1" fill="url(#lg2)">.OS</text>
       </svg>
     </div>
   )
@@ -87,13 +87,12 @@ function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-
         {/* Logo */}
         <div className="sidebar-logo">
           <NexisLogo />
         </div>
 
-        {/* Nav items */}
+        {/* Nav */}
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
           {NAV.map(group => (
             <div key={group.section} className="sidebar-section">
@@ -112,40 +111,39 @@ function AppShell() {
           ))}
         </div>
 
-        {/* User block — above theme toggle */}
+        {/* User block */}
         <div style={{
           margin: '0 12px 8px',
-          padding: '12px 14px',
-          background: 'rgba(0,229,255,0.04)',
-          border: '1px solid rgba(0,229,255,0.1)',
-          borderRadius: 12,
+          padding: '11px 13px',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 11,
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
           <div style={{
-            width: 34, height: 34, borderRadius: '50%',
-            border: '2px solid rgba(0,229,255,0.4)',
+            width: 32, height: 32, borderRadius: '50%',
+            border: '2px solid rgba(180,185,200,0.35)',
             overflow: 'hidden', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,229,255,0.1)',
-            boxShadow: '0 0 10px rgba(0,229,255,0.2)',
+            background: 'rgba(180,185,200,0.1)',
           }}>
             {avatarUrl
               ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.8rem', fontWeight: 800, color: '#00e5ff' }}>{initials}</span>
+              : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>
             }
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'rgba(255,255,255,0.9)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {displayName.split(' ')[0]}
             </div>
-            <div style={{ fontSize: '0.6rem', color: 'rgba(0,229,255,0.4)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: '0.58rem', color: 'rgba(180,185,200,0.4)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user?.email}
             </div>
           </div>
           <button onClick={logout} title="Sair"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', fontSize: '1rem', padding: 4, borderRadius: 6, flexShrink: 0, transition: 'color 0.2s' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.18)', fontSize: '1rem', padding: 4, borderRadius: 6, flexShrink: 0, transition: 'color 0.2s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.2)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.18)' }}
           >⏻</button>
         </div>
 
@@ -173,8 +171,8 @@ function AppShell() {
           {active === 'concursos'  && <Concursos />}
           {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
-          {active === 'journal'    && <Placeholder title="Diário"            icon="✦" />}
-          {active === 'media'      && <Placeholder title="Media Tracker"     icon="▶" />}
+          {active === 'journal'    && <Placeholder title="Diário"         icon="✦" />}
+          {active === 'media'      && <Placeholder title="Media Tracker"  icon="▶" />}
         </div>
       </div>
     </div>
@@ -194,9 +192,9 @@ function Root() {
   const { user, loading } = useAuth()
   if (loading) return (
     <div style={{ minHeight:'100vh', background:'var(--bg-0)', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16 }}>
-      <div style={{ width:40, height:40, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'#00e5ff', animation:'spin 0.8s linear infinite' }} />
+      <div style={{ width:40, height:40, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'#c4cad6', animation:'spin 0.8s linear infinite' }} />
       <div style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', color:'var(--text-muted)', letterSpacing:'0.12em' }}>AUTENTICANDO…</div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
   return user ? <AppShell /> : <LoginPage />

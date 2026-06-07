@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { db, auth } from '../../lib/firebase'
+import { db } from '../../lib/firebase'
+import { useUid } from '../../hooks/useUid'
 import { collection, doc, setDoc, onSnapshot, query, orderBy } from 'firebase/firestore'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from 'recharts'
 
@@ -52,7 +53,7 @@ const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov'
 function usePonto() {
   const [registros, setRegistros] = useState<Registro[]>([])
   const [loading, setLoading] = useState(true)
-  const uid = auth?.currentUser?.uid
+  const uid = useUid()
 
   useEffect(() => {
     if (!uid || !db) { setLoading(false); return }

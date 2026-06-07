@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { db, auth } from '../../lib/firebase'
+import { db } from '../../lib/firebase'
+import { useUid } from '../../hooks/useUid'
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy } from 'firebase/firestore'
 
 /* ═══ Types ══════════════════════════════════════════════════ */
@@ -8,9 +9,17 @@ type Prioridade = 'alta' | 'media' | 'baixa'
 type StatusPrev = 'previsto' | 'edital' | 'inscricoes' | 'provas' | 'resultado' | 'encerrado'
 type StatusReal = 'aprovado' | 'classificado' | 'aguardando' | 'reprovado' | 'desistiu'
 
+interface GrupoDisc {
+  nome: string
+  disciplinas: string[]
+  questoes: number
+  peso: number
+}
+
 interface ProvaBloco {
   ativo: boolean
-  disciplinas: string[]
+  disciplinas: string[]   // disciplinas avulsas
+  grupos: GrupoDisc[]     // grupos de disciplinas
   peso: number
   questoes: number
   duracao: number
@@ -61,7 +70,7 @@ const PL: Record<Prioridade,string> = {alta:'🔴 Alta',media:'🟡 Média',baix
 function newId() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6) }
 function fmtDate(d:string) { if(!d)return'—'; const[y,m,dy]=d.split('-'); return `${dy}/${m}/${y}` }
 function daysUntil(d:string) { if(!d)return null; return Math.ceil((new Date(d).getTime()-Date.now())/86400000) }
-function emptyProva(): ProvaBloco { return{ativo:false,disciplinas:[],peso:1,questoes:0,duracao:0,notaCorte:0,obs:''} }
+function emptyProva(): ProvaBloco { return{ativo:false,disciplinas:[],grupos:[],peso:1,questoes:0,duracao:0,notaCorte:0,obs:''} }
 function emptyConcurso(): Omit<Concurso,'id'|'criadoEm'> {
   return{nome:'',orgao:'',area:'Jurídica',nivel:'Superior',banca:'',status:'previsto',prioridade:'media',
     vagas:0,remuneracao:'',taxa:'',local:'',dataEdital:'',dataInscricaoFim:'',dataProva:'',dataResultado:'',
@@ -127,7 +136,25 @@ function ProvaSection({title,icon,value,onChange}:{title:string;icon:string;valu
             <FL label="Duração (min)"><input type="number" style={inp} value={value.duracao||''} onChange={e=>set('duracao',+e.target.value||0)} placeholder="0"/></FL>
             <FL label="Nota de Corte"><input type="number" step="0.1" style={inp} value={value.notaCorte||''} onChange={e=>set('notaCorte',+e.target.value||0)} placeholder="0"/></FL>
           </div>
-          <DiscPicker value={value.disciplinas} onChange={v=>set('disciplinas',v)} label="Disciplinas cobradas"/>
+          {/* Grupos de disciplinas */}
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:'0.68rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8,fontFamily:'var(--font-mono)'}}>GRUPOS DE DISCIPLINAS</div>
+            {value.grupos.map((g,i)=>(
+              <div key={i} style={{background:'var(--bg-3)',border:'1px solid var(--border)',borderRadius:8,padding:'10px 12px',marginBottom:8}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr auto auto auto',gap:8,alignItems:'center',marginBottom:8}}>
+                  <input value={g.nome} onChange={e=>{const gs=[...value.grupos];gs[i]={...gs[i],nome:e.target.value};set('grupos',gs)}} placeholder="Nome do grupo (ex: Direito Público)" style={{...inp,fontSize:'0.82rem'}}/>
+                  <div><label style={{fontSize:'0.62rem',color:'var(--text-muted)',display:'block',marginBottom:3,fontFamily:'var(--font-mono)'}}>QUESTÕES</label><input type="number" value={g.questoes||''} onChange={e=>{const gs=[...value.grupos];gs[i]={...gs[i],questoes:+e.target.value||0};set('grupos',gs)}} style={{...inp,width:70,fontSize:'0.82rem'}}/></div>
+                  <div><label style={{fontSize:'0.62rem',color:'var(--text-muted)',display:'block',marginBottom:3,fontFamily:'var(--font-mono)'}}>PESO</label><input type="number" step="0.1" value={g.peso||''} onChange={e=>{const gs=[...value.grupos];gs[i]={...gs[i],peso:+e.target.value||1};set('grupos',gs)}} style={{...inp,width:60,fontSize:'0.82rem'}}/></div>
+                  <button type="button" onClick={()=>set('grupos',value.grupos.filter((_,j)=>j!==i))} style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:6,padding:'6px 10px',color:'#f87171',cursor:'pointer',fontSize:'0.78rem',alignSelf:'flex-end'}}>✕</button>
+                </div>
+                <DiscPicker value={g.disciplinas} onChange={v=>{const gs=[...value.grupos];gs[i]={...gs[i],disciplinas:v};set('grupos',gs)}} label="Disciplinas do grupo"/>
+              </div>
+            ))}
+            <button type="button" onClick={()=>set('grupos',[...value.grupos,{nome:'',disciplinas:[],questoes:0,peso:1}])} style={{width:'100%',padding:'8px',borderRadius:8,border:'1px dashed var(--border-md)',background:'none',color:'var(--text-muted)',cursor:'pointer',fontFamily:'var(--font-display)',fontWeight:600,fontSize:'0.78rem',transition:'all 0.15s'}} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.color='var(--text-accent)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.color='var(--text-muted)'}>
+              + Adicionar Grupo de Disciplinas
+            </button>
+          </div>
+          <DiscPicker value={value.disciplinas} onChange={v=>set('disciplinas',v)} label="Disciplinas avulsas (fora de grupos)"/>
           <div style={{marginTop:10}}>
             <FL label="Observações"><textarea style={{...inp,minHeight:56,resize:'vertical'} as React.CSSProperties} value={value.obs} onChange={e=>set('obs',e.target.value)} placeholder="Formato, critérios, temas específicos…"/></FL>
           </div>
@@ -384,7 +411,7 @@ export default function Concursos() {
   const [wizard,setWizard]=useState(false)
   const [editing,setEditing]=useState<Concurso|null>(null)
   const [loading,setLoading]=useState(true)
-  const uid=auth?.currentUser?.uid
+  const uid=useUid()
 
   useEffect(()=>{
     if(!uid||!db){setLoading(false);return}
@@ -471,7 +498,8 @@ export default function Concursos() {
         ):(
           realizados.length===0?<div style={{textAlign:'center',padding:'60px 0',color:'var(--text-muted)'}}>
             <div style={{fontSize:40,marginBottom:12}}>🎓</div>
-            <div style={{fontFamily:'var(--font-display)',fontSize:'0.85rem',letterSpacing:'0.1em',textTransform:'uppercase'}}>Nenhum concurso realizado registrado</div>
+            <div style={{fontFamily:'var(--font-display)',fontSize:'0.85rem',letterSpacing:'0.1em',textTransform:'uppercase',marginBottom:16}}>Nenhum concurso realizado registrado</div>
+            <button onClick={()=>{setEditing(null);setWizard(true)}} style={{padding:'9px 20px',borderRadius:8,border:'1px solid rgba(124,58,237,0.4)',background:'rgba(124,58,237,0.1)',color:'#a78bfa',fontFamily:'var(--font-display)',fontWeight:700,cursor:'pointer'}}>+ Registrar Prova</button>
           </div>:
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(400px,1fr))',gap:14}}>
             {realizados.map(r=>(
