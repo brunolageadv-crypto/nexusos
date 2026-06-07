@@ -10,7 +10,6 @@ interface Props { onNavigate: (id: string) => void }
 /* ═══════════════════════════════════════════════════════════
    GRID SYSTEM — 12 colunas, altura em unidades de 100px
 ═══════════════════════════════════════════════════════════ */
-type Size = 'sm' | 'md' | 'lg' | 'xl' | 'wide'
 interface Widget {
   id: string
   col: number   // 0-11
