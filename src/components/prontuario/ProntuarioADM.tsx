@@ -1,10 +1,6 @@
-// ProntuarioADM.tsx
-// Coloque em: src/components/prontuario/ProntuarioADM.tsx
-// Adicionar rota no App.tsx: case 'prontuario' => <ProntuarioADM />
-
 import { useEffect, useState, useRef } from 'react'
 import {
-  collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc, Timestamp
+  collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc
 } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
