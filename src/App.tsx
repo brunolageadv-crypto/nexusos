@@ -27,58 +27,46 @@ function ThemeProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/* ═══ Logo SVG ════════════════════════════════════════════════ */
-function NexisLogo() {
+/* ═══ Logo NEXUS — corrigida ═════════════════════════════════ */
+function NexusLogo() {
   return (
-    <div style={{ padding: "6px 0 4px", userSelect: "none" }}>
-      <svg width="148" height="48" viewBox="0 0 148 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <div style={{ padding: '8px 0 6px', userSelect: 'none' }}>
+      {/* viewBox 200x46 — espaço suficiente para hexágono + NEXUS */}
+      <svg width="200" height="46" viewBox="0 0 200 46" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="nxg1" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id="ng1" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#c8cdd8"/>
             <stop offset="100%" stopColor="#7a8394"/>
           </linearGradient>
-          <linearGradient id="nxg2" x1="0" y1="0" x2="1" y2="0">
+          <linearGradient id="ng2" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#9aa3b2"/>
             <stop offset="100%" stopColor="#5c6578"/>
           </linearGradient>
         </defs>
 
-        {/* Marca gráfica — dois hexágonos sobrepostos, estilo cristal */}
         {/* Hexágono externo */}
-        <polygon
-          points="20,4 36,13 36,31 20,40 4,31 4,13"
-          fill="none"
-          stroke="#3a4050"
-          strokeWidth="1.2"
-        />
-        {/* Hexágono interno rotacionado */}
-        <polygon
-          points="20,10 31,16 31,28 20,34 9,28 9,16"
-          fill="none"
-          stroke="url(#nxg1)"
-          strokeWidth="1.5"
-        />
-        {/* Linhas de conexão (vértice a vértice) */}
-        <line x1="20" y1="4"  x2="20" y2="10" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="36" y1="13" x2="31" y2="16" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="36" y1="31" x2="31" y2="28" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="20" y1="40" x2="20" y2="34" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="4"  y1="31" x2="9"  y2="28" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="4"  y1="13" x2="9"  y2="16" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <polygon points="21,3 37,12 37,30 21,39 5,30 5,12"
+          fill="none" stroke="#3a4050" strokeWidth="1.2"/>
+        {/* Hexágono interno */}
+        <polygon points="21,9 32,15 32,27 21,33 10,27 10,15"
+          fill="none" stroke="url(#ng1)" strokeWidth="1.5"/>
+        {/* Linhas vértice a vértice */}
+        <line x1="21" y1="3"  x2="21" y2="9"  stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="37" y1="12" x2="32" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="37" y1="30" x2="32" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="21" y1="39" x2="21" y2="33" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="5"  y1="30" x2="10" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="5"  y1="12" x2="10" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         {/* Ponto central */}
-        <circle cx="20" cy="22" r="2.5" fill="url(#nxg1)"/>
+        <circle cx="21" cy="21" r="2.5" fill="url(#ng1)"/>
 
-        {/* NEXUS wordmark */}
-        <text
-          x="46" y="28"
-          fontFamily="Syne,sans-serif"
-          fontWeight="800"
-          fontSize="20"
-          letterSpacing="4"
-          fill="#dde1eb"
-        >NEXUS</text>
-        {/* Linha decorativa sob o texto */}
-        <line x1="46" y1="33" x2="142" y2="33" stroke="url(#nxg2)" strokeWidth="0.8"/>
+        {/* NEXUS — x=48, fontSize=19, letterSpacing menor para caber */}
+        <text x="48" y="27"
+          fontFamily="Syne,sans-serif" fontWeight="800"
+          fontSize="19" letterSpacing="3"
+          fill="#dde1eb">NEXUS</text>
+        {/* Linha decorativa */}
+        <line x1="48" y1="33" x2="196" y2="33" stroke="url(#ng2)" strokeWidth="0.7"/>
       </svg>
     </div>
   )
@@ -87,17 +75,24 @@ function NexisLogo() {
 /* ═══ Nav ═══════════════════════════════════════════════════ */
 const NAV = [
   { section: 'PRINCIPAL', items: [
-    { id: 'dashboard',  label: 'Dashboard',       icon: '◈' },
+    { id: 'dashboard',  label: 'Dashboard',         icon: '◈' },
   ]},
   { section: 'JURÍDICO', items: [
-    { id: 'editais',    label: 'Editais AGU',      icon: '⚖' },
-    { id: 'concursos',  label: 'Concursos',        icon: '🎯' },
+    { id: 'editais',    label: 'Editais AGU',        icon: '⚖' },
+    { id: 'concursos',  label: 'Concursos',          icon: '🎯' },
+    { id: 'prontuario', label: 'Prontuário ADM',     icon: '📋' },
   ]},
-  { section: 'PESSOAL', items: [
-    { id: 'financeiro', label: 'Financeiro',       icon: '◎' },
-    { id: 'ponto',      label: 'Ponto Eletrônico', icon: '⊙' },
-    { id: 'journal',    label: 'Diário',            icon: '✦' },
-    { id: 'media',      label: 'Media Tracker',    icon: '▶' },
+  { section: 'FINANÇAS & VIDA', items: [
+    { id: 'financeiro', label: 'Financeiro',         icon: '◎' },
+    { id: 'ponto',      label: 'Ponto Eletrônico',   icon: '⊙' },
+    { id: 'saude',      label: 'Saúde & Bem-Estar',  icon: '✚' },
+    { id: 'wishlist',   label: 'Wishlist & Compras', icon: '🛒' },
+  ]},
+  { section: 'ENTRETENIMENTO', items: [
+    { id: 'journal',    label: 'Diário',             icon: '✦' },
+    { id: 'media',      label: 'Media Tracker',      icon: '▶' },
+    { id: 'gaming',     label: 'Gaming Hub',         icon: '🎮' },
+    { id: 'links',      label: 'Links de Interesse', icon: '🔗' },
   ]},
 ]
 
@@ -114,12 +109,10 @@ function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        {/* Logo */}
         <div className="sidebar-logo">
-          <NexisLogo />
+          <NexusLogo />
         </div>
 
-        {/* Nav */}
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
           {NAV.map(group => (
             <div key={group.section} className="sidebar-section">
@@ -140,17 +133,13 @@ function AppShell() {
 
         {/* User block */}
         <div style={{
-          margin: '0 12px 8px',
-          padding: '11px 13px',
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 11,
-          display: 'flex', alignItems: 'center', gap: 10,
+          margin: '0 12px 8px', padding: '11px 13px',
+          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10,
         }}>
           <div style={{
             width: 32, height: 32, borderRadius: '50%',
-            border: '2px solid rgba(180,185,200,0.35)',
-            overflow: 'hidden', flexShrink: 0,
+            border: '2px solid rgba(180,185,200,0.35)', overflow: 'hidden', flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'rgba(180,185,200,0.1)',
           }}>
@@ -174,7 +163,6 @@ function AppShell() {
           >⏻</button>
         </div>
 
-        {/* Theme toggle */}
         <div className="sidebar-bottom">
           <button className="theme-btn" onClick={toggle}>
             <span style={{ fontSize: '1rem' }}>{theme === 'dark' ? '☀' : '◑'}</span>
@@ -198,19 +186,27 @@ function AppShell() {
           {active === 'concursos'  && <Concursos />}
           {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
-          {active === 'journal'    && <Placeholder title="Diário"         icon="✦" />}
-          {active === 'media'      && <Placeholder title="Media Tracker"  icon="▶" />}
+          {active === 'prontuario' && <Placeholder title="Prontuário ADM"     icon="📋" color="#3b82f6" />}
+          {active === 'saude'      && <Placeholder title="Saúde & Bem-Estar"  icon="✚"  color="#10b981" />}
+          {active === 'wishlist'   && <Placeholder title="Wishlist & Compras" icon="🛒" color="#f59e0b" />}
+          {active === 'journal'    && <Placeholder title="Diário"             icon="✦"  color="#ec4899" />}
+          {active === 'media'      && <Placeholder title="Media Tracker"      icon="▶"  color="#3b82f6" />}
+          {active === 'gaming'     && <Placeholder title="Gaming Hub"         icon="🎮" color="#7c3aed" />}
+          {active === 'links'      && <Placeholder title="Links de Interesse"  icon="🔗" color="#00e5ff" />}
         </div>
       </div>
     </div>
   )
 }
 
-function Placeholder({ title, icon }: { title: string; icon: string }) {
+function Placeholder({ title, icon, color = 'var(--text-muted)' }: { title: string; icon: string; color?: string }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', flexDirection:'column', gap:16, color:'var(--text-muted)' }}>
-      <span style={{ fontSize:52 }}>{icon}</span>
-      <span style={{ fontFamily:'var(--font-display)', fontSize:'0.85rem', letterSpacing:'0.2em', textTransform:'uppercase' }}>{title} — Em breve</span>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', flexDirection:'column', gap:20, color:'var(--text-muted)' }}>
+      <div style={{ width:72, height:72, borderRadius:20, background:`${color}18`, border:`1px solid ${color}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:32 }}>{icon}</div>
+      <div>
+        <div style={{ fontFamily:'var(--font-display)', fontSize:'1rem', letterSpacing:'0.15em', textTransform:'uppercase', color, textAlign:'center' }}>{title}</div>
+        <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', textAlign:'center', marginTop:6 }}>Em desenvolvimento — em breve disponível</div>
+      </div>
     </div>
   )
 }

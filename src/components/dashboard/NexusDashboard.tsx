@@ -31,7 +31,9 @@ const DEFAULT_LAYOUT: Widget[] = [
   { id: 'ponto-rapido',  col: 0, row: 1, w: 2, h: 3, visible: true },
   { id: 'agu-panel',     col: 2, row: 1, w: 5, h: 3, visible: true },
   { id: 'questoes-panel',col: 7, row: 1, w: 5, h: 3, visible: true },
-  { id: 'modulos',       col: 0, row: 4, w: 12, h: 2, visible: true },
+  { id: 'contas-pagar',  col: 0, row: 4, w: 6, h: 3, visible: true },
+  { id: 'concursos-dash',col: 6, row: 4, w: 6, h: 3, visible: true },
+  { id: 'modulos',       col: 0, row: 7, w: 12, h: 2, visible: true },
 ]
 
 const WIDGET_LABELS: Record<string, string> = {
@@ -42,6 +44,8 @@ const WIDGET_LABELS: Record<string, string> = {
   'ponto-rapido': '⊙ Ponto Rápido',
   'agu-panel': '⚖ Painel AGU',
   'questoes-panel': '◈ Questões',
+  'contas-pagar': '⚠ Contas a Pagar',
+  'concursos-dash': '🎯 Concursos',
   'modulos': '▦ Módulos',
 }
 
@@ -91,6 +95,45 @@ function usePontoStats() {
     await setDoc(doc(db, `users/${uid}/ponto`, regHoje.id), { ...regHoje, saida: h, minutos: min })
   }
   return { emServico, fmtHoje, hMes, mMes, baterEntrada, baterSaida, regHoje }
+}
+
+/* ─────────────────────────────────────────────────────────
+   useContasPagar — para widget dashboard
+───────────────────────────────────────────────────────── */
+function useContasPagar() {
+  const [contas, setContas] = useState<any[]>([])
+  const uid = useUid()
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(query(collection(db, `users/${uid}/contasPagar`), orderBy('vencimento', 'asc')), snap =>
+      setContas(snap.docs.map(d => d.data())))
+  }, [uid])
+  const hoje = new Date().toISOString().slice(0, 10)
+  const pendentes = contas.filter(c => !c.pago)
+  const vencendo = pendentes.filter(c => {
+    const d = Math.ceil((new Date(c.vencimento).getTime() - Date.now()) / 86400000)
+    return d >= 0 && d <= 7
+  })
+  const vencidas = pendentes.filter(c => new Date(c.vencimento).toISOString().slice(0,10) < hoje)
+  const totalPendente = pendentes.reduce((a: number, c: any) => a + (c.valor || 0), 0)
+  return { contas: pendentes, vencendo, vencidas, totalPendente }
+}
+
+/* ─────────────────────────────────────────────────────────
+   useConcursosDash — para widget dashboard
+───────────────────────────────────────────────────────── */
+function useConcursosDash() {
+  const [concursos, setConcursos] = useState<any[]>([])
+  const uid = useUid()
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(collection(db, `users/${uid}/concursos`), snap =>
+      setConcursos(snap.docs.map(d => d.data())))
+  }, [uid])
+  const hoje = new Date().toISOString().slice(0, 10)
+  const ativos = concursos.filter(c => c.status !== 'encerrado')
+  const proximos = [...concursos].filter(c => c.dataProva && c.dataProva >= hoje).sort((a,b) => a.dataProva.localeCompare(b.dataProva)).slice(0, 3)
+  return { concursos: ativos, proximos, total: concursos.length }
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -397,9 +440,163 @@ function ModulosCard({ global, ponto, onNavigate }: any) {
 /* ─────────────────────────────────────────────────────────
    MAIN DASHBOARD
 ───────────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────
+   ContasPagarCard
+───────────────────────────────────────────────────────── */
+function ContasPagarCard({ onNavigate }: { onNavigate: (id: string) => void }) {
+  const { contas, vencendo, vencidas, totalPendente } = useContasPagar()
+  const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const fmtDate  = (d: string) => { if (!d) return '—'; const [y,m,dy] = d.split('-'); return `${dy}/${m}` }
+  const daysUntil = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(90deg,rgba(245,158,11,0.05)0%,transparent 100%)', flexShrink: 0 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>⚠ Contas a Pagar</div>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.3rem', color: '#f59e0b', lineHeight: 1 }}>{fmtMoeda(totalPendente)}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>{contas.length} conta{contas.length !== 1 ? 's' : ''} pendente{contas.length !== 1 ? 's' : ''}</div>
+          </div>
+          {vencidas.length > 0 && (
+            <div style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', fontSize: '0.7rem', fontWeight: 700, color: '#ef4444' }}>
+              {vencidas.length} vencida{vencidas.length > 1 ? 's' : ''}
+            </div>
+          )}
+          {vencendo.length > 0 && (
+            <div style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', fontSize: '0.7rem', fontWeight: 700, color: '#f59e0b' }}>
+              {vencendo.length} vencendo
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {contas.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+            Nenhuma conta pendente
+          </div>
+        ) : contas.slice(0, 8).map((c: any, i: number) => {
+          const d = daysUntil(c.vencimento)
+          const vencida = d < 0
+          const urgente = d >= 0 && d <= 3
+          const cor = vencida ? '#ef4444' : urgente ? '#f59e0b' : 'var(--text-secondary)'
+          return (
+            <div key={c.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 16px', borderBottom: '1px solid var(--border)' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.descricao}</div>
+                <div style={{ fontSize: '0.68rem', color: cor, marginTop: 1 }}>
+                  {vencida ? '⚠ VENCIDA' : urgente ? `⏰ ${d}d` : fmtDate(c.vencimento)}
+                  {c.categoria ? ` · ${c.categoria}` : ''}
+                </div>
+              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.85rem', color: cor, flexShrink: 0 }}>
+                {fmtMoeda(c.valor)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <button onClick={() => onNavigate('financeiro')} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.06)', color: '#f59e0b', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+          Ver Financeiro →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────
+   ConcursosDashCard
+───────────────────────────────────────────────────────── */
+function ConcursosDashCard({ onNavigate }: { onNavigate: (id: string) => void }) {
+  const { concursos, proximos, total } = useConcursosDash()
+  const fmtDate = (d: string) => { if (!d) return '—'; const [y,m,dy] = d.split('-'); return `${dy}/${m}/${y}` }
+  const daysUntil = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
+
+  const STATUS_COLOR: Record<string, string> = {
+    previsto: '#64748b', edital: '#3b82f6', inscricoes: '#10b981',
+    provas: '#f59e0b', resultado: '#8b5cf6', encerrado: '#6b7280',
+  }
+  const STATUS_LABEL: Record<string, string> = {
+    previsto: 'Previsto', edital: 'Com Edital', inscricoes: 'Inscrições',
+    provas: 'Em Provas', resultado: 'Resultado', encerrado: 'Encerrado',
+  }
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(90deg,rgba(124,58,237,0.05)0%,transparent 100%)', flexShrink: 0 }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>🎯 Concursos</div>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.3rem', color: '#7c3aed', lineHeight: 1 }}>{total}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>cadastrados</div>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.3rem', color: '#10b981', lineHeight: 1 }}>{concursos.filter((c: any) => c.status === 'inscricoes').length}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>inscrições abertas</div>
+          </div>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.3rem', color: '#f59e0b', lineHeight: 1 }}>{proximos.length}</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 2 }}>provas próximas</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {concursos.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+            Nenhum concurso cadastrado
+          </div>
+        ) : concursos.slice(0, 6).map((c: any, i: number) => {
+          const cor = STATUS_COLOR[c.status] ?? '#64748b'
+          const dProva = c.dataProva ? daysUntil(c.dataProva) : null
+          return (
+            <div key={c.id ?? i} style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <div style={{ width: 3, borderRadius: 2, alignSelf: 'stretch', background: cor, flexShrink: 0, marginTop: 2 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                  <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)' }}>{c.orgao || c.nome || '—'}</span>
+                  <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: 10, background: `${cor}22`, color: cor, border: `1px solid ${cor}44`, fontWeight: 700, flexShrink: 0 }}>
+                    {STATUS_LABEL[c.status] ?? c.status}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {c.dataProva && (
+                    <span style={{ fontSize: '0.68rem', color: dProva !== null && dProva <= 30 ? '#f59e0b' : 'var(--text-muted)' }}>
+                      📅 {fmtDate(c.dataProva)}{dProva !== null && dProva >= 0 ? ` (${dProva}d)` : ''}
+                    </span>
+                  )}
+                  {c.dataInscricaoFim && (
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      📝 até {fmtDate(c.dataInscricaoFim)}
+                    </span>
+                  )}
+                  {c.remuneracao && (
+                    <span style={{ fontSize: '0.68rem', color: '#10b981' }}>💰 {c.remuneracao}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <button onClick={() => onNavigate('concursos')} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px solid rgba(124,58,237,0.3)', background: 'rgba(124,58,237,0.06)', color: '#a78bfa', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+          Ver Concursos →
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function NexusDashboard({ onNavigate }: Props) {
   const hooks = useEditaisAGU()
   const ponto = usePontoStats()
+  useContasPagar()  // usado nos widgets
+  useConcursosDash() // usado nos widgets
   const { layout, saveLayout, resetLayout } = useLayout()
   const [editing, setEditing] = useState(false)
   const [showPanel, setShowPanel] = useState(false)
@@ -457,6 +654,8 @@ export default function NexusDashboard({ onNavigate }: Props) {
       case 'ponto-rapido': return <PontoRapidoCard ponto={ponto} onNavigate={onNavigate} />
       case 'agu-panel': return <AguPanel global={global} lastFinalized={lastFinalized} discStats={discStats} onNavigate={onNavigate} />
       case 'questoes-panel': return <QuestoesPanel global={global} discStats={discStats} onNavigate={onNavigate} />
+      case 'contas-pagar':   return <ContasPagarCard onNavigate={onNavigate} />
+      case 'concursos-dash': return <ConcursosDashCard onNavigate={onNavigate} />
       case 'modulos': return <ModulosCard global={global} ponto={ponto} onNavigate={onNavigate} />
       default: return null
     }
