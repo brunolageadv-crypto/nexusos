@@ -132,16 +132,27 @@ function useProntuarioDemandas() {
 
 function useSaudeHoje() {
   const [reg, setReg] = useState<any>(null)
+  const [todos, setTodos] = useState<any[]>([])
   const uid = useUid()
   useEffect(() => {
     if (!uid || !db) return
     const hoje = new Date().toISOString().slice(0, 10)
     return onSnapshot(collection(db, `users/${uid}/saude`), snap => {
-      const r = snap.docs.map(d => d.data()).find((x: any) => x.data === hoje)
-      setReg(r || null)
+      const list = snap.docs.map(d => d.data())
+      setTodos(list)
+      setReg(list.find((x: any) => x.data === hoje) || null)
     })
   }, [uid])
-  return reg
+  const streak = (() => {
+    let s = 0, d = new Date(); d.setHours(0,0,0,0)
+    while(true) {
+      const ds = d.toISOString().slice(0,10)
+      if (!todos.find((r:any) => r.data === ds)) break
+      s++; d.setDate(d.getDate()-1)
+    }
+    return s
+  })()
+  return { reg, streak }
 }
 
 // ─── Layout multi ─────────────────────────────────────────────────────────────
@@ -577,53 +588,67 @@ function ProntuarioCalendarCard({ onNavigate }: { onNavigate:(id:string)=>void }
 
 // ─── SaudeWidget ──────────────────────────────────────────────────────────────
 function SaudeWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
-  const reg = useSaudeHoje()
-  const calcSono=(i:string,f:string)=>{ if(!i||!f)return 0;const[ih,im]=i.split(':').map(Number);const[fh,fm]=f.split(':').map(Number);let m=(fh*60+fm)-(ih*60+im);if(m<0)m+=1440;return Math.round(m/60*10)/10 }
-  const score=reg?Math.round((((reg.humor-1)/4)*10*0.25)+(((reg.energia-1)/4)*10*0.2)+(Math.min(calcSono(reg.sono?.inicio,reg.sono?.fim)/8,1)*10*0.25)+(reg.treino?.realizado?10:0)*0.15+(Math.min(reg.agua/reg.metaAgua,1)*10*0.15)):0
+  const { reg, streak } = useSaudeHoje()
+  const cS=(i:string,f:string)=>{ if(!i||!f)return 0;const[ih,im]=i.split(':').map(Number);const[fh,fm]=f.split(':').map(Number);let m=(fh*60+fm)-(ih*60+im);if(m<0)m+=1440;return Math.round(m/60*10)/10 }
+  const score=reg?Math.round((((reg.humor-1)/4)*10*0.25)+(((reg.energia-1)/4)*10*0.2)+(Math.min(cS(reg.sono?.inicio,reg.sono?.fim)/8,1)*10*0.25)+(reg.treino?.realizado?10:0)*0.15+(Math.min(reg.agua/(reg.metaAgua||2000),1)*10*0.15)):0
   const cor=score>=8?'#6ee7a0':score>=6?'#fbbf24':score>=4?'#f87171':'#a78bfa'
-  const pctAgua=reg?Math.min((reg.agua/reg.metaAgua)*100,100):0
-  const sonoH=reg?calcSono(reg.sono?.inicio,reg.sono?.fim):0
+  const pctAgua=reg?Math.min((reg.agua/(reg.metaAgua||2000))*100,100):0
+  const sonoH=reg?cS(reg.sono?.inicio,reg.sono?.fim):0
   return (
     <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
-      <div style={{ padding:'10px 12px',borderBottom:'1px solid var(--border)',background:'linear-gradient(90deg,rgba(16,185,129,0.05)0%,transparent 100%)',flexShrink:0 }}>
+      <div style={{ padding:'10px 12px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(16,185,129,0.06)0%,transparent 100%)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
         <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em' }}>✚ Saúde Hoje</div>
+        {streak>0&&<div style={{ fontSize:'0.6rem',color:'#f97316',fontWeight:700 }}>🔥{streak}d</div>}
       </div>
-      <div style={{ flex:1,padding:'12px',display:'flex',flexDirection:'column',gap:10 }}>
+      <div style={{ flex:1,padding:'12px',display:'flex',flexDirection:'column',gap:8,overflowY:'auto' }}>
         {!reg
           ? <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8 }}>
-              <div style={{ fontSize:'1.8rem' }}>✚</div>
-              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Nenhum registro hoje</p>
+              <div style={{ fontSize:'2rem' }}>✚</div>
+              <p style={{ margin:0,fontSize:'0.7rem',color:'var(--text-muted)',textAlign:'center',lineHeight:1.4 }}>Sem registro hoje.<br/>Clique para registrar.</p>
             </div>
           : <>
+            {/* Score ring */}
             <div style={{ display:'flex',alignItems:'center',gap:10 }}>
-              <div style={{ width:44,height:44,borderRadius:12,background:`${cor}18`,border:`1px solid ${cor}35`,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.1rem',color:cor,flexShrink:0 }}>{score}</div>
-              <div><div style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-primary)' }}>Score do Dia</div><div style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>{score>=8?'Excelente':score>=6?'Bom':score>=4?'Regular':'Atenção'}</div></div>
+              <div style={{ width:52,height:52,borderRadius:14,background:`${cor}14`,border:`2px solid ${cor}40`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,flexDirection:'column' }}>
+                <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.3rem',color:cor,lineHeight:1 }}>{score}</div>
+                <div style={{ fontSize:'0.48rem',color:cor,opacity:0.7,textTransform:'uppercase',letterSpacing:'0.06em' }}>score</div>
+              </div>
+              <div style={{ flex:1,minWidth:0 }}>
+                <div style={{ fontSize:'0.8rem',fontWeight:700,color:'var(--text-primary)',marginBottom:2 }}>{score>=8?'Excelente 🌟':score>=6?'Bom dia 👍':score>=4?'Atenção ⚠️':'Cuide-se 💜'}</div>
+                <div style={{ display:'flex',gap:8,fontSize:'0.65rem',color:'var(--text-muted)' }}>
+                  <span>{['😢','😕','😐','😊','😄'][reg.humor-1]} humor</span>
+                  {sonoH>0&&<span>😴 {sonoH}h</span>}
+                </div>
+              </div>
             </div>
+            {/* Água */}
             <div>
-              <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:'0.65rem' }}>
-                <span style={{ color:'var(--text-muted)' }}>💧 Hidratação</span>
-                <span style={{ color:'#60a5fa',fontWeight:700 }}>{reg.agua}ml</span>
+              <div style={{ display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:'0.62rem' }}>
+                <span style={{ color:'var(--text-muted)' }}>💧 Água</span>
+                <span style={{ color:'#60a5fa',fontWeight:700 }}>{reg.agua}ml / {reg.metaAgua||2000}ml</span>
               </div>
-              <div style={{ height:6,borderRadius:3,background:'rgba(255,255,255,0.06)',overflow:'hidden' }}>
-                <div style={{ height:'100%',width:`${pctAgua}%`,background:'#60a5fa',borderRadius:3,transition:'width 0.5s' }}/>
-              </div>
-            </div>
-            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8 }}>
-              <div style={{ padding:'7px',borderRadius:8,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',textAlign:'center' }}>
-                <div style={{ fontSize:'1rem' }}>{['😢','😕','😐','😊','😄'][reg.humor-1]}</div>
-                <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>Humor</div>
-              </div>
-              <div style={{ padding:'7px',borderRadius:8,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',textAlign:'center' }}>
-                <div style={{ fontSize:'0.82rem',fontWeight:700,color:'#60a5fa' }}>{sonoH>0?`${sonoH}h`:'—'}</div>
-                <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>Sono</div>
+              <div style={{ height:5,borderRadius:3,background:'var(--bg-4)',overflow:'hidden' }}>
+                <div style={{ height:'100%',width:`${pctAgua}%`,background:'linear-gradient(90deg,#3b82f6,#60a5fa)',borderRadius:3,transition:'width 0.5s',boxShadow:'0 0 6px #60a5fa80' }}/>
               </div>
             </div>
-            {reg.treino?.realizado&&<div style={{ padding:'6px 10px',borderRadius:8,background:'rgba(110,231,160,0.08)',border:'1px solid rgba(110,231,160,0.2)',fontSize:'0.7rem',color:'#6ee7a0',textAlign:'center' }}>🏋️ Treino realizado{reg.treino.tipo?` · ${reg.treino.tipo}`:''}</div>}
+            {/* Grid métricas */}
+            <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:5 }}>
+              {[
+                { label:'Energia', val:['🪫','😴','⚡','🔋','🚀'][reg.energia-1] },
+                { label:'Sono',    val:sonoH>0?`${sonoH}h`:'—' },
+                { label:'Treino',  val:reg.treino?.realizado?'✅':'○' },
+              ].map(m=>(
+                <div key={m.label} style={{ padding:'5px 4px',borderRadius:7,background:'var(--surface)',border:'1px solid var(--border)',textAlign:'center' }}>
+                  <div style={{ fontSize:'0.85rem',lineHeight:1 }}>{m.val}</div>
+                  <div style={{ fontSize:'0.52rem',color:'var(--text-muted)',marginTop:2,textTransform:'uppercase',letterSpacing:'0.06em' }}>{m.label}</div>
+                </div>
+              ))}
+            </div>
           </>
         }
       </div>
-      <div style={{ padding:'6px 10px',borderTop:'1px solid var(--border)',flexShrink:0 }}>
-        <button onClick={()=>onNavigate('saude')} style={{ width:'100%',padding:'5px',borderRadius:6,border:'1px solid rgba(16,185,129,0.3)',background:'rgba(16,185,129,0.06)',color:'#34d399',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.68rem',cursor:'pointer' }}>Saúde & Bem-Estar →</button>
+      <div style={{ padding:'6px 10px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
+        <button onClick={()=>onNavigate('saude')} style={{ width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(16,185,129,0.35)',background:'rgba(16,185,129,0.07)',color:'#34d399',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer',transition:'all 0.15s' }}>Saúde & Bem-Estar →</button>
       </div>
     </div>
   )

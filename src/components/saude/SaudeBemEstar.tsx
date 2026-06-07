@@ -477,7 +477,8 @@ export default function SaudeBemEstar() {
   const [loading, setLoading] = useState(true)
   const [aba, setAba] = useState<'hoje'|'graficos'|'historico'>('hoje')
   const [dataSelecionada, setDataSelecionada] = useState(today())
-  const [registroHoje, setRegistroHoje] = useState<RegistroSaude>(defaultRegistro(today()))
+  const [registroAtual, setRegistroAtual] = useState<RegistroSaude>(defaultRegistro(today()))
+  const isHoje = dataSelecionada === today()
 
   useEffect(() => {
     if (!uid) return
@@ -485,17 +486,17 @@ export default function SaudeBemEstar() {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as RegistroSaude))
       setRegistros(list)
       const r = list.find(x => x.data === dataSelecionada)
-      setRegistroHoje(r || defaultRegistro(dataSelecionada))
+      setRegistroAtual(r || defaultRegistro(dataSelecionada))
       setLoading(false)
     })
   }, [uid, dataSelecionada])
 
-  const scoreHoje = scoreBestar(registroHoje)
-  const scoreCor = scoreColor(scoreHoje)
+  const scoreAtual = scoreBestar(registroAtual)
+  const scoreCor = scoreColor(scoreAtual)
+  const sonoAtual = calcSono(registroAtual.sono.inicio, registroAtual.sono.fim)
 
   const streak = (() => {
-    let s = 0, d = new Date()
-    d.setHours(0,0,0,0)
+    let s = 0, d = new Date(); d.setHours(0,0,0,0)
     while (true) {
       const ds = d.toISOString().slice(0,10)
       if (!registros.find(r => r.data === ds)) break
@@ -503,6 +504,30 @@ export default function SaudeBemEstar() {
     }
     return s
   })()
+
+  // Formatar data por extenso
+  const fmtDataExtenso = (ds: string) => {
+    const d = new Date(ds + 'T12:00:00')
+    return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  }
+
+  const mudaData = (novaData: string) => {
+    setDataSelecionada(novaData)
+    const r = registros.find(x => x.data === novaData)
+    setRegistroAtual(r || defaultRegistro(novaData))
+  }
+
+  const irParaOntem = () => {
+    const d = new Date(dataSelecionada + 'T12:00:00')
+    d.setDate(d.getDate() - 1)
+    mudaData(d.toISOString().slice(0, 10))
+  }
+  const irParaProximo = () => {
+    const d = new Date(dataSelecionada + 'T12:00:00')
+    d.setDate(d.getDate() + 1)
+    const nova = d.toISOString().slice(0, 10)
+    if (nova <= today()) mudaData(nova)
+  }
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
@@ -512,52 +537,140 @@ export default function SaudeBemEstar() {
   )
 
   return (
-    <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, minHeight: '100%', boxSizing: 'border-box' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.4rem', color: 'var(--text-primary)' }}>Saúde & Bem-Estar</h1>
-          <p style={{ margin: '3px 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            {streak > 0 ? `🔥 ${streak} dia${streak > 1 ? 's' : ''} seguido${streak > 1 ? 's' : ''} com registro` : 'Registre seu dia'}
-          </p>
-        </div>
-        <input type="date" style={{ ...IS, width: 'auto' }} value={dataSelecionada} max={today()}
-          onChange={e => { setDataSelecionada(e.target.value); const r = registros.find(x => x.data === e.target.value); setRegistroHoje(r || defaultRegistro(e.target.value)) }} />
-      </div>
+    <div style={{ padding: '0', display: 'flex', flexDirection: 'column', minHeight: '100%', boxSizing: 'border-box' }}>
 
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-        {[
-          { label: 'Score', val: `${scoreHoje}/10`, color: scoreCor },
-          { label: 'Humor', val: ['😢','😕','😐','😊','😄'][registroHoje.humor-1], color: '#fbbf24' },
-          { label: 'Sono', val: calcSono(registroHoje.sono.inicio, registroHoje.sono.fim) > 0 ? `${calcSono(registroHoje.sono.inicio, registroHoje.sono.fim)}h` : '—', color: '#60a5fa' },
-          { label: 'Água', val: `${Math.round((registroHoje.agua/registroHoje.metaAgua)*100)}%`, color: '#34d399' },
-        ].map(s => (
-          <div key={s.label} style={{ padding: '12px 16px', background: 'var(--card-bg,#1a1b26)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, textAlign: 'center' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.4rem', color: s.color, lineHeight: 1 }}>{s.val}</div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>{s.label}</div>
+      {/* ── BANNER DE DATA EM DESTAQUE ─────────────────────────────── */}
+      <div style={{
+        background: isHoje
+          ? 'linear-gradient(135deg, rgba(16,185,129,0.15) 0%, rgba(52,211,153,0.08) 50%, rgba(6,12,20,0.0) 100%)'
+          : 'linear-gradient(135deg, rgba(91,91,214,0.12) 0%, rgba(6,12,20,0.0) 100%)',
+        borderBottom: `1px solid ${isHoje ? 'rgba(16,185,129,0.25)' : 'rgba(91,91,214,0.2)'}`,
+        padding: '20px 28px 18px',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Orbe decorativo */}
+        <div style={{
+          position: 'absolute', top: -40, right: -40, width: 160, height: 160,
+          borderRadius: '50%',
+          background: isHoje ? 'radial-gradient(circle, rgba(16,185,129,0.12) 0%, transparent 70%)' : 'radial-gradient(circle, rgba(91,91,214,0.1) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          {/* Data em destaque */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            {/* Bloco de data */}
+            <div style={{
+              width: 60, height: 60, borderRadius: 14, flexShrink: 0,
+              background: isHoje ? 'rgba(16,185,129,0.15)' : 'rgba(91,91,214,0.12)',
+              border: `2px solid ${isHoje ? 'rgba(16,185,129,0.4)' : 'rgba(91,91,214,0.35)'}`,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              boxShadow: isHoje ? '0 0 20px rgba(16,185,129,0.15)' : '0 0 20px rgba(91,91,214,0.12)',
+            }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.4rem', lineHeight: 1, color: isHoje ? '#34d399' : '#a5a3f5' }}>
+                {new Date(dataSelecionada + 'T12:00:00').getDate()}
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.55rem', fontWeight: 600, color: isHoje ? '#6ee7a0' : '#a5a3f5', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 1 }}>
+                {new Date(dataSelecionada + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
+              </div>
+            </div>
+
+            <div>
+              {isHoje && (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 10px', borderRadius: 20, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.35)', marginBottom: 5 }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#34d399', animation: 'pulse-dot 2s infinite' }} />
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: '#34d399', letterSpacing: '0.1em' }}>HOJE</span>
+                </div>
+              )}
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                {fmtDataExtenso(dataSelecionada)}
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3 }}>
+                {streak > 0 && isHoje ? `🔥 ${streak} dia${streak > 1 ? 's' : ''} consecutivo${streak > 1 ? 's' : ''} com registro` : !isHoje ? '📂 Visualizando registro passado' : 'Faça seu registro diário'}
+              </div>
+            </div>
           </div>
-        ))}
+
+          {/* Navegação de data + score resumo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {/* Score badge */}
+            {scoreAtual > 0 && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px',
+                borderRadius: 12, background: `${scoreCor}15`, border: `1px solid ${scoreCor}35`,
+              }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.6rem', color: scoreCor, lineHeight: 1 }}>{scoreAtual}</div>
+                <div>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 700, color: scoreCor }}>Score</div>
+                  <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>bem-estar</div>
+                </div>
+              </div>
+            )}
+
+            {/* Nav dias */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button onClick={irParaOntem}
+                style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid var(--border-md)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+              <input type="date" value={dataSelecionada} max={today()}
+                onChange={e => mudaData(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: 9, border: '1px solid var(--border-md)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '0.78rem', outline: 'none', fontFamily: 'var(--font-mono)' }} />
+              <button onClick={irParaProximo} disabled={dataSelecionada >= today()}
+                style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid var(--border-md)', background: 'var(--surface)', color: dataSelecionada >= today() ? 'var(--text-muted)' : 'var(--text-secondary)', cursor: dataSelecionada >= today() ? 'not-allowed' : 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: dataSelecionada >= today() ? 0.4 : 1 }}>›</button>
+            </div>
+          </div>
+        </div>
+
+        {/* KPIs rápidos */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
+          {[
+            { icon: '😊', label: 'Humor', val: ['Muito mal','Mal','Neutro','Bem','Ótimo'][registroAtual.humor-1], color: '#fbbf24' },
+            { icon: '⚡', label: 'Energia', val: ['Sem energia','Com sono','OK','Disposto','Pleno'][registroAtual.energia-1], color: '#a5a3f5' },
+            { icon: '😴', label: 'Sono', val: sonoAtual > 0 ? `${sonoAtual}h` : '—', color: '#60a5fa' },
+            { icon: '💧', label: 'Hidratação', val: `${registroAtual.agua}ml`, color: '#34d399' },
+            { icon: '🏋️', label: 'Treino', val: registroAtual.treino.realizado ? (registroAtual.treino.tipo || 'Sim') : '—', color: '#6ee7a0' },
+            { icon: '⚖️', label: 'Peso', val: registroAtual.peso > 0 ? `${registroAtual.peso}kg` : '—', color: '#f87171' },
+          ].map(k => (
+            <div key={k.label} style={{ padding: '8px 14px', borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '0.9rem' }}>{k.icon}</span>
+              <div>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: k.val !== '—' ? k.color : 'var(--text-muted)', lineHeight: 1 }}>{k.val}</div>
+                <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: 1 }}>{k.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Abas */}
-      <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: 4 }}>
-        {[
-          { id: 'hoje', label: '📋 Registrar' },
-          { id: 'graficos', label: '📈 Gráficos' },
-          { id: 'historico', label: '📅 Histórico' },
-        ].map(a => (
-          <button key={a.id} onClick={() => setAba(a.id as any)}
-            style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none', background: aba === a.id ? 'rgba(255,255,255,0.1)' : 'transparent', color: aba === a.id ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.78rem', cursor: 'pointer', transition: 'all 0.15s' }}>
-            {a.label}
-          </button>
-        ))}
+      {/* ── ABAS ──────────────────────────────────────────────────── */}
+      <div style={{ padding: '12px 28px 0', borderBottom: '1px solid var(--border-md)' }}>
+        <div style={{ display: 'flex', gap: 0 }}>
+          {[
+            { id: 'hoje', label: '📋 Registrar' },
+            { id: 'graficos', label: '📈 Gráficos' },
+            { id: 'historico', label: '📅 Histórico' },
+          ].map(a => (
+            <button key={a.id} onClick={() => setAba(a.id as any)}
+              style={{
+                padding: '10px 20px', border: 'none', background: 'transparent',
+                color: aba === a.id ? 'var(--text-primary)' : 'var(--text-muted)',
+                fontFamily: 'var(--font-display)', fontWeight: aba === a.id ? 700 : 500,
+                fontSize: '0.82rem', cursor: 'pointer',
+                borderBottom: aba === a.id ? '2px solid #10b981' : '2px solid transparent',
+                marginBottom: -1, transition: 'all 0.15s',
+              }}>
+              {a.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Conteúdo */}
-      {aba === 'hoje' && <FormDia uid={uid} registro={registroHoje} onSave={r => setRegistroHoje(r)} />}
-      {aba === 'graficos' && <GraficosView registros={registros} />}
-      {aba === 'historico' && <HistoricoView registros={registros} onSelect={r => { setDataSelecionada(r.data); setRegistroHoje(r); setAba('hoje') }} />}
+      {/* ── CONTEÚDO ──────────────────────────────────────────────── */}
+      <div style={{ flex: 1, padding: '20px 28px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+        {aba === 'hoje' && <FormDia uid={uid} registro={registroAtual} onSave={r => setRegistroAtual(r)} />}
+        {aba === 'graficos' && <GraficosView registros={registros} />}
+        {aba === 'historico' && <HistoricoView registros={registros} onSelect={r => { mudaData(r.data); setAba('hoje') }} />}
+      </div>
     </div>
   )
 }
