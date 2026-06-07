@@ -322,11 +322,10 @@ function ModalLista({ uid, lista, onClose }: { uid: string | null; lista: ListaC
 }
 
 // ─── Aba Wishlist ─────────────────────────────────────────────────────────────
-function AbaWishlist({ uid, itens, onEdit, onAdd }: {
+function AbaWishlist({ uid, itens, onEdit }: {
   uid: string | null
   itens: ItemWishlist[]
   onEdit: (i: ItemWishlist) => void
-  onAdd: () => void
 }) {
   const [filtroStatus, setFiltroStatus] = useState<Status | 'todos'>('todos')
   const [filtroCategoria, setFiltroCategoria] = useState<Categoria | 'todas'>('todas')
@@ -347,7 +346,6 @@ function AbaWishlist({ uid, itens, onEdit, onAdd }: {
     })
 
   const totalDesejado = itens.filter(i => i.status !== 'comprado' && i.status !== 'cancelado').reduce((a, i) => a + (i.preco || 0), 0)
-  const totalComprado = itens.filter(i => i.status === 'comprado').reduce((a, i) => a + (i.preco || 0), 0)
 
   const toggleStatus = async (item: ItemWishlist, novoStatus: Status) => {
     if (!uid) return
@@ -473,11 +471,10 @@ function AbaWishlist({ uid, itens, onEdit, onAdd }: {
 }
 
 // ─── Aba Listas de Compras ────────────────────────────────────────────────────
-function AbaListas({ uid, listas, onEdit, onAdd }: {
+function AbaListas({ uid, listas, onEdit }: {
   uid: string | null
   listas: ListaCompras[]
   onEdit: (l: ListaCompras) => void
-  onAdd: () => void
 }) {
   const marcarConcluida = async (lista: ListaCompras) => {
     if (!uid) return
