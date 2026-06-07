@@ -1,3 +1,4 @@
+import React from 'react'
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEditaisCadastrados, useEdital } from '../../hooks/useEdital'
@@ -18,6 +19,17 @@ interface Layout {
 const COLS = 12
 const ROW_H = 108
 const GAP = 14
+
+// Detecta mobile para layout alternativo
+function useIsMobile() {
+  const [mobile, setMobile] = React.useState(window.innerWidth < 768)
+  React.useEffect(() => {
+    const fn = () => setMobile(window.innerWidth < 768)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [])
+  return mobile
+}
 
 const DEFAULT_WIDGETS: Widget[] = [
   { id: 'kpi-edital',          col: 0,  row: 0, w: 3,  h: 1, visible: true },
@@ -1250,20 +1262,30 @@ export default function NexusDashboard({ onNavigate }: Props) {
         </div>
       )}
 
-      {/* Grid */}
-      <div ref={gridRef} style={{ position:'relative',width:'100%',height:gridH,minHeight:400 }}>
-        {ativo.widgets.filter(w=>w.visible).map(w=>{
-          const wPx=w.w*colW+Math.max(0,w.w-1)*GAP/COLS
-          const hPx=w.h*ROW_H+Math.max(0,w.h-1)*GAP
-          const leftPx=w.col*colW+Math.max(0,w.col)*GAP/COLS
-          const topPx=w.row*(ROW_H+GAP)
-          return (
-            <DraggableWidget key={w.id} widget={{...w}} editing={editing} gridW={gridW} onMove={handleMove} onResize={handleResize}>
-              <div style={{ width:wPx,height:hPx,left:leftPx,top:topPx }}>{renderWidget(w)}</div>
-            </DraggableWidget>
-          )
-        })}
-      </div>
+      {/* Grid — desktop: drag&drop | mobile: stack linear */}
+      {isMobile ? (
+        <div style={{ display:'flex',flexDirection:'column',gap:12,padding:'0 4px 20px' }}>
+          {ativo.widgets.filter(w=>w.visible).map(w=>(
+            <div key={w.id} style={{ width:'100%',minHeight:w.h===1?120:w.h===2?200:260,borderRadius:14,overflow:'hidden' }}>
+              {renderWidget(w)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div ref={gridRef} style={{ position:'relative',width:'100%',height:gridH,minHeight:400 }}>
+          {ativo.widgets.filter(w=>w.visible).map(w=>{
+            const wPx=w.w*colW+Math.max(0,w.w-1)*GAP/COLS
+            const hPx=w.h*ROW_H+Math.max(0,w.h-1)*GAP
+            const leftPx=w.col*colW+Math.max(0,w.col)*GAP/COLS
+            const topPx=w.row*(ROW_H+GAP)
+            return (
+              <DraggableWidget key={w.id} widget={{...w}} editing={editing} gridW={gridW} onMove={handleMove} onResize={handleResize}>
+                <div style={{ width:wPx,height:hPx,left:leftPx,top:topPx }}>{renderWidget(w)}</div>
+              </DraggableWidget>
+            )
+          })}
+        </div>
+      )}
 
       {editing&&<div style={{ textAlign:'center',padding:'12px 0',fontSize:'0.72rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)' }}>🖱 Arraste pelo topo · Redimensione no canto inferior direito · ⧉ Duplica o widget</div>}
     </div>
