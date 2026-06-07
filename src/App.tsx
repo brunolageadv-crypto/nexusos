@@ -10,6 +10,7 @@ import ProntuarioADM from './components/prontuario/ProntuarioADM'
 import SaudeBemEstar from './components/saude/SaudeBemEstar'
 import WishlistCompras from './components/wishlist/WishlistCompras'
 import Diario from './components/journal/Diario'
+import MediaTracker from './components/media/MediaTracker'
 
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
@@ -252,7 +253,7 @@ function AppShell() {
           {active === 'saude'      && <SaudeBemEstar />}
           {active === 'wishlist'   && <WishlistCompras />}
           {active === 'journal'    && <Diario onNavigate={setActive} />}
-          {active === 'media'      && <Placeholder title="Media Tracker"      icon="▶"  color="#3b82f6" desc="Acompanhe filmes, séries e livros" />}
+          {active === 'media'      && <MediaTracker />}
           {active === 'gaming'     && <Placeholder title="Gaming Hub"         icon="🎮" color="#7c3aed" desc="Gerencie seus jogos e sessões de gameplay" />}
           {active === 'links'      && <Placeholder title="Links de Interesse" icon="🔗" color="#00e5ff" desc="Organize seus links favoritos por categoria" />}
         </div>
