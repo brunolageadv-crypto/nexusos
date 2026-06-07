@@ -890,3 +890,12 @@ body, .sidebar, .topbar, .card, .kpi-card, .nav-item, .main-area {
 
   .kpi-value { font-size: 1.4rem !important; }
 }
+
+/* Mobile fixes */
+@media (max-width: 768px) {
+  .sidebar-user-block { display: none !important; }
+  .desktop-only { display: none !important; }
+  .topbar-breadcrumb { display: none !important; }
+  .topbar-status { display: none !important; }
+  .main-area { height: calc(100vh - 62px) !important; }
+}
