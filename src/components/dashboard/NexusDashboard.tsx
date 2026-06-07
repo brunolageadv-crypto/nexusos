@@ -30,7 +30,8 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: 'concursos-dash',      col: 4,  row: 4, w: 4,  h: 3, visible: true },
   { id: 'prontuario-calendar', col: 8,  row: 4, w: 2,  h: 3, visible: true },
   { id: 'saude-widget',        col: 10, row: 4, w: 2,  h: 3, visible: true },
-  { id: 'modulos',             col: 0,  row: 7, w: 12, h: 2, visible: true },
+  { id: 'wishlist-widget',      col: 0,  row: 7, w: 4,  h: 3, visible: true },
+  { id: 'modulos',             col: 4,  row: 7, w: 8,  h: 3, visible: true },
 ]
 
 const WIDGET_LABELS: Record<string, string> = {
@@ -45,6 +46,7 @@ const WIDGET_LABELS: Record<string, string> = {
   'concursos-dash':      '🎯 Concursos',
   'prontuario-calendar': '📅 Prazos ADM',
   'saude-widget':        '✚ Saúde',
+  'wishlist-widget':     '🛒 Wishlist',
   'modulos':             '▦ Módulos',
 }
 
@@ -153,6 +155,25 @@ function useSaudeHoje() {
     return s
   })()
   return { reg, streak }
+}
+
+
+// ─── useWishlistStats ─────────────────────────────────────────────────────────
+function useWishlistStats() {
+  const [itens, setItens] = useState<any[]>([])
+  const [listas, setListas] = useState<any[]>([])
+  const uid = useUid()
+  useEffect(() => {
+    if (!uid || !db) return
+    const u1 = onSnapshot(collection(db, `users/${uid}/wishlist`), snap => setItens(snap.docs.map(d => d.data())))
+    const u2 = onSnapshot(collection(db, `users/${uid}/listasCompras`), snap => setListas(snap.docs.map(d => d.data())))
+    return () => { u1(); u2() }
+  }, [uid])
+  const pendentes = itens.filter(i => i.status !== 'comprado' && i.status !== 'cancelado')
+  const prioritarios = pendentes.filter(i => i.prioridade === 'urgente' || i.prioridade === 'alta')
+  const totalPendente = pendentes.reduce((a: number, i: any) => a + (i.preco || 0), 0)
+  const listasAtivas = listas.filter(l => !l.concluida)
+  return { pendentes, prioritarios, totalPendente, listasAtivas, totalItens: itens.length }
 }
 
 // ─── Layout multi ─────────────────────────────────────────────────────────────
@@ -654,6 +675,105 @@ function SaudeWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
   )
 }
 
+// ─── WishlistWidget ───────────────────────────────────────────────────────────
+function WishlistWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
+  const { pendentes, prioritarios, totalPendente, listasAtivas } = useWishlistStats()
+  const fmtM = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
+
+  const PR_COLORS: Record<string,string> = { urgente:'#c45a5a', alta:'#c47c2e', media:'#b8a96a', baixa:'#6b9e7a' }
+  const CAT_ICONS: Record<string,string> = {
+    'Tecnologia':'💻','Vestuário':'👕','Casa & Decoração':'🏠','Livros & Educação':'📚',
+    'Saúde & Beleza':'💊','Esportes':'⚽','Alimentação':'🍎','Viagem':'✈️','Lazer':'🎮','Outro':'📦',
+  }
+
+  return (
+    <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
+      {/* Header */}
+      <div style={{ padding:'12px 16px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(245,158,11,0.07)0%,transparent 100%)',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0 }}>
+        <div>
+          <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:1 }}>🛒 Wishlist</div>
+          <div style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>{pendentes.length} itens pendentes</div>
+        </div>
+        {totalPendente>0&&<div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1rem',color:'#f59e0b' }}>{fmtM(totalPendente)}</div>}
+      </div>
+
+      {/* Corpo */}
+      <div style={{ flex:1,overflowY:'auto',padding:'8px 0' }}>
+        {pendentes.length===0
+          ? <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:8,padding:'20px 16px' }}>
+              <div style={{ fontSize:'2rem' }}>🛒</div>
+              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Wishlist vazia</p>
+            </div>
+          : <>
+            {/* Prioritários */}
+            {prioritarios.length>0&&(
+              <div style={{ padding:'4px 14px 6px',marginBottom:2 }}>
+                <div style={{ fontSize:'0.58rem',fontFamily:'var(--font-mono)',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5 }}>🔥 Prioritários</div>
+                {prioritarios.slice(0,3).map((item:any)=>{
+                  const cor = PR_COLORS[item.prioridade]||'#f59e0b'
+                  const icon = CAT_ICONS[item.categoria]||'📦'
+                  return (
+                    <div key={item.id} style={{ display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:9,background:`${cor}0e`,border:`1px solid ${cor}28`,marginBottom:5 }}>
+                      <span style={{ fontSize:'0.9rem',flexShrink:0 }}>{icon}</span>
+                      <div style={{ flex:1,minWidth:0 }}>
+                        <div style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{item.nome}</div>
+                        <div style={{ fontSize:'0.6rem',color:'var(--text-muted)',marginTop:1 }}>{item.categoria}</div>
+                      </div>
+                      {item.preco>0&&<div style={{ fontSize:'0.72rem',fontWeight:800,color:cor,flexShrink:0 }}>{fmtM(item.preco)}</div>}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {/* Demais itens */}
+            {pendentes.filter((i:any)=>i.prioridade!=='urgente'&&i.prioridade!=='alta').slice(0,4).map((item:any)=>{
+              const icon = CAT_ICONS[item.categoria]||'📦'
+              const stColors:Record<string,string>={desejado:'#6b9fd4',planejado:'#c4a84a',comprado:'#6b9e7a',cancelado:'#6a6a7a'}
+              return (
+                <div key={item.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 16px',borderBottom:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:'1rem',flexShrink:0 }}>{icon}</span>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:'0.78rem',fontWeight:600,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{item.nome}</div>
+                    <div style={{ fontSize:'0.6rem',color:stColors[item.status]||'var(--text-muted)',marginTop:1,fontWeight:600 }}>{item.status==='desejado'?'💭 Desejado':item.status==='planejado'?'📋 Planejado':'💭'}</div>
+                  </div>
+                  {item.preco>0&&<div style={{ fontSize:'0.75rem',fontWeight:700,color:'#fbbf24',flexShrink:0 }}>{fmtM(item.preco)}</div>}
+                </div>
+              )
+            })}
+            {/* Listas ativas */}
+            {listasAtivas.length>0&&(
+              <div style={{ padding:'8px 16px 4px',borderTop:'1px solid var(--border)',marginTop:4 }}>
+                <div style={{ fontSize:'0.58rem',fontFamily:'var(--font-mono)',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5 }}>📝 Listas ativas</div>
+                {listasAtivas.slice(0,2).map((lista:any)=>{
+                  const pct = lista.itens?.length>0?Math.round((lista.itens.filter((i:any)=>i.comprado).length/lista.itens.length)*100):0
+                  return (
+                    <div key={lista.id} style={{ marginBottom:6 }}>
+                      <div style={{ display:'flex',justifyContent:'space-between',fontSize:'0.72rem',marginBottom:3 }}>
+                        <span style={{ color:'var(--text-secondary)',fontWeight:600 }}>{lista.nome}</span>
+                        <span style={{ color:'var(--text-muted)' }}>{pct}%</span>
+                      </div>
+                      <div style={{ height:4,borderRadius:2,background:'var(--bg-4)',overflow:'hidden' }}>
+                        <div style={{ height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#c47c2e,#f59e0b)',borderRadius:2,transition:'width 0.4s' }}/>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        }
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding:'8px 16px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
+        <button onClick={()=>onNavigate('wishlist')} style={{ width:'100%',padding:'7px',borderRadius:7,border:'1px solid rgba(245,158,11,0.3)',background:'rgba(245,158,11,0.06)',color:'#f59e0b',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.75rem',cursor:'pointer' }}>
+          Wishlist & Compras →
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── ModulosCard ──────────────────────────────────────────────────────────────
 function ModulosCard({ global, ponto, onNavigate }: any) {
   const modulos = [
@@ -663,7 +783,7 @@ function ModulosCard({ global, ponto, onNavigate }: any) {
     { id:'ponto',      label:'Ponto Eletrônico', icon:'⊙', desc:ponto.emServico?'🟢 Em serviço':`${ponto.hMes}h no mês`, color:'#f59e0b' },
     { id:'financeiro', label:'Financeiro',       icon:'◎', desc:'Receitas e despesas',                                 color:'#10b981' },
     { id:'saude',      label:'Saúde',            icon:'✚', desc:'Bem-estar diário',                                    color:'#34d399' },
-    { id:'wishlist',   label:'Wishlist',         icon:'🛒', desc:'Em breve',                                           color:'#f59e0b' },
+    { id:'wishlist',   label:'Wishlist',         icon:'🛒', desc:'Lista de desejos & compras',                         color:'#f59e0b' },
     { id:'journal',    label:'Diário',           icon:'✦', desc:'Em breve',                                            color:'#ec4899' },
     { id:'media',      label:'Media Tracker',    icon:'▶', desc:'Em breve',                                            color:'#3b82f6' },
     { id:'gaming',     label:'Gaming Hub',       icon:'🎮', desc:'Em breve',                                           color:'#7c3aed' },
@@ -750,6 +870,7 @@ export default function NexusDashboard({ onNavigate }: Props) {
       case 'concursos-dash':      return <ConcursosDashCard onNavigate={onNavigate} />
       case 'prontuario-calendar': return <ProntuarioCalendarCard onNavigate={onNavigate} />
       case 'saude-widget':        return <SaudeWidget onNavigate={onNavigate} />
+      case 'wishlist-widget':     return <WishlistWidget onNavigate={onNavigate} />
       case 'modulos':             return <ModulosCard global={global} ponto={ponto} onNavigate={onNavigate} />
       default: return null
     }

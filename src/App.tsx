@@ -8,6 +8,7 @@ import PontoEletronico from './components/ponto/PontoEletronico'
 import Financeiro from './components/financeiro/Financeiro'
 import ProntuarioADM from './components/prontuario/ProntuarioADM'
 import SaudeBemEstar from './components/saude/SaudeBemEstar'
+import WishlistCompras from './components/wishlist/WishlistCompras'
 
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
@@ -143,7 +144,7 @@ function AppShell() {
           {active === 'ponto'      && <PontoEletronico />}
           {active === 'prontuario' && <ProntuarioADM />}
           {active === 'saude'      && <SaudeBemEstar />}
-          {active === 'wishlist'   && <Placeholder title="Wishlist & Compras" icon="🛒" color="#f59e0b" desc="Gerencie sua lista de desejos e compras planejadas" />}
+          {active === 'wishlist'   && <WishlistCompras />}
           {active === 'journal'    && <Placeholder title="Diário" icon="✦" color="#ec4899" desc="Registre seus pensamentos e acompanhe seu humor" />}
           {active === 'media'      && <Placeholder title="Media Tracker" icon="▶" color="#3b82f6" desc="Acompanhe filmes, séries e livros" />}
           {active === 'gaming'     && <Placeholder title="Gaming Hub" icon="🎮" color="#7c3aed" desc="Gerencie seus jogos e sessões de gameplay" />}
