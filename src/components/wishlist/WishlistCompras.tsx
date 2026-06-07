@@ -644,10 +644,10 @@ export default function WishlistCompras() {
       {/* ── CONTEÚDO ── */}
       <div style={{ flex: 1, padding: '20px 28px', overflowY: 'auto' }}>
         {aba === 'wishlist' && (
-          <AbaWishlist uid={uid} itens={itens} onEdit={i => { setEditandoItem(i); setModalItem(true) }} onAdd={() => { setEditandoItem(null); setModalItem(true) }} />
+          <AbaWishlist uid={uid} itens={itens} onEdit={i => { setEditandoItem(i); setModalItem(true) }} />
         )}
         {aba === 'listas' && (
-          <AbaListas uid={uid} listas={listas} onEdit={l => { setEditandoLista(l); setModalLista(true) }} onAdd={() => { setEditandoLista(null); setModalLista(true) }} />
+          <AbaListas uid={uid} listas={listas} onEdit={l => { setEditandoLista(l); setModalLista(true) }} />
         )}
       </div>
 
