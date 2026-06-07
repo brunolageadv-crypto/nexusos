@@ -264,18 +264,6 @@ function AppShell() {
   )
 }
 
-function Placeholder({ title, icon, color = 'var(--text-muted)', desc }: { title: string; icon: string; color?: string; desc?: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 20, color: 'var(--text-muted)' }}>
-      <div style={{ width: 72, height: 72, borderRadius: 20, background: `${color}18`, border: `1px solid ${color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>{icon}</div>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', letterSpacing: '0.15em', textTransform: 'uppercase', color }}>{title}</div>
-        {desc && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 6 }}>{desc}</div>}
-        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4, opacity: 0.6 }}>Em desenvolvimento — em breve disponível</div>
-      </div>
-    </div>
-  )
-}
 
 function Root() {
   const { user, loading } = useAuth()
