@@ -2,7 +2,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { db } from '../lib/firebase'
 import { doc, getDoc, setDoc, collection, onSnapshot } from 'firebase/firestore'
-import { useUid } from './useUid'
+import { onAuthStateChanged } from 'firebase/auth'
+import { getAuth } from 'firebase/auth'
+
+function useUid() {
+  const [uid, setUid] = useState<string | null>(null)
+  useEffect(() => {
+    const auth = getAuth()
+    return onAuthStateChanged(auth, user => setUid(user?.uid ?? null))
+  }, [])
+  return uid
+}
 
 export interface SubtopicoState {
   statusMaterial: 'pendente' | 'em_andamento' | 'concluido'

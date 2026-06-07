@@ -4,8 +4,8 @@ import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firesto
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import { useEdital } from '../../hooks/useEdital'
-import type { EditalCadastrado, DisciplinaEdital, TopicoEdital, SubtopicoEdital } from '../../hooks/useEdital'
-import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from './aguData'
+import type { EditalCadastrado, DisciplinaEdital, SubtopicoEdital } from '../../hooks/useEdital'
+import { AGU_DISCIPLINAS } from './aguData'
 import EditalDetalhe from './EditalDetalhe'
 
 // ─── Converte dados AGU hardcoded para o formato genérico ─────────────────────
@@ -368,7 +368,6 @@ function EditalCard({ edital, onAbrir, onEditar, hooks }: {
   const allIds = edital.disciplinas.flatMap(d => d.topicos.flatMap(t => t.subtopicos.map(s => s.id)))
   const stats = hooks.getStats(allIds)
   const isAGU = edital.id === 'agu-advogado-uniao'
-  const hoje = new Date().toISOString().slice(0, 10)
   const diasProva = edital.dataProva
     ? Math.ceil((new Date(edital.dataProva).getTime() - Date.now()) / 86400000)
     : null
