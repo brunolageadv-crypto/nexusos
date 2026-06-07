@@ -121,7 +121,7 @@ function GatilhoCard({ gatilhos, onNavigate }: { gatilhos: GatilhoInfo[]; onNavi
 }
 
 // ─── Seção 1 — Dashboard do Dia ───────────────────────────────────────────────
-function SecaoDashboard({ dia, data }: { dia: JournalDia; data: string }) {
+function SecaoDashboard({ dia }: { dia: JournalDia }) {
   const tasksConcluidas = dia.planejamento.filter(t => t.feito).length
   const taskTotal = dia.planejamento.length
   const HUMOR_EMOJI = ['😢', '😕', '😐', '😊', '😄']
@@ -501,7 +501,7 @@ function SecaoHabitos({ uid, data }: { uid: string | null; data: string }) {
   const toggle = async (habitoId: string) => {
     if (!uid) return
     const db = getDB()
-    const novo = { ...registros, [habitoId]: !registros[habitoId] }
+    const novo: Record<string, boolean> = { ...registros, [habitoId]: !registros[habitoId] as boolean }
     setRegistros(novo)
     await setDoc(doc(db, 'users', uid, 'habitosRegistros', data), novo)
   }
@@ -515,17 +515,6 @@ function SecaoHabitos({ uid, data }: { uid: string | null; data: string }) {
   }
 
   const ICONS = ['⭐','🏃','💧','📚','🧘','💪','🥗','😴','🎯','✍️','🎵','🌿']
-
-  // Calcular streak dos últimos 7 dias
-  const getStreak = (habitoId: string) => {
-    let s = 0
-    const d = new Date(data + 'T12:00:00')
-    for (let i = 0; i < 7; i++) {
-      d.setDate(d.getDate() - (i === 0 ? 0 : 1))
-      // streak simplificado — só conta o dia atual por ora
-    }
-    return registros[habitoId] ? 1 : 0
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -563,8 +552,6 @@ function SecaoAnexos({ uid, data }: { uid: string | null; data: string }) {
   const [novoTitulo, setNovoTitulo] = useState('')
   const [novoUrl, setNovoUrl] = useState('')
   const [novoTipo, setNovoTipo] = useState('link')
-  const [saved, setSaved] = useState(true)
-
   useEffect(() => {
     if (!uid) return
     const db = getDB()
@@ -577,7 +564,6 @@ function SecaoAnexos({ uid, data }: { uid: string | null; data: string }) {
     if (!uid) return
     const db = getDB()
     await setDoc(doc(db, 'users', uid, 'journalAnexos', data), { links: novos })
-    setSaved(true)
   }
 
   const add = () => {
