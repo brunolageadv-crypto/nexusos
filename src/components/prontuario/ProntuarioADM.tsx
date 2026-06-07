@@ -4,6 +4,14 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+// Remove undefined antes de salvar no Firestore
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
+}
+
 type Prioridade = 'baixa' | 'media' | 'alta' | 'urgente'
 type Status = 'aberta' | 'em_andamento' | 'aguardando' | 'concluida' | 'cancelada'
 

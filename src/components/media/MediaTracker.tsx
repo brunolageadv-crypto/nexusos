@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
-import { getFirestore } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
+import { collection, doc, onSnapshot, setDoc, deleteDoc, getFirestore } from 'firebase/firestore'
 import { getApp } from 'firebase/app'
+import { useUid } from '../../hooks/useUid'
 
 // ─── Firebase ─────────────────────────────────────────────────────────────────
-function getDB() { return getFirestore(getApp() as any) }
-function useUid() {
-  const [uid, setUid] = useState<string | null>(null)
-  useEffect(() => {
-    return onAuthStateChanged(getAuth(getApp() as any), u => setUid(u?.uid ?? null))
-  }, [])
-  return uid
+
+// Remove undefined antes de salvar no Firestore
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
 }
+
+function getDB() { return getFirestore(getApp() as any) }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MediaType   = 'filme' | 'serie' | 'livro'
@@ -179,7 +179,7 @@ function MediaDrawer({ item, uid, onClose, onSave }: { item: MediaItem; uid: str
     setSaving(true)
     const updated = { ...editado, updatedAt: Date.now() }
     const db = getDB()
-    await setDoc(doc(db, 'users', uid, 'media', updated.id), updated)
+    await setDoc(doc(db, 'users', uid, 'media', updated.id), clean(updated))
     onSave(updated)
     setSaving(false)
   }
@@ -397,7 +397,7 @@ function ModalAdicionar({ uid, onClose }: { uid: string | null; onClose: () => v
       dataInicio: status === 'andamento' ? new Date().toISOString().slice(0, 10) : undefined,
       criadoEm: Date.now(), updatedAt: Date.now(),
     }
-    await setDoc(doc(db, 'users', uid, 'media', id), item)
+    await setDoc(doc(db, 'users', uid, 'media', id), clean(item))
     setSaving(false)
     onClose()
   }

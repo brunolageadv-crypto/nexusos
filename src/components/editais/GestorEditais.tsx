@@ -9,6 +9,14 @@ import EditalDetalhe from './EditalDetalhe'
 import { useUid } from '../../hooks/useUid'
 
 // ─── Converte dados AGU hardcoded para o formato genérico ─────────────────────
+
+// Remove undefined antes de salvar no Firestore
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
+}
+
 function aguParaEdital(): EditalCadastrado {
   return {
     id: 'agu-advogado-uniao',
@@ -167,7 +175,7 @@ function ModalEdital({ uid, edital, onClose }: {
       cor, descricao: descricao || undefined, disciplinas,
       criadoEm: edital?.criadoEm || Date.now(),
     }
-    await setDoc(doc(db, 'users', uid, 'editais', id), payload)
+    await setDoc(doc(db, 'users', uid, 'editais', id), clean(payload))
     setSaving(false)
     onClose()
   }

@@ -4,6 +4,14 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+// Remove undefined antes de salvar no Firestore
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
+}
+
 type Prioridade = 'baixa' | 'media' | 'alta' | 'urgente'
 type Status = 'desejado' | 'planejado' | 'comprado' | 'cancelado'
 type Categoria =
@@ -143,7 +151,7 @@ function ModalItem({ uid, item, onClose }: { uid: string | null; item: ItemWishl
       notas: notas || undefined,
       criadoEm: item?.criadoEm || Date.now(),
     }
-    await setDoc(doc(db, 'users', uid, 'wishlist', id), payload)
+    await setDoc(doc(db, 'users', uid, 'wishlist', id), clean(payload))
     setSaving(false)
     onClose()
   }

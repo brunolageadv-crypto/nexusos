@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { collection, doc, onSnapshot, setDoc, deleteDoc, getFirestore } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { getApp } from 'firebase/app'
+import { useUid } from '../../hooks/useUid'
 
 function getDB() { return getFirestore(getApp() as any) }
-function useUid() {
-  const [uid, setUid] = useState<string | null>(null)
-  useEffect(() => {
-    return onAuthStateChanged(getAuth(getApp() as any), u => setUid(u?.uid ?? null))
-  }, [])
-  return uid
-}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+// Remove undefined antes de salvar no Firestore
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
+}
+
 type GameStatus = 'jogando' | 'backlog' | 'concluido' | 'pausado'
 
 interface Game {
@@ -114,7 +115,7 @@ function ModalProgresso({ game, uid, onClose, onSave }: { game: Game; uid: strin
       updatedAt: Date.now(),
     }
     const db = getDB()
-    await setDoc(doc(db, 'users', uid, 'games', game.id), updated)
+    await setDoc(doc(db, 'users', uid, 'games', game.id), clean(updated))
     onSave(updated)
     setSaving(false)
     onClose()
@@ -218,7 +219,7 @@ function ModalGame({ game, uid, onClose }: { game: Game | null; uid: string | nu
       criadoEm: game?.criadoEm || Date.now(),
       updatedAt: Date.now(),
     }
-    await setDoc(doc(db, 'users', uid, 'games', id), item)
+    await setDoc(doc(db, 'users', uid, 'games', id), clean(item))
     setSaving(false)
     onClose()
   }

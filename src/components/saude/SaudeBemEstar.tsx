@@ -4,6 +4,14 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+// Remove undefined antes de salvar no Firestore
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
+}
+
 interface RegistroSaude {
   id: string
   data: string
@@ -207,7 +215,7 @@ function FormDia({ uid, registro, onSave }: { uid: string | null; registro: Regi
   const save = async () => {
     if (!uid) return
     setSaving(true)
-    await setDoc(doc(db, 'users', uid, 'saude', r.data), r)
+    await setDoc(doc(db, 'users', uid, 'saude', r.data), clean(r))
     onSave(r)
     setSaving(false)
   }
