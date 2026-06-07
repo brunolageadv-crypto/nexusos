@@ -219,7 +219,7 @@ export default function NexusDashboard({ onNavigate }: Props) {
             {id:'editais',  label:'Editais AGU',      icon:'⚖', desc:`${global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`,color:'#00e5ff'},
             {id:'concursos',label:'Concursos',         icon:'🎯',desc:'Cadastro e acompanhamento',          color:'#7c3aed'},
             {id:'ponto',    label:'Ponto Eletrônico',  icon:'⊙', desc:ponto.emServico?'🟢 Em serviço':`${ponto.hMes}h no mês`,color:'#f59e0b'},
-            {id:'financeiro',label:'Financeiro',       icon:'◎', desc:'Em breve',                           color:'#10b981'},
+            {id:'financeiro',label:'Financeiro',       icon:'◎', desc:'Receitas e despesas',                color:'#10b981'},
             {id:'journal',  label:'Diário',            icon:'✦', desc:'Em breve',                           color:'#ec4899'},
             {id:'media',    label:'Media Tracker',     icon:'▶', desc:'Em breve',                           color:'#3b82f6'},
           ].map(m=>(

@@ -4,6 +4,7 @@ import LoginPage from './auth/LoginPage'
 import EditaisAGU from './components/editais/EditaisAGU'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
+import Financeiro from './components/financeiro/Financeiro'
 import PontoEletronico from './components/ponto/PontoEletronico'
 
 /* ═══ Theme ══════════════════════════════════════════════════ */
@@ -29,35 +30,30 @@ function ThemeProvider({ children }: { children: ReactNode }) {
 /* ═══ Logo SVG ════════════════════════════════════════════════ */
 function NexisLogo() {
   return (
-    <svg width="148" height="44" viewBox="0 0 148 44" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Arc ring — inspired by nexus.OS logo */}
-      <ellipse cx="22" cy="22" rx="18" ry="18" stroke="url(#ringGrad)" strokeWidth="2.5" fill="none" />
-      <path d="M 8 10 A 18 18 0 0 1 36 10" stroke="url(#arcGrad)" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-      {/* N letter inside */}
-      <text x="22" y="27" textAnchor="middle" fontFamily="Syne, sans-serif" fontWeight="800" fontSize="14" fill="url(#textGrad)">N</text>
-      {/* NEXIS wordmark */}
-      <text x="48" y="26" fontFamily="Syne, sans-serif" fontWeight="800" fontSize="18" letterSpacing="1" fill="#eef6ff">NEXIS</text>
-      {/* .OS in accent */}
-      <text x="104" y="26" fontFamily="Syne, sans-serif" fontWeight="400" fontSize="18" fill="url(#dotGrad)">.OS</text>
-      <defs>
-        <linearGradient id="ringGrad" x1="4" y1="4" x2="40" y2="40">
-          <stop offset="0%" stopColor="#00e5ff" stopOpacity="0.3"/>
-          <stop offset="100%" stopColor="#7c3aed" stopOpacity="0.3"/>
-        </linearGradient>
-        <linearGradient id="arcGrad" x1="4" y1="4" x2="40" y2="20">
-          <stop offset="0%" stopColor="#00e5ff"/>
-          <stop offset="100%" stopColor="#7c3aed"/>
-        </linearGradient>
-        <linearGradient id="textGrad" x1="14" y1="14" x2="30" y2="30">
-          <stop offset="0%" stopColor="#00e5ff"/>
-          <stop offset="100%" stopColor="#7c3aed"/>
-        </linearGradient>
-        <linearGradient id="dotGrad" x1="104" y1="0" x2="148" y2="0">
-          <stop offset="0%" stopColor="#00e5ff"/>
-          <stop offset="100%" stopColor="#7c3aed"/>
-        </linearGradient>
-      </defs>
-    </svg>
+    <div style={{ padding: "2px 0", userSelect: "none" }}>
+      <svg width="160" height="40" viewBox="0 0 160 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="arcG" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#c8cdd7"/>
+            <stop offset="100%" stopColor="#8892a4"/>
+          </linearGradient>
+          <linearGradient id="dotG" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#a0a8b8"/>
+            <stop offset="100%" stopColor="#7c8499"/>
+          </linearGradient>
+        </defs>
+        {/* Ring — clean circle with gap */}
+        <circle cx="20" cy="20" r="13" stroke="#3a3f47" strokeWidth="2" fill="none"/>
+        {/* Arc highlight */}
+        <path d="M 9.5 12 A 13 13 0 0 1 30.5 12" stroke="url(#arcG)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+        {/* N initial */}
+        <text x="20" y="25" textAnchor="middle" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="13" fill="#c8cdd7">N</text>
+        {/* NEXIS wordmark */}
+        <text x="42" y="25" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="17" letterSpacing="2" fill="#dde1e9">NEXIS</text>
+        {/* .OS */}
+        <text x="108" y="25" fontFamily="Syne,sans-serif" fontWeight="300" fontSize="17" letterSpacing="1" fill="url(#dotG)">.OS</text>
+      </svg>
+    </div>
   )
 }
 
@@ -175,7 +171,7 @@ function AppShell() {
           {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} />}
           {active === 'editais'    && <EditaisAGU />}
           {active === 'concursos'  && <Concursos />}
-          {active === 'financeiro' && <Placeholder title="Financeiro"        icon="◎" />}
+          {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
           {active === 'journal'    && <Placeholder title="Diário"            icon="✦" />}
           {active === 'media'      && <Placeholder title="Media Tracker"     icon="▶" />}

@@ -123,8 +123,8 @@ html, body {
   top: 0; right: 0; bottom: 0; width: 1px;
   background: linear-gradient(to bottom,
     transparent 0%,
-    rgba(0,229,255,0.5) 30%,
-    rgba(0,229,255,0.5) 70%,
+    rgba(180,185,195,0.25) 30%,
+    rgba(180,185,195,0.25) 70%,
     transparent 100%
   );
 }
@@ -542,7 +542,7 @@ body, .sidebar, .topbar, .card, .kpi-card, .nav-item {
 
 /* Override sidebar para paleta naval */
 [data-theme="dark"] .sidebar {
-  background: linear-gradient(170deg, #05101e 0%, #071525 60%, #090e1e 100%);
+  background: linear-gradient(170deg, #1a1d21 0%, #1e2126 60%, #18191d 100%);
 }
 
 [data-theme="dark"] .sidebar-logo {
