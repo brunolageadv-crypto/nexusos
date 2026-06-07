@@ -1,14 +1,12 @@
 // GestorEditais.tsx — hub central de editais
 import { useState, useEffect } from 'react'
-import { collection, doc, setDoc, deleteDoc, onSnapshot, getFirestore } from 'firebase/firestore'
-import { getApp } from 'firebase/app'
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
+import { db } from '../../lib/firebase'
 import { useEdital } from '../../hooks/useEdital'
 import type { EditalCadastrado, DisciplinaEdital, SubtopicoEdital } from '../../hooks/useEdital'
 import { AGU_DISCIPLINAS } from './aguData'
 import EditalDetalhe from './EditalDetalhe'
 import { useUid } from '../../hooks/useUid'
-
-function getDB() { return getFirestore(getApp() as any) }
 
 // ─── Converte dados AGU hardcoded para o formato genérico ─────────────────────
 function aguParaEdital(): EditalCadastrado {
@@ -169,14 +167,14 @@ function ModalEdital({ uid, edital, onClose }: {
       cor, descricao: descricao || undefined, disciplinas,
       criadoEm: edital?.criadoEm || Date.now(),
     }
-    await setDoc(doc(getDB(), 'users', uid, 'editais', id), payload)
+    await setDoc(doc(db, 'users', uid, 'editais', id), payload)
     setSaving(false)
     onClose()
   }
 
   const del = async () => {
     if (!uid || !edital) return
-    await deleteDoc(doc(getDB(), 'users', uid, 'editais', edital.id))
+    await deleteDoc(doc(db, 'users', uid, 'editais', edital.id))
     onClose()
   }
 
@@ -518,7 +516,7 @@ export default function GestorEditais() {
 
   useEffect(() => {
     if (!uid) return
-    return onSnapshot(collection(getDB(), 'users', uid, 'editais'), snap => {
+    return onSnapshot(collection(db, 'users', uid, 'editais'), snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EditalCadastrado))
         .filter(e => e.id !== 'agu-advogado-uniao') // AGU já vem hardcoded
         .sort((a, b) => b.criadoEm - a.criadoEm)

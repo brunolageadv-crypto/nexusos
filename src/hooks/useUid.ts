@@ -1,21 +1,15 @@
-﻿// useUid.ts — obtém uid do usuário autenticado
 import { useState, useEffect } from 'react'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
+import { auth } from '../lib/firebase'
+import { onAuthStateChanged } from 'firebase/auth'
 
 export function useUid(): string | null {
-  const [uid, setUid] = useState<string | null>(() => {
-    try { return getAuth().currentUser?.uid ?? null } catch { return null }
-  })
+  const [uid, setUid] = useState<string | null>(
+    () => auth?.currentUser?.uid ?? null
+  )
   useEffect(() => {
-    try {
-      const auth = getAuth()
-      if (auth.currentUser) {
-        setUid(auth.currentUser.uid)
-      }
-      return onAuthStateChanged(auth, user => {
-        setUid(user?.uid ?? null)
-      })
-    } catch { return undefined }
+    if (!auth) return
+    if (auth.currentUser) setUid(auth.currentUser.uid)
+    return onAuthStateChanged(auth, user => setUid(user?.uid ?? null))
   }, [])
   return uid
 }
