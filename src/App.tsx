@@ -7,8 +7,8 @@ import Concursos from './components/concursos/Concursos'
 import PontoEletronico from './components/ponto/PontoEletronico'
 import Financeiro from './components/financeiro/Financeiro'
 import ProntuarioADM from './components/prontuario/ProntuarioADM'
+import SaudeBemEstar from './components/saude/SaudeBemEstar'
 
-/* ═══ Theme ══════════════════════════════════════════════════ */
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
 export const useTheme = () => useContext(ThemeCtx)
@@ -28,25 +28,20 @@ function ThemeProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/* ═══ Logo NEXUS ═════════════════════════════════════════════ */
 function NexusLogo() {
   return (
     <div style={{ padding: '8px 0 6px', userSelect: 'none' }}>
       <svg width="200" height="46" viewBox="0 0 200 46" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="ng1" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#c8cdd8"/>
-            <stop offset="100%" stopColor="#7a8394"/>
+            <stop offset="0%" stopColor="#c8cdd8"/><stop offset="100%" stopColor="#7a8394"/>
           </linearGradient>
           <linearGradient id="ng2" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#9aa3b2"/>
-            <stop offset="100%" stopColor="#5c6578"/>
+            <stop offset="0%" stopColor="#9aa3b2"/><stop offset="100%" stopColor="#5c6578"/>
           </linearGradient>
         </defs>
-        <polygon points="21,3 37,12 37,30 21,39 5,30 5,12"
-          fill="none" stroke="#3a4050" strokeWidth="1.2"/>
-        <polygon points="21,9 32,15 32,27 21,33 10,27 10,15"
-          fill="none" stroke="url(#ng1)" strokeWidth="1.5"/>
+        <polygon points="21,3 37,12 37,30 21,39 5,30 5,12" fill="none" stroke="#3a4050" strokeWidth="1.2"/>
+        <polygon points="21,9 32,15 32,27 21,33 10,27 10,15" fill="none" stroke="url(#ng1)" strokeWidth="1.5"/>
         <line x1="21" y1="3"  x2="21" y2="9"  stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="37" y1="12" x2="32" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="37" y1="30" x2="32" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
@@ -54,17 +49,13 @@ function NexusLogo() {
         <line x1="5"  y1="30" x2="10" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="5"  y1="12" x2="10" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <circle cx="21" cy="21" r="2.5" fill="url(#ng1)"/>
-        <text x="48" y="27"
-          fontFamily="Syne,sans-serif" fontWeight="800"
-          fontSize="19" letterSpacing="3"
-          fill="#dde1eb">NEXUS</text>
+        <text x="48" y="27" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="19" letterSpacing="3" fill="#dde1eb">NEXUS</text>
         <line x1="48" y1="33" x2="196" y2="33" stroke="url(#ng2)" strokeWidth="0.7"/>
       </svg>
     </div>
   )
 }
 
-/* ═══ Nav ═══════════════════════════════════════════════════ */
 const NAV = [
   { section: 'PRINCIPAL', items: [
     { id: 'dashboard',  label: 'Dashboard',         icon: '◈' },
@@ -84,11 +75,12 @@ const NAV = [
     { id: 'journal',    label: 'Diário',             icon: '✦' },
     { id: 'media',      label: 'Media Tracker',      icon: '▶' },
     { id: 'gaming',     label: 'Gaming Hub',         icon: '🎮' },
+  ]},
+  { section: 'UTILIDADES', items: [
     { id: 'links',      label: 'Links de Interesse', icon: '🔗' },
   ]},
 ]
 
-/* ═══ AppShell ════════════════════════════════════════════════ */
 function AppShell() {
   const [active, setActive] = useState('dashboard')
   const { theme, toggle } = useTheme()
@@ -101,20 +93,13 @@ function AppShell() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="sidebar-logo">
-          <NexusLogo />
-        </div>
-
+        <div className="sidebar-logo"><NexusLogo /></div>
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
           {NAV.map(group => (
             <div key={group.section} className="sidebar-section">
               <div className="sidebar-section-label">{group.section}</div>
               {group.items.map(item => (
-                <button
-                  key={item.id}
-                  className={`nav-item ${active === item.id ? 'active' : ''}`}
-                  onClick={() => setActive(item.id)}
-                >
+                <button key={item.id} className={`nav-item ${active === item.id ? 'active' : ''}`} onClick={() => setActive(item.id)}>
                   <span className="nav-icon">{item.icon}</span>
                   <span className="nav-label">{item.label}</span>
                 </button>
@@ -122,39 +107,18 @@ function AppShell() {
             </div>
           ))}
         </div>
-
-        {/* User block */}
-        <div style={{
-          margin: '0 12px 8px', padding: '11px 13px',
-          background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            border: '2px solid rgba(180,185,200,0.35)', overflow: 'hidden', flexShrink: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(180,185,200,0.1)',
-          }}>
-            {avatarUrl
-              ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>
-            }
+        <div style={{ margin: '0 12px 8px', padding: '11px 13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid rgba(180,185,200,0.35)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(180,185,200,0.1)' }}>
+            {avatarUrl ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {displayName.split(' ')[0]}
-            </div>
-            <div style={{ fontSize: '0.58rem', color: 'rgba(180,185,200,0.4)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {user?.email}
-            </div>
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName.split(' ')[0]}</div>
+            <div style={{ fontSize: '0.58rem', color: 'rgba(180,185,200,0.4)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
           </div>
-          <button onClick={logout} title="Sair"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.18)', fontSize: '1rem', padding: 4, borderRadius: 6, flexShrink: 0, transition: 'color 0.2s' }}
+          <button onClick={logout} title="Sair" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.18)', fontSize: '1rem', padding: 4, borderRadius: 6, flexShrink: 0, transition: 'color 0.2s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.18)' }}
-          >⏻</button>
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.18)' }}>⏻</button>
         </div>
-
         <div className="sidebar-bottom">
           <button className="theme-btn" onClick={toggle}>
             <span style={{ fontSize: '1rem' }}>{theme === 'dark' ? '☀' : '◑'}</span>
@@ -168,8 +132,7 @@ function AppShell() {
           <span className="topbar-breadcrumb">nexus /</span>
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
-            <div className="sync-dot" />
-            <span className="topbar-status">ONLINE</span>
+            <div className="sync-dot" /><span className="topbar-status">ONLINE</span>
           </div>
         </header>
         <div className="page-content">
@@ -179,25 +142,26 @@ function AppShell() {
           {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
           {active === 'prontuario' && <ProntuarioADM />}
-          {active === 'saude'      && <Placeholder title="Saúde & Bem-Estar"  icon="✚"  color="#10b981" />}
-          {active === 'wishlist'   && <Placeholder title="Wishlist & Compras" icon="🛒" color="#f59e0b" />}
-          {active === 'journal'    && <Placeholder title="Diário"             icon="✦"  color="#ec4899" />}
-          {active === 'media'      && <Placeholder title="Media Tracker"      icon="▶"  color="#3b82f6" />}
-          {active === 'gaming'     && <Placeholder title="Gaming Hub"         icon="🎮" color="#7c3aed" />}
-          {active === 'links'      && <Placeholder title="Links de Interesse"  icon="🔗" color="#00e5ff" />}
+          {active === 'saude'      && <SaudeBemEstar />}
+          {active === 'wishlist'   && <Placeholder title="Wishlist & Compras" icon="🛒" color="#f59e0b" desc="Gerencie sua lista de desejos e compras planejadas" />}
+          {active === 'journal'    && <Placeholder title="Diário" icon="✦" color="#ec4899" desc="Registre seus pensamentos e acompanhe seu humor" />}
+          {active === 'media'      && <Placeholder title="Media Tracker" icon="▶" color="#3b82f6" desc="Acompanhe filmes, séries e livros" />}
+          {active === 'gaming'     && <Placeholder title="Gaming Hub" icon="🎮" color="#7c3aed" desc="Gerencie seus jogos e sessões de gameplay" />}
+          {active === 'links'      && <Placeholder title="Links de Interesse" icon="🔗" color="#00e5ff" desc="Organize seus links favoritos por categoria" />}
         </div>
       </div>
     </div>
   )
 }
 
-function Placeholder({ title, icon, color = 'var(--text-muted)' }: { title: string; icon: string; color?: string }) {
+function Placeholder({ title, icon, color = 'var(--text-muted)', desc }: { title: string; icon: string; color?: string; desc?: string }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'60vh', flexDirection:'column', gap:20, color:'var(--text-muted)' }}>
-      <div style={{ width:72, height:72, borderRadius:20, background:`${color}18`, border:`1px solid ${color}44`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:32 }}>{icon}</div>
-      <div>
-        <div style={{ fontFamily:'var(--font-display)', fontSize:'1rem', letterSpacing:'0.15em', textTransform:'uppercase', color, textAlign:'center' }}>{title}</div>
-        <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', textAlign:'center', marginTop:6 }}>Em desenvolvimento — em breve disponível</div>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', flexDirection: 'column', gap: 20, color: 'var(--text-muted)' }}>
+      <div style={{ width: 72, height: 72, borderRadius: 20, background: `${color}18`, border: `1px solid ${color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32 }}>{icon}</div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: '1rem', letterSpacing: '0.15em', textTransform: 'uppercase', color }}>{title}</div>
+        {desc && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 6 }}>{desc}</div>}
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4, opacity: 0.6 }}>Em desenvolvimento — em breve disponível</div>
       </div>
     </div>
   )
@@ -206,9 +170,9 @@ function Placeholder({ title, icon, color = 'var(--text-muted)' }: { title: stri
 function Root() {
   const { user, loading } = useAuth()
   if (loading) return (
-    <div style={{ minHeight:'100vh', background:'var(--bg-0)', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:16 }}>
-      <div style={{ width:40, height:40, borderRadius:'50%', border:'2px solid transparent', borderTopColor:'#c4cad6', animation:'spin 0.8s linear infinite' }} />
-      <div style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', color:'var(--text-muted)', letterSpacing:'0.12em' }}>AUTENTICANDO…</div>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-0)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
+      <div style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#c4cad6', animation: 'spin 0.8s linear infinite' }} />
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', letterSpacing: '0.12em' }}>AUTENTICANDO…</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
