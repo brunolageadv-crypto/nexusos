@@ -291,7 +291,7 @@ function Similaridade({concursos}:{concursos:Concurso[]}) {
         <div style={{fontSize:'0.68rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8,fontFamily:'var(--font-mono)'}}>Concurso base para análise</div>
         <select style={{...sel,maxWidth:400}} value={baseId} onChange={e=>setBaseId(e.target.value)}>
           <option value="">Selecione um concurso…</option>
-          {concursos.map(c=><option key={c.id} value={c.id}>{c.orgao} — {c.cargo||c.nome||'s/n'}</option>)}
+          {concursos.map(c=><option key={c.id} value={c.id}>{c.orgao} — {c.nome||'s/n'}</option>)}
         </select>
       </div>
       {!base?(
@@ -308,7 +308,7 @@ function Similaridade({concursos}:{concursos:Concurso[]}) {
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:10}}>
                 <div>
                   <div style={{fontFamily:'var(--font-display)',fontWeight:800,fontSize:'0.92rem',color:'var(--text-primary)'}}>{c.orgao}</div>
-                  <div style={{fontSize:'0.78rem',color:'var(--text-secondary)',marginTop:2}}>{c.cargo||c.nome}</div>
+                  <div style={{fontSize:'0.78rem',color:'var(--text-secondary)',marginTop:2}}>{c.nome}</div>
                 </div>
                 <div style={{textAlign:'center',flexShrink:0}}>
                   <div style={{fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.6rem',color:simColor(sim),lineHeight:1}}>{sim}%</div>
