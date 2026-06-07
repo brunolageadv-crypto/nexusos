@@ -1,307 +1,566 @@
 import { useEffect, useState, useRef } from 'react'
-import {
-  collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc
-} from 'firebase/firestore'
+import { collection, doc, onSnapshot, setDoc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
 type Prioridade = 'baixa' | 'media' | 'alta' | 'urgente'
 type Status = 'aberta' | 'em_andamento' | 'aguardando' | 'concluida' | 'cancelada'
 
 interface Encaminhamento {
-  id: string
-  de: string
-  para: string
-  data: string
-  observacao?: string
+  id: string; de: string; para: string; data: string; observacao?: string
 }
-
 interface Movimentacao {
-  id: string
-  data: string
-  tipo: 'registro' | 'encaminhamento' | 'prazo' | 'conclusao' | 'nota'
-  descricao: string
-  autor?: string
+  id: string; data: string; descricao: string
 }
-
 interface Demanda {
-  id: string
-  numeroDemanda?: string
-  processoSEI?: string
-  titulo: string
-  descricao: string
-  dataAbertura: string
-  prazo: string
-  solicitante: string
-  unidadeDemandante: string
-  categoria: string
-  prioridade: Prioridade
-  status: Status
-  encaminhamentos: Encaminhamento[]
-  movimentacoes: Movimentacao[]
+  id: string; numeroDemanda?: string; processoSEI?: string; titulo: string
+  descricao: string; dataAbertura: string; prazo: string; solicitante: string
+  unidadeDemandante: string; categoria: string; prioridade: Prioridade
+  status: Status; encaminhamentos: Encaminhamento[]; movimentacoes: Movimentacao[]
   criadoEm: number
 }
 
-const CATEGORIAS = [
-  'Contratação', 'Licitação', 'Assessoria Jurídica', 'Parecer',
-  'Recurso Administrativo', 'Auditoria', 'Pessoal / RH',
-  'Convênio / Parceria', 'Legislação / Regulamentação', 'Outro',
-]
+const CATEGORIAS = ['Contratação','Licitação','Assessoria Jurídica','Parecer','Recurso Administrativo','Auditoria','Pessoal / RH','Convênio / Parceria','Legislação / Regulamentação','Outro']
 
-const PRIORIDADE_CONFIG: Record<Prioridade, { label: string; color: string; bg: string }> = {
-  baixa:   { label: 'Baixa',   color: '#6b9e7a', bg: 'rgba(107,158,122,0.15)' },
-  media:   { label: 'Média',   color: '#a0956b', bg: 'rgba(160,149,107,0.15)' },
-  alta:    { label: 'Alta',    color: '#c47c2e', bg: 'rgba(196,124,46,0.15)'  },
-  urgente: { label: 'Urgente', color: '#b94a4a', bg: 'rgba(185,74,74,0.15)'  },
+const PR: Record<Prioridade, { label: string; color: string; bg: string }> = {
+  baixa:   { label: 'Baixa',   color: '#6b9e7a', bg: 'rgba(107,158,122,0.18)' },
+  media:   { label: 'Média',   color: '#b8a96a', bg: 'rgba(184,169,106,0.18)' },
+  alta:    { label: 'Alta',    color: '#c47c2e', bg: 'rgba(196,124,46,0.18)'  },
+  urgente: { label: 'Urgente', color: '#c45a5a', bg: 'rgba(196,90,90,0.18)'  },
 }
-
-const STATUS_CONFIG: Record<Status, { label: string; color: string }> = {
-  aberta:        { label: 'Aberta',        color: '#6b9fd4' },
-  em_andamento:  { label: 'Em Andamento',  color: '#a0956b' },
-  aguardando:    { label: 'Aguardando',    color: '#9b7cc4' },
-  concluida:     { label: 'Concluída',     color: '#6b9e7a' },
-  cancelada:     { label: 'Cancelada',     color: '#7a7a7a' },
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function diasRestantes(prazo: string): number {
-  if (!prazo) return 999
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
-  const p = new Date(prazo + 'T00:00:00')
-  return Math.ceil((p.getTime() - hoje.getTime()) / 86400000)
-}
-
-function cardBorderColor(dias: number, status: Status): string {
-  if (status === 'concluida' || status === 'cancelada') return 'rgba(100,100,100,0.3)'
-  if (dias <= 0)  return 'rgba(180,60,60,0.7)'
-  if (dias <= 10) return 'rgba(180,60,60,0.5)'
-  if (dias <= 15) return 'rgba(200,160,50,0.5)'
-  return 'rgba(80,140,100,0.4)'
-}
-
-function cardBg(dias: number, status: Status): string {
-  if (status === 'concluida' || status === 'cancelada') return 'rgba(50,50,60,0.4)'
-  if (dias <= 0)  return 'rgba(100,20,20,0.2)'
-  if (dias <= 10) return 'rgba(80,20,20,0.15)'
-  if (dias <= 15) return 'rgba(80,65,10,0.15)'
-  return 'rgba(15,35,25,0.15)'
-}
-
-function prazoLabel(dias: number): { text: string; color: string } {
-  if (dias <= 0)  return { text: 'Vencido',       color: '#ef4444' }
-  if (dias <= 10) return { text: `${dias}d restantes`, color: '#f87171' }
-  if (dias <= 15) return { text: `${dias}d restantes`, color: '#fbbf24' }
-  return { text: `${dias}d restantes`, color: '#6ee7a0' }
+const ST: Record<Status, { label: string; color: string }> = {
+  aberta:       { label: 'Aberta',       color: '#6b9fd4' },
+  em_andamento: { label: 'Em Andamento', color: '#c4a84a' },
+  aguardando:   { label: 'Aguardando',   color: '#9b7cc4' },
+  concluida:    { label: 'Concluída',    color: '#6b9e7a' },
+  cancelada:    { label: 'Cancelada',    color: '#6a6a7a' },
 }
 
 function newId() { return Math.random().toString(36).slice(2, 10) }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+function diasRestantes(prazo: string) {
+  if (!prazo) return 999
+  const h = new Date(); h.setHours(0,0,0,0)
+  return Math.ceil((new Date(prazo+'T00:00:00').getTime() - h.getTime()) / 86400000)
+}
 
+function cardStyle(dias: number, status: Status): React.CSSProperties {
+  if (status === 'concluida' || status === 'cancelada')
+    return { background: 'rgba(40,40,50,0.5)', border: '1px solid rgba(100,100,120,0.25)' }
+  if (dias <= 0)  return { background: 'rgba(80,18,18,0.35)',  border: '1px solid rgba(196,70,70,0.55)' }
+  if (dias <= 10) return { background: 'rgba(75,22,22,0.28)',  border: '1px solid rgba(196,90,90,0.4)'  }
+  if (dias <= 15) return { background: 'rgba(75,60,10,0.28)',  border: '1px solid rgba(196,160,50,0.4)' }
+  return              { background: 'rgba(12,35,22,0.28)',  border: '1px solid rgba(80,150,100,0.35)' }
+}
+
+function prazoInfo(dias: number): { text: string; color: string } {
+  if (dias <= 0)  return { text: 'Vencido',           color: '#ef4444' }
+  if (dias <= 10) return { text: `${dias}d restantes`, color: '#f87171' }
+  if (dias <= 15) return { text: `${dias}d restantes`, color: '#fbbf24' }
+  return              { text: `${dias}d restantes`, color: '#6ee7a0' }
+}
+
+// ─── Overlay Modal ─────────────────────────────────────────────────────────────
+function Modal({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+// ─── Input helpers ─────────────────────────────────────────────────────────────
+const IS: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 8, padding: '8px 12px', color: 'var(--text-primary)',
+  fontSize: '0.82rem', width: '100%', outline: 'none', boxSizing: 'border-box',
+}
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <label style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+function Sec({ title }: { title: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0' }}>
+      <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap' }}>{title}</span>
+      <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+    </div>
+  )
+}
+
+// ─── Formulário de demanda ────────────────────────────────────────────────────
+function FormModal({ uid, demanda, onClose }: { uid: string | null; demanda: Demanda | null; onClose: () => void }) {
+  const isEdit = !!demanda
+  const [titulo, setTitulo] = useState(demanda?.titulo || '')
+  const [descricao, setDescricao] = useState(demanda?.descricao || '')
+  const [numeroDemanda, setNumeroDemanda] = useState(demanda?.numeroDemanda || '')
+  const [processoSEI, setProcessoSEI] = useState(demanda?.processoSEI || '')
+  const [dataAbertura, setDataAbertura] = useState(demanda?.dataAbertura || new Date().toISOString().slice(0,10))
+  const [prazo, setPrazo] = useState(demanda?.prazo || '')
+  const [solicitante, setSolicitante] = useState(demanda?.solicitante || '')
+  const [unidade, setUnidade] = useState(demanda?.unidadeDemandante || '')
+  const [categoria, setCategoria] = useState(demanda?.categoria || '')
+  const [prioridade, setPrioridade] = useState<Prioridade>(demanda?.prioridade || 'media')
+  const [status, setStatus] = useState<Status>(demanda?.status || 'aberta')
+  const [encaminhamentos, setEncaminhamentos] = useState<Encaminhamento[]>(demanda?.encaminhamentos || [])
+  const [encDe, setEncDe] = useState(''); const [encPara, setEncPara] = useState(''); const [encData, setEncData] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!uid || !titulo.trim()) return
+    setSaving(true)
+    const id = isEdit ? demanda!.id : newId()
+    await setDoc(doc(db, 'users', uid, 'prontuario', id), {
+      id, titulo, descricao, numeroDemanda, processoSEI, dataAbertura, prazo,
+      solicitante, unidadeDemandante: unidade, categoria, prioridade, status,
+      encaminhamentos, movimentacoes: demanda?.movimentacoes || [],
+      criadoEm: demanda?.criadoEm || Date.now(),
+    })
+    setSaving(false); onClose()
+  }
+
+  const del = async () => {
+    if (!uid || !demanda) return
+    await deleteDoc(doc(db, 'users', uid, 'prontuario', demanda.id))
+    onClose()
+  }
+
+  const addEnc = () => {
+    if (!encDe || !encPara) return
+    setEncaminhamentos(e => [...e, { id: newId(), de: encDe, para: encPara, data: encData }])
+    setEncDe(''); setEncPara(''); setEncData('')
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{
+        background: 'var(--card-bg, #1a1b26)', border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: 18, width: '100%', maxWidth: 680, maxHeight: '90vh',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>
+            {isEdit ? 'Editar Demanda' : 'Nova Demanda'}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', padding: 4, lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Sec title="Identificação" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Nº da Demanda"><input style={IS} value={numeroDemanda} onChange={e=>setNumeroDemanda(e.target.value)} placeholder="Ex: 2025/0123" /></Field>
+            <Field label="Processo SEI"><input style={IS} value={processoSEI} onChange={e=>setProcessoSEI(e.target.value)} placeholder="Ex: 1234.000123/2025-99" /></Field>
+          </div>
+          <Field label="Título *"><input style={IS} value={titulo} onChange={e=>setTitulo(e.target.value)} placeholder="Título descritivo da demanda" /></Field>
+          <Field label="Descrição Detalhada">
+            <textarea style={{ ...IS, resize: 'vertical', minHeight: 80, lineHeight: 1.5 }} value={descricao} onChange={e=>setDescricao(e.target.value)} placeholder="Descreva em detalhes o objeto da demanda..." />
+          </Field>
+
+          <Sec title="Solicitação" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Solicitante"><input style={IS} value={solicitante} onChange={e=>setSolicitante(e.target.value)} placeholder="Nome do solicitante" /></Field>
+            <Field label="Unidade Demandante"><input style={IS} value={unidade} onChange={e=>setUnidade(e.target.value)} placeholder="Ex: Diretoria de Contratos" /></Field>
+          </div>
+
+          <Sec title="Classificação & Prazos" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Categoria">
+              <select style={IS} value={categoria} onChange={e=>setCategoria(e.target.value)}>
+                <option value="">Selecionar...</option>
+                {CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <Field label="Prioridade">
+              <select style={IS} value={prioridade} onChange={e=>setPrioridade(e.target.value as Prioridade)}>
+                {Object.entries(PR).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Data de Abertura"><input type="date" style={IS} value={dataAbertura} onChange={e=>setDataAbertura(e.target.value)} /></Field>
+            <Field label="Prazo de Conclusão"><input type="date" style={IS} value={prazo} onChange={e=>setPrazo(e.target.value)} /></Field>
+            <Field label="Status" >
+              <select style={IS} value={status} onChange={e=>setStatus(e.target.value as Status)}>
+                {Object.entries(ST).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <Sec title="Fluxo entre Setores" />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {encaminhamentos.map((enc, i) => (
+              <div key={enc.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: '0.78rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>{String(i+1).padStart(2,'0')}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{enc.de}</span>
+                <span style={{ color: '#fbbf24', fontSize: '0.7rem' }}>→</span>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{enc.para}</span>
+                {enc.data && <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>{enc.data}</span>}
+                <button onClick={()=>setEncaminhamentos(e=>e.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', color:'rgba(239,68,68,0.5)', cursor:'pointer', fontSize:'0.85rem', padding:2, marginLeft: enc.data ? 0 : 'auto' }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto auto', gap: 8, alignItems: 'end' }}>
+              <Field label="De"><input style={IS} value={encDe} onChange={e=>setEncDe(e.target.value)} placeholder="Setor de origem" /></Field>
+              <Field label="Para"><input style={IS} value={encPara} onChange={e=>setEncPara(e.target.value)} placeholder="Setor de destino" /></Field>
+              <Field label="Data"><input type="date" style={{ ...IS, width: 'auto' }} value={encData} onChange={e=>setEncData(e.target.value)} /></Field>
+              <button onClick={addEnc} style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid rgba(91,91,214,0.4)', background: 'rgba(91,91,214,0.12)', color: '#a5a3f5', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', whiteSpace: 'nowrap', alignSelf: 'flex-end' }}>+ Add</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div>
+            {isEdit && (
+              <button onClick={del} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#f87171', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}>
+                Excluir
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'none', color: 'var(--text-secondary)', fontSize: '0.82rem', cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={save} disabled={saving || !titulo.trim()} style={{ padding: '8px 22px', borderRadius: 8, background: saving || !titulo.trim() ? 'rgba(59,124,201,0.3)' : 'linear-gradient(135deg,#3b7cc9,#5b5bd6)', border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: saving||!titulo.trim()?'not-allowed':'pointer' }}>
+              {saving ? 'Salvando…' : isEdit ? 'Salvar Alterações' : 'Criar Demanda'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Modal Detalhe ─────────────────────────────────────────────────────────────
+function DetalheModal({ uid, demanda, onClose, onEdit }: { uid: string|null; demanda: Demanda; onClose: ()=>void; onEdit: ()=>void }) {
+  const [relato, setRelato] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [movs, setMovs] = useState<Movimentacao[]>(demanda.movimentacoes || [])
+  const dias = diasRestantes(demanda.prazo)
+  const pz = prazoInfo(dias)
+  const pr = PR[demanda.prioridade]
+  const st = ST[demanda.status]
+
+  const salvar = async () => {
+    if (!uid || !relato.trim()) return
+    setSaving(true)
+    const now = new Date()
+    const ts = `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`
+    const nova: Movimentacao = { id: newId(), data: ts, descricao: relato.trim() }
+    const updated = [...movs, nova]
+    setMovs(updated)
+    await updateDoc(doc(db,'users',uid,'prontuario',demanda.id), { movimentacoes: updated })
+    setRelato(''); setSaving(false)
+  }
+
+  const badge = (text: string, color: string, bg: string) => (
+    <span style={{ padding:'2px 10px', borderRadius:20, background:bg, color, border:`1px solid ${color}44`, fontSize:'0.68rem', fontWeight:700 }}>{text}</span>
+  )
+
+  return (
+    <Modal onClose={onClose}>
+      <div style={{
+        background:'var(--card-bg,#1a1b26)', border:`1px solid ${cardStyle(dias,demanda.status).border}`,
+        borderRadius:18, width:'100%', maxWidth:680, maxHeight:'92vh',
+        display:'flex', flexDirection:'column', overflow:'hidden',
+        boxShadow:'0 32px 80px rgba(0,0,0,0.7)',
+      }}>
+        {/* Header */}
+        <div style={{ padding:'18px 24px', borderBottom:'1px solid rgba(255,255,255,0.08)', flexShrink:0 }}>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
+                {demanda.numeroDemanda && <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.65rem', padding:'2px 8px', borderRadius:6, background:'rgba(255,255,255,0.06)', color:'var(--text-muted)' }}>#{demanda.numeroDemanda}</span>}
+                {badge(pr.label, pr.color, pr.bg)}
+                {badge(st.label, st.color, `${st.color}22`)}
+                {demanda.prazo && <span style={{ fontSize:'0.68rem', fontWeight:700, color:pz.color }}>⏱ {pz.text}</span>}
+              </div>
+              <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.05rem', color:'var(--text-primary)', lineHeight:1.3 }}>{demanda.titulo}</div>
+            </div>
+            <div style={{ display:'flex', gap:8, flexShrink:0 }}>
+              <button onClick={onEdit} style={{ padding:'6px 14px', borderRadius:8, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.04)', color:'var(--text-secondary)', fontSize:'0.75rem', cursor:'pointer', fontWeight:600 }}>✏ Editar</button>
+              <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--text-muted)', fontSize:'1.2rem', cursor:'pointer', padding:4, lineHeight:1 }}>✕</button>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ flex:1, overflowY:'auto', padding:'20px 24px', display:'flex', flexDirection:'column', gap:16 }}>
+          {/* Info grid */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 24px' }}>
+            {[['Solicitante',demanda.solicitante],['Unidade',demanda.unidadeDemandante],['Categoria',demanda.categoria],['Processo SEI',demanda.processoSEI],['Data Abertura',demanda.dataAbertura],['Prazo',demanda.prazo]].filter(([,v])=>v).map(([k,v])=>(
+              <div key={k}>
+                <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:2 }}>{k}</div>
+                <div style={{ fontSize:'0.82rem', color:'var(--text-secondary)', fontWeight:600 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Descrição */}
+          {demanda.descricao && (
+            <div>
+              <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:6 }}>Descrição</div>
+              <p style={{ margin:0, fontSize:'0.82rem', color:'var(--text-secondary)', lineHeight:1.6, padding:'10px 14px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10 }}>{demanda.descricao}</p>
+            </div>
+          )}
+
+          {/* Fluxo */}
+          {demanda.encaminhamentos?.length > 0 && (
+            <div>
+              <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>Fluxo entre Setores</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {demanda.encaminhamentos.map((enc,i)=>(
+                  <div key={enc.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 12px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:8, fontSize:'0.78rem' }}>
+                    <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.6rem', color:'rgba(91,91,214,0.7)' }}>{String(i+1).padStart(2,'0')}</span>
+                    <span style={{ color:'var(--text-muted)' }}>{enc.de}</span>
+                    <span style={{ color:'#fbbf24' }}>→</span>
+                    <span style={{ color:'var(--text-primary)', fontWeight:600 }}>{enc.para}</span>
+                    {enc.data && <span style={{ marginLeft:'auto', color:'var(--text-muted)', fontSize:'0.7rem' }}>{enc.data}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Histórico */}
+          <div>
+            <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:8 }}>Histórico de Movimentações</div>
+            {movs.length === 0
+              ? <p style={{ margin:0, fontSize:'0.78rem', color:'var(--text-muted)', fontStyle:'italic' }}>Nenhuma movimentação registrada.</p>
+              : <div style={{ display:'flex', flexDirection:'column', gap:6, maxHeight:180, overflowY:'auto' }}>
+                  {[...movs].reverse().map(m=>(
+                    <div key={m.id} style={{ display:'flex', gap:10, padding:'8px 12px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:10 }}>
+                      <div style={{ width:6, height:6, borderRadius:'50%', background:'#6b9fd4', marginTop:5, flexShrink:0 }} />
+                      <div>
+                        <div style={{ fontFamily:'var(--font-mono)', fontSize:'0.6rem', color:'var(--text-muted)', marginBottom:3 }}>{m.data}</div>
+                        <p style={{ margin:0, fontSize:'0.8rem', color:'var(--text-secondary)', lineHeight:1.5 }}>{m.descricao}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+
+          {/* Novo relato */}
+          <div style={{ padding:'14px', background:'rgba(91,91,214,0.06)', border:'1px solid rgba(91,91,214,0.2)', borderRadius:12 }}>
+            <div style={{ fontSize:'0.65rem', fontWeight:700, color:'#a5a3f5', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:8 }}>📝 Registrar Movimentação</div>
+            <textarea
+              value={relato} onChange={e=>setRelato(e.target.value)}
+              placeholder="Descreva o que aconteceu com esta demanda..."
+              style={{ ...IS, minHeight:72, resize:'vertical', lineHeight:1.5, marginBottom:10 }}
+            />
+            <div style={{ display:'flex', justifyContent:'flex-end' }}>
+              <button onClick={salvar} disabled={saving||!relato.trim()} style={{ padding:'7px 20px', borderRadius:8, background:saving||!relato.trim()?'rgba(91,91,214,0.2)':'linear-gradient(135deg,#3b7cc9,#5b5bd6)', border:'none', color:'#fff', fontWeight:700, fontSize:'0.78rem', cursor:saving||!relato.trim()?'not-allowed':'pointer' }}>
+                {saving?'Salvando…':'+ Registrar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Calendário ───────────────────────────────────────────────────────────────
+function Calendario({ demandas, onClickDemanda }: { demandas: Demanda[]; onClickDemanda: (d:Demanda)=>void }) {
+  const hoje = new Date()
+  const [mes, setMes] = useState(hoje.getMonth())
+  const [ano, setAno] = useState(hoje.getFullYear())
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+  const DS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+  const primeiro = new Date(ano,mes,1).getDay()
+  const total = new Date(ano,mes+1,0).getDate()
+  const prazoColor = (dias:number) => dias<=0?'#ef4444':dias<=10?'#f87171':dias<=15?'#fbbf24':'#6ee7a0'
+
+  const evPorDia: Record<number,Demanda[]> = {}
+  demandas.forEach(d=>{
+    if(!d.prazo) return
+    const dp = new Date(d.prazo+'T00:00:00')
+    if(dp.getMonth()===mes&&dp.getFullYear()===ano){
+      const dia=dp.getDate(); if(!evPorDia[dia]) evPorDia[dia]=[]
+      evPorDia[dia].push(d)
+    }
+  })
+
+  const cells=[...Array(primeiro).fill(null),...Array.from({length:total},(_,i)=>i+1)]
+  const prev=()=>{ if(mes===0){setMes(11);setAno(a=>a-1)}else setMes(m=>m-1) }
+  const next=()=>{ if(mes===11){setMes(0);setAno(a=>a+1)}else setMes(m=>m+1) }
+
+  return (
+    <div style={{ background:'var(--card-bg,#1a1b26)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:18, padding:'20px' }}>
+      {/* Nav */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <button onClick={prev} style={{ width:32,height:32,borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'var(--text-muted)',fontSize:'1rem',cursor:'pointer' }}>‹</button>
+        <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.9rem',color:'var(--text-primary)' }}>{MESES[mes]} {ano}</div>
+        <button onClick={next} style={{ width:32,height:32,borderRadius:8,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'var(--text-muted)',fontSize:'1rem',cursor:'pointer' }}>›</button>
+      </div>
+      {/* Grid */}
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4 }}>
+        {DS.map(d=><div key={d} style={{ textAlign:'center',fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',padding:'4px 0' }}>{d}</div>)}
+        {cells.map((dia,i)=>{
+          if(!dia) return <div key={i} />
+          const evs = evPorDia[dia]||[]
+          const isHoje = dia===hoje.getDate()&&mes===hoje.getMonth()&&ano===hoje.getFullYear()
+          const cor = evs.length>0?prazoColor(diasRestantes(evs[0].prazo)):undefined
+          return (
+            <div key={i} style={{ minHeight:56,borderRadius:10,padding:4,background:isHoje?'rgba(91,91,214,0.2)':evs.length?`${cor}12`:'rgba(255,255,255,0.02)',border:`1px solid ${isHoje?'rgba(91,91,214,0.5)':evs.length?`${cor}30`:'rgba(255,255,255,0.05)'}` }}>
+              <div style={{ fontSize:'0.72rem',fontWeight:isHoje||evs.length?700:400,color:isHoje?'#a5a3f5':cor??'var(--text-muted)',textAlign:'center',marginBottom:2 }}>{dia}</div>
+              {evs.slice(0,2).map(ev=>(
+                <button key={ev.id} onClick={()=>onClickDemanda(ev)} style={{ display:'block',width:'100%',textAlign:'left',fontSize:'0.58rem',padding:'2px 4px',borderRadius:4,background:`${prazoColor(diasRestantes(ev.prazo))}20`,border:`1px solid ${prazoColor(diasRestantes(ev.prazo))}30`,color:prazoColor(diasRestantes(ev.prazo)),marginBottom:1,cursor:'pointer',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{ev.titulo}</button>
+              ))}
+              {evs.length>2&&<div style={{ fontSize:'0.55rem',textAlign:'center',color:'var(--text-muted)' }}>+{evs.length-2}</div>}
+            </div>
+          )
+        })}
+      </div>
+      {/* Legenda */}
+      <div style={{ display:'flex',gap:16,justifyContent:'center',marginTop:14,fontSize:'0.65rem',color:'var(--text-muted)' }}>
+        {[['#f87171','≤ 10 dias'],['#fbbf24','11–15 dias'],['#6ee7a0','≥ 16 dias']].map(([c,l])=>(
+          <span key={l} style={{ display:'flex',alignItems:'center',gap:5 }}><span style={{ width:8,height:8,borderRadius:'50%',background:c,display:'inline-block' }}/>{l}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function ProntuarioADM() {
   const uid = useUid()
   const [demandas, setDemandas] = useState<Demanda[]>([])
   const [loading, setLoading] = useState(true)
-  const [view, setView] = useState<'cards' | 'calendario'>('cards')
-  const [filtroStatus, setFiltroStatus] = useState<Status | 'todas'>('todas')
-  const [filtroPrioridade, setFiltroPrioridade] = useState<Prioridade | 'todas'>('todas')
+  const [view, setView] = useState<'cards'|'calendario'>('cards')
+  const [filtroStatus, setFiltroStatus] = useState<Status|'todas'>('todas')
+  const [filtroPrioridade, setFiltroPrioridade] = useState<Prioridade|'todas'>('todas')
   const [busca, setBusca] = useState('')
-  const [modalAberto, setModalAberto] = useState(false)
-  const [demandaSelecionada, setDemandaSelecionada] = useState<Demanda | null>(null)
-  const [modalDetalhe, setModalDetalhe] = useState<Demanda | null>(null)
-  const [deletandoId, setDeletandoId] = useState<string | null>(null)
+  const [formModal, setFormModal] = useState(false)
+  const [editando, setEditando] = useState<Demanda|null>(null)
+  const [detalhe, setDetalhe] = useState<Demanda|null>(null)
 
-  // Carrega demandas do Firestore
-  useEffect(() => {
-    if (!uid) return
-    const colRef = collection(db, 'users', uid, 'prontuario')
-    const unsub = onSnapshot(colRef, (snap) => {
-      const list: Demanda[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Demanda))
-      list.sort((a, b) => b.criadoEm - a.criadoEm)
-      setDemandas(list)
-      setLoading(false)
+  useEffect(()=>{
+    if(!uid) return
+    return onSnapshot(collection(db,'users',uid,'prontuario'), snap=>{
+      const list = snap.docs.map(d=>({id:d.id,...d.data()} as Demanda)).sort((a,b)=>b.criadoEm-a.criadoEm)
+      setDemandas(list); setLoading(false)
     })
-    return () => unsub()
-  }, [uid])
+  },[uid])
 
-  const demandasFiltradas = demandas.filter(d => {
-    if (filtroStatus !== 'todas' && d.status !== filtroStatus) return false
-    if (filtroPrioridade !== 'todas' && d.prioridade !== filtroPrioridade) return false
-    if (busca && !d.titulo.toLowerCase().includes(busca.toLowerCase()) &&
-        !(d.numeroDemanda || '').includes(busca) &&
-        !(d.processoSEI || '').includes(busca)) return false
+  const filtradas = demandas.filter(d=>{
+    if(filtroStatus!=='todas'&&d.status!==filtroStatus) return false
+    if(filtroPrioridade!=='todas'&&d.prioridade!==filtroPrioridade) return false
+    if(busca&&!d.titulo.toLowerCase().includes(busca.toLowerCase())&&!(d.numeroDemanda||'').includes(busca)) return false
     return true
   })
 
-  const abrirNovaDemanda = () => {
-    setDemandaSelecionada(null)
-    setModalAberto(true)
-  }
+  const stats = [
+    { label:'Abertas',      val:demandas.filter(d=>d.status==='aberta').length,       color:'#6b9fd4' },
+    { label:'Em Andamento', val:demandas.filter(d=>d.status==='em_andamento').length, color:'#fbbf24' },
+    { label:'Urgentes',     val:demandas.filter(d=>d.prioridade==='urgente'&&d.status!=='concluida'&&d.status!=='cancelada').length, color:'#f87171' },
+    { label:'Concluídas',   val:demandas.filter(d=>d.status==='concluida').length,    color:'#6ee7a0' },
+  ]
 
-  const abrirEditar = (d: Demanda) => {
-    setDemandaSelecionada(d)
-    setModalAberto(true)
-  }
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+  if(loading) return (
+    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'60vh' }}>
+      <div style={{ width:36,height:36,borderRadius:'50%',border:'2px solid transparent',borderTopColor:'#6b9fd4',animation:'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 
   return (
-    <div className="flex flex-col gap-4 p-4 pb-8 h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+    <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:16, minHeight:'100%', boxSizing:'border-box' }}>
+      {/* Título */}
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:10 }}>
         <div>
-          <h1 className="text-xl font-bold tracking-tight" style={{ color: 'var(--text-primary)', fontFamily: "'DM Sans', sans-serif" }}>
-            Prontuário ADM
-          </h1>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            {demandas.filter(d => d.status !== 'concluida' && d.status !== 'cancelada').length} demandas ativas
-          </p>
+          <h1 style={{ margin:0,fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.4rem',color:'var(--text-primary)',letterSpacing:'-0.01em' }}>Prontuário ADM</h1>
+          <p style={{ margin:'3px 0 0',fontSize:'0.75rem',color:'var(--text-muted)' }}>{demandas.filter(d=>d.status!=='concluida'&&d.status!=='cancelada').length} demandas ativas</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setView(v => v === 'cards' ? 'calendario' : 'cards')}
-            className="px-3 py-1.5 text-xs rounded-lg flex items-center gap-1.5 transition-all"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-            {view === 'cards' ? '📅 Calendário' : '🗂 Cards'}
+        <div style={{ display:'flex',gap:8 }}>
+          <button onClick={()=>setView(v=>v==='cards'?'calendario':'cards')} style={{ padding:'8px 14px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'var(--text-secondary)',fontSize:'0.78rem',cursor:'pointer',fontWeight:600 }}>
+            {view==='cards'?'📅 Calendário':'🗂 Cards'}
           </button>
-          <button
-            onClick={abrirNovaDemanda}
-            className="px-4 py-1.5 text-xs font-semibold rounded-lg transition-all hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, #3b7cc9, #5b5bd6)', color: '#fff' }}>
+          <button onClick={()=>{setEditando(null);setFormModal(true)}} style={{ padding:'8px 18px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#3b7cc9,#5b5bd6)',color:'#fff',fontWeight:700,fontSize:'0.82rem',cursor:'pointer' }}>
             + Nova Demanda
           </button>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-2 items-center">
-        <input
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          placeholder="Buscar por título, nº demanda, SEI..."
-          className="text-xs px-3 py-1.5 rounded-lg flex-1 min-w-48 outline-none"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
-        <select
-          value={filtroStatus}
-          onChange={e => setFiltroStatus(e.target.value as any)}
-          className="text-xs px-2 py-1.5 rounded-lg outline-none"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-          <option value="todas">Todos os status</option>
-          {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
-        <select
-          value={filtroPrioridade}
-          onChange={e => setFiltroPrioridade(e.target.value as any)}
-          className="text-xs px-2 py-1.5 rounded-lg outline-none"
-          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>
-          <option value="todas">Todas prioridades</option>
-          {Object.entries(PRIORIDADE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
-      </div>
-
-      {/* Stats strip */}
-      <div className="grid grid-cols-4 gap-2">
-        {[
-          { label: 'Abertas',      val: demandas.filter(d => d.status === 'aberta').length,       color: '#6b9fd4' },
-          { label: 'Em Andamento', val: demandas.filter(d => d.status === 'em_andamento').length, color: '#fbbf24' },
-          { label: 'Urgentes',     val: demandas.filter(d => d.prioridade === 'urgente' && d.status !== 'concluida').length, color: '#f87171' },
-          { label: 'Concluídas',   val: demandas.filter(d => d.status === 'concluida').length,    color: '#6ee7a0' },
-        ].map(s => (
-          <div key={s.label} className="rounded-xl px-3 py-2 text-center"
-            style={{ background: 'var(--widget-bg)', border: '1px solid var(--border)' }}>
-            <div className="text-lg font-bold" style={{ color: s.color }}>{s.val}</div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>{s.label}</div>
+      {/* Stats */}
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10 }}>
+        {stats.map(s=>(
+          <div key={s.label} style={{ padding:'12px 16px',background:'var(--card-bg,#1a1b26)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.5rem',color:s.color,lineHeight:1 }}>{s.val}</div>
+            <div style={{ fontSize:'0.68rem',color:'var(--text-muted)',marginTop:4 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* View: Cards */}
-      {view === 'cards' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {demandasFiltradas.length === 0 && (
-            <div className="col-span-3 text-center py-16" style={{ color: 'var(--text-muted)' }}>
-              <div className="text-4xl mb-2">📂</div>
-              <p className="text-sm">Nenhuma demanda encontrada</p>
+      {/* Filtros */}
+      <div style={{ display:'flex',flexWrap:'wrap',gap:8,alignItems:'center' }}>
+        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar por título ou nº demanda..." style={{ ...IS, flex:1, minWidth:200 }} />
+        <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as any)} style={{ ...IS, width:'auto' }}>
+          <option value="todas">Todos os status</option>
+          {Object.entries(ST).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select value={filtroPrioridade} onChange={e=>setFiltroPrioridade(e.target.value as any)} style={{ ...IS, width:'auto' }}>
+          <option value="todas">Todas prioridades</option>
+          {Object.entries(PR).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+        </select>
+      </div>
+
+      {/* Cards */}
+      {view==='cards' && (
+        <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(300px,1fr))',gap:14 }}>
+          {filtradas.length===0 && (
+            <div style={{ gridColumn:'1/-1',textAlign:'center',padding:'60px 0',color:'var(--text-muted)' }}>
+              <div style={{ fontSize:'2.5rem',marginBottom:10 }}>📂</div>
+              <p style={{ margin:0,fontSize:'0.85rem' }}>Nenhuma demanda encontrada</p>
             </div>
           )}
-          {demandasFiltradas.map(d => {
-            const dias = diasRestantes(d.prazo)
-            const pz = prazoLabel(dias)
-            const pr = PRIORIDADE_CONFIG[d.prioridade]
-            const st = STATUS_CONFIG[d.status]
+          {filtradas.map(d=>{
+            const dias=diasRestantes(d.prazo); const pz=prazoInfo(dias)
+            const pr=PR[d.prioridade]; const st=ST[d.status]
+            const cs=cardStyle(dias,d.status)
             return (
-              <div key={d.id}
-                className="rounded-2xl p-4 flex flex-col gap-3 cursor-pointer transition-all hover:scale-[1.01]"
-                style={{
-                  background: cardBg(dias, d.status),
-                  border: `1px solid ${cardBorderColor(dias, d.status)}`,
-                  backdropFilter: 'blur(8px)',
-                }}
-                onClick={() => setModalDetalhe(d)}>
-                {/* Card header */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                      {d.numeroDemanda && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                          style={{ background: 'var(--surface)', color: 'var(--text-muted)' }}>
-                          #{d.numeroDemanda}
-                        </span>
-                      )}
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                        style={{ background: pr.bg, color: pr.color }}>
-                        {pr.label}
-                      </span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                        style={{ color: st.color, background: `${st.color}20` }}>
-                        {st.label}
-                      </span>
-                    </div>
-                    <h3 className="text-sm font-semibold leading-snug" style={{ color: 'var(--text-primary)' }}>
-                      {d.titulo}
-                    </h3>
-                  </div>
+              <div key={d.id} onClick={()=>setDetalhe(d)}
+                style={{ ...cs, borderRadius:16, padding:'16px', cursor:'pointer', transition:'transform 0.15s', display:'flex', flexDirection:'column', gap:10 }}
+                onMouseEnter={e=>(e.currentTarget as HTMLElement).style.transform='scale(1.01)'}
+                onMouseLeave={e=>(e.currentTarget as HTMLElement).style.transform='scale(1)'}>
+                {/* Badges */}
+                <div style={{ display:'flex',flexWrap:'wrap',gap:5,alignItems:'center' }}>
+                  {d.numeroDemanda&&<span style={{ fontFamily:'var(--font-mono)',fontSize:'0.62rem',padding:'2px 7px',borderRadius:5,background:'rgba(255,255,255,0.07)',color:'var(--text-muted)' }}>#{d.numeroDemanda}</span>}
+                  <span style={{ fontSize:'0.65rem',padding:'2px 9px',borderRadius:12,background:pr.bg,color:pr.color,fontWeight:700 }}>{pr.label}</span>
+                  <span style={{ fontSize:'0.65rem',padding:'2px 9px',borderRadius:12,background:`${st.color}20`,color:st.color,fontWeight:700 }}>{st.label}</span>
                 </div>
-
-                {/* Descricao breve */}
-                {d.descricao && (
-                  <p className="text-xs line-clamp-2 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                    {d.descricao}
-                  </p>
-                )}
-
+                {/* Título */}
+                <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.92rem',color:'var(--text-primary)',lineHeight:1.3 }}>{d.titulo}</div>
+                {/* Descrição */}
+                {d.descricao&&<p style={{ margin:0,fontSize:'0.75rem',color:'var(--text-secondary)',lineHeight:1.5,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden' }}>{d.descricao}</p>}
                 {/* Meta */}
-                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-                  {d.solicitante && <span>👤 {d.solicitante}</span>}
-                  {d.unidadeDemandante && <span>🏛 {d.unidadeDemandante}</span>}
-                  {d.categoria && <span>🏷 {d.categoria}</span>}
+                <div style={{ display:'flex',flexWrap:'wrap',gap:'4px 12px',fontSize:'0.7rem',color:'var(--text-muted)' }}>
+                  {d.solicitante&&<span>👤 {d.solicitante}</span>}
+                  {d.unidadeDemandante&&<span>🏛 {d.unidadeDemandante}</span>}
+                  {d.categoria&&<span>🏷 {d.categoria}</span>}
                 </div>
-
                 {/* Footer */}
-                <div className="flex items-center justify-between pt-2 border-t"
-                  style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-                  <span className="text-xs" style={{ color: pz.color }}>
-                    ⏱ {d.prazo ? pz.text : 'Sem prazo'}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {d.movimentacoes?.length > 0 && (
-                      <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                        💬 {d.movimentacoes.length}
-                      </span>
-                    )}
-                    <button
-                      onClick={e => { e.stopPropagation(); abrirEditar(d) }}
-                      className="text-[10px] px-2 py-0.5 rounded transition-colors"
-                      style={{ background: 'var(--surface)', color: 'var(--text-muted)' }}>
-                      Editar
-                    </button>
+                <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',paddingTop:8,borderTop:'1px solid rgba(255,255,255,0.07)',marginTop:'auto' }}>
+                  <span style={{ fontSize:'0.72rem',fontWeight:700,color:pz.color }}>⏱ {d.prazo?pz.text:'Sem prazo'}</span>
+                  <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+                    {(d.movimentacoes?.length||0)>0&&<span style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>💬 {d.movimentacoes.length}</span>}
+                    <button onClick={e=>{e.stopPropagation();setEditando(d);setFormModal(true)}} style={{ padding:'3px 10px',borderRadius:6,border:'1px solid rgba(255,255,255,0.1)',background:'rgba(255,255,255,0.04)',color:'var(--text-muted)',fontSize:'0.65rem',cursor:'pointer' }}>Editar</button>
                   </div>
                 </div>
               </div>
@@ -310,485 +569,12 @@ export default function ProntuarioADM() {
         </div>
       )}
 
-      {/* View: Calendário */}
-      {view === 'calendario' && (
-        <CalendarioDemandas demandas={demandas} onClickDemanda={setModalDetalhe} />
-      )}
+      {/* Calendário */}
+      {view==='calendario'&&<Calendario demandas={demandas} onClickDemanda={setDetalhe} />}
 
-      {/* Modal Formulário */}
-      {modalAberto && (
-        <ModalFormDemanda
-          uid={uid}
-          demanda={demandaSelecionada}
-          onClose={() => setModalAberto(false)}
-          onDelete={async (id) => {
-            setDeletandoId(id)
-            await deleteDoc(doc(db, 'users', uid!, 'prontuario', id))
-            setDeletandoId(null)
-            setModalAberto(false)
-          }}
-          deletandoId={deletandoId}
-        />
-      )}
-
-      {/* Modal Detalhe */}
-      {modalDetalhe && (
-        <ModalDetalheDemanda
-          uid={uid}
-          demanda={modalDetalhe}
-          onClose={() => setModalDetalhe(null)}
-          onEdit={() => { setDemandaSelecionada(modalDetalhe); setModalDetalhe(null); setModalAberto(true) }}
-        />
-      )}
-    </div>
-  )
-}
-
-// ─── Modal Formulário ─────────────────────────────────────────────────────────
-
-function ModalFormDemanda({ uid, demanda, onClose, onDelete, deletandoId }: {
-  uid: string | null
-  demanda: Demanda | null
-  onClose: () => void
-  onDelete: (id: string) => void
-  deletandoId: string | null
-}) {
-  const isEdit = !!demanda
-  const [form, setForm] = useState<Omit<Demanda, 'id' | 'criadoEm' | 'encaminhamentos' | 'movimentacoes'>>({
-    numeroDemanda: demanda?.numeroDemanda || '',
-    processoSEI:   demanda?.processoSEI || '',
-    titulo:        demanda?.titulo || '',
-    descricao:     demanda?.descricao || '',
-    dataAbertura:  demanda?.dataAbertura || new Date().toISOString().slice(0, 10),
-    prazo:         demanda?.prazo || '',
-    solicitante:   demanda?.solicitante || '',
-    unidadeDemandante: demanda?.unidadeDemandante || '',
-    categoria:     demanda?.categoria || '',
-    prioridade:    demanda?.prioridade || 'media',
-    status:        demanda?.status || 'aberta',
-  })
-  const [saving, setSaving] = useState(false)
-  // Encaminhamentos
-  const [encaminhamentos, setEncaminhamentos] = useState<Encaminhamento[]>(demanda?.encaminhamentos || [])
-  const [novoEnc, setNovoEnc] = useState({ de: '', para: '', data: '', observacao: '' })
-
-  const handleSave = async () => {
-    if (!uid || !form.titulo.trim()) return
-    setSaving(true)
-    const id = isEdit ? demanda!.id : newId()
-    const payload: Demanda = {
-      id,
-      ...form,
-      encaminhamentos,
-      movimentacoes: demanda?.movimentacoes || [],
-      criadoEm: demanda?.criadoEm || Date.now(),
-    }
-    await setDoc(doc(db, 'users', uid, 'prontuario', id), payload)
-    setSaving(false)
-    onClose()
-  }
-
-  const field = (label: string, node: React.ReactNode) => (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>{label}</label>
-      {node}
-    </div>
-  )
-
-  const inputCls = "text-xs px-3 py-2 rounded-lg outline-none w-full"
-  const inputStyle = { background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-primary)' }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto flex flex-col"
-        style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b sticky top-0"
-          style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-          <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-            {isEdit ? 'Editar Demanda' : 'Nova Demanda'}
-          </h2>
-          <button onClick={onClose} className="text-xl leading-none" style={{ color: 'var(--text-muted)' }}>✕</button>
-        </div>
-
-        <div className="p-5 flex flex-col gap-4">
-          {/* Identificação */}
-          <SectionTitle>Identificação</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
-            {field('Nº da Demanda', <input className={inputCls} style={inputStyle} value={form.numeroDemanda} onChange={e => setForm(f => ({ ...f, numeroDemanda: e.target.value }))} placeholder="Ex: 2025/0123" />)}
-            {field('Processo SEI', <input className={inputCls} style={inputStyle} value={form.processoSEI} onChange={e => setForm(f => ({ ...f, processoSEI: e.target.value }))} placeholder="Ex: 1234.000123/2025-99" />)}
-          </div>
-          {field('Título *', <input className={inputCls} style={inputStyle} value={form.titulo} onChange={e => setForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Título descritivo da demanda" />)}
-          {field('Descrição Detalhada', <textarea className={inputCls} style={{ ...inputStyle, resize: 'vertical', minHeight: 80 }} value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Descreva em detalhes o objeto da demanda..." />)}
-
-          {/* Partes */}
-          <SectionTitle>Solicitação</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
-            {field('Solicitante', <input className={inputCls} style={inputStyle} value={form.solicitante} onChange={e => setForm(f => ({ ...f, solicitante: e.target.value }))} placeholder="Nome do solicitante" />)}
-            {field('Unidade Demandante', <input className={inputCls} style={inputStyle} value={form.unidadeDemandante} onChange={e => setForm(f => ({ ...f, unidadeDemandante: e.target.value }))} placeholder="Ex: Diretoria de Contratos" />)}
-          </div>
-
-          {/* Classificação */}
-          <SectionTitle>Classificação & Prazos</SectionTitle>
-          <div className="grid grid-cols-2 gap-3">
-            {field('Categoria', (
-              <select className={inputCls} style={inputStyle} value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
-                <option value="">Selecionar...</option>
-                {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            ))}
-            {field('Prioridade', (
-              <select className={inputCls} style={inputStyle} value={form.prioridade} onChange={e => setForm(f => ({ ...f, prioridade: e.target.value as Prioridade }))}>
-                {Object.entries(PRIORIDADE_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            ))}
-            {field('Data de Abertura', <input type="date" className={inputCls} style={inputStyle} value={form.dataAbertura} onChange={e => setForm(f => ({ ...f, dataAbertura: e.target.value }))} />)}
-            {field('Prazo de Conclusão', <input type="date" className={inputCls} style={inputStyle} value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))} />)}
-            {field('Status', (
-              <select className={inputCls} style={inputStyle} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Status }))}>
-                {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            ))}
-          </div>
-
-          {/* Encaminhamentos */}
-          <SectionTitle>Fluxo entre Setores</SectionTitle>
-          <div className="flex flex-col gap-2">
-            {encaminhamentos.map((enc, i) => (
-              <div key={enc.id} className="flex items-center gap-2 text-xs rounded-lg px-3 py-2"
-                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <span style={{ color: 'var(--text-muted)' }}>{enc.de}</span>
-                <span style={{ color: 'var(--text-muted)' }}>→</span>
-                <span style={{ color: 'var(--text-primary)' }} className="font-medium">{enc.para}</span>
-                <span style={{ color: 'var(--text-muted)' }}>{enc.data}</span>
-                {enc.observacao && <span className="italic" style={{ color: 'var(--text-muted)' }}>— {enc.observacao}</span>}
-                <button onClick={() => setEncaminhamentos(e => e.filter((_, j) => j !== i))}
-                  className="ml-auto text-red-400/60 hover:text-red-400">✕</button>
-              </div>
-            ))}
-            <div className="grid grid-cols-4 gap-2">
-              <input placeholder="De" className={inputCls} style={inputStyle} value={novoEnc.de} onChange={e => setNovoEnc(n => ({ ...n, de: e.target.value }))} />
-              <input placeholder="Para" className={inputCls} style={inputStyle} value={novoEnc.para} onChange={e => setNovoEnc(n => ({ ...n, para: e.target.value }))} />
-              <input type="date" className={inputCls} style={inputStyle} value={novoEnc.data} onChange={e => setNovoEnc(n => ({ ...n, data: e.target.value }))} />
-              <button
-                onClick={() => {
-                  if (!novoEnc.de || !novoEnc.para) return
-                  setEncaminhamentos(e => [...e, { id: newId(), ...novoEnc }])
-                  setNovoEnc({ de: '', para: '', data: '', observacao: '' })
-                }}
-                className="text-xs rounded-lg font-medium transition-colors"
-                style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>
-                + Adicionar
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between p-5 border-t sticky bottom-0"
-          style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-          <div>
-            {isEdit && (
-              <button
-                onClick={() => onDelete(demanda!.id)}
-                disabled={deletandoId === demanda!.id}
-                className="text-xs px-3 py-1.5 rounded-lg text-red-400/70 hover:text-red-400 transition-colors"
-                style={{ border: '1px solid rgba(239,68,68,0.2)' }}>
-                {deletandoId === demanda!.id ? 'Removendo...' : 'Excluir'}
-              </button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button onClick={onClose} className="text-xs px-4 py-1.5 rounded-lg"
-              style={{ background: 'var(--surface)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
-              Cancelar
-            </button>
-            <button onClick={handleSave} disabled={saving || !form.titulo.trim()}
-              className="text-xs px-5 py-1.5 rounded-lg font-semibold transition-opacity disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #3b7cc9, #5b5bd6)', color: '#fff' }}>
-              {saving ? 'Salvando...' : isEdit ? 'Salvar Alterações' : 'Criar Demanda'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Modal Detalhe ────────────────────────────────────────────────────────────
-
-function ModalDetalheDemanda({ uid, demanda, onClose, onEdit }: {
-  uid: string | null
-  demanda: Demanda
-  onClose: () => void
-  onEdit: () => void
-}) {
-  const [movimentacoes, setMovimentacoes] = useState<Movimentacao[]>(demanda.movimentacoes || [])
-  const [novoRelato, setNovoRelato] = useState('')
-  const [salvando, setSalvando] = useState(false)
-  const dias = diasRestantes(demanda.prazo)
-  const pz = prazoLabel(dias)
-  const pr = PRIORIDADE_CONFIG[demanda.prioridade]
-  const st = STATUS_CONFIG[demanda.status]
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  const salvarRelato = async () => {
-    if (!uid || !novoRelato.trim()) return
-    setSalvando(true)
-    const nova: Movimentacao = {
-      id: newId(),
-      data: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      tipo: 'registro',
-      descricao: novoRelato.trim(),
-    }
-    const updated = [...movimentacoes, nova]
-    setMovimentacoes(updated)
-    await updateDoc(doc(db, 'users', uid, 'prontuario', demanda.id), { movimentacoes: updated })
-    setNovoRelato('')
-    setSalvando(false)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto flex flex-col"
-        style={{ background: 'var(--card)', border: `1px solid ${cardBorderColor(dias, demanda.status)}` }}>
-        {/* Header */}
-        <div className="p-5 border-b sticky top-0"
-          style={{ borderColor: 'var(--border)', background: 'var(--card)' }}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                {demanda.numeroDemanda && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                    style={{ background: 'var(--surface)', color: 'var(--text-muted)' }}>
-                    #{demanda.numeroDemanda}
-                  </span>
-                )}
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-                  style={{ background: pr.bg, color: pr.color }}>{pr.label}</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-                  style={{ color: st.color, background: `${st.color}20` }}>{st.label}</span>
-                <span className="text-[10px] font-medium" style={{ color: pz.color }}>⏱ {pz.text}</span>
-              </div>
-              <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>{demanda.titulo}</h2>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={onEdit} className="text-xs px-3 py-1.5 rounded-lg"
-                style={{ background: 'var(--surface)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>
-                ✏ Editar
-              </button>
-              <button onClick={onClose} className="text-lg leading-none" style={{ color: 'var(--text-muted)' }}>✕</button>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-5 flex flex-col gap-5">
-          {/* Info Grid */}
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-            {[
-              ['Solicitante', demanda.solicitante],
-              ['Unidade', demanda.unidadeDemandante],
-              ['Categoria', demanda.categoria],
-              ['Processo SEI', demanda.processoSEI],
-              ['Data Abertura', demanda.dataAbertura],
-              ['Prazo', demanda.prazo],
-            ].filter(([, v]) => v).map(([k, v]) => (
-              <div key={k}>
-                <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{k}</div>
-                <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{v}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Descricao */}
-          {demanda.descricao && (
-            <div>
-              <div className="text-xs font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Descrição</div>
-              <p className="text-xs leading-relaxed rounded-xl px-3 py-2"
-                style={{ color: 'var(--text-secondary)', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                {demanda.descricao}
-              </p>
-            </div>
-          )}
-
-          {/* Fluxo */}
-          {demanda.encaminhamentos?.length > 0 && (
-            <div>
-              <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Fluxo entre Setores</div>
-              <div className="flex flex-col gap-1.5">
-                {demanda.encaminhamentos.map((enc, i) => (
-                  <div key={enc.id} className="flex items-center gap-2 text-xs rounded-lg px-3 py-2"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                    <span className="text-[10px] font-mono text-blue-400/70">{String(i + 1).padStart(2, '0')}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{enc.de}</span>
-                    <span className="text-amber-400/60">→</span>
-                    <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{enc.para}</span>
-                    <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>{enc.data}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Histórico de movimentações */}
-          <div>
-            <div className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>
-              Histórico de Movimentações
-            </div>
-            {movimentacoes.length === 0 ? (
-              <p className="text-xs italic" style={{ color: 'var(--text-muted)' }}>Nenhum registro ainda.</p>
-            ) : (
-              <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
-                {[...movimentacoes].reverse().map(m => (
-                  <div key={m.id} className="flex gap-3 text-xs rounded-xl px-3 py-2"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                    <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                      <div className="w-1.5 h-1.5 rounded-full mt-1" style={{ background: '#6b9fd4' }} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-mono text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>{m.data}</div>
-                      <p style={{ color: 'var(--text-secondary)' }} className="leading-relaxed">{m.descricao}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Novo relato */}
-          <div className="rounded-xl p-3 flex flex-col gap-2"
-            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <div className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>📝 Registrar Movimentação</div>
-            <textarea
-              ref={textareaRef}
-              value={novoRelato}
-              onChange={e => setNovoRelato(e.target.value)}
-              placeholder="Descreva o que aconteceu com esta demanda..."
-              className="text-xs w-full outline-none resize-none leading-relaxed"
-              style={{ background: 'transparent', color: 'var(--text-primary)', minHeight: 72 }}
-            />
-            <div className="flex justify-end">
-              <button
-                onClick={salvarRelato}
-                disabled={salvando || !novoRelato.trim()}
-                className="text-xs px-4 py-1.5 rounded-lg font-semibold transition-opacity disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg, #3b7cc9, #5b5bd6)', color: '#fff' }}>
-                {salvando ? 'Salvando...' : '+ Registrar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Calendário de Demandas ───────────────────────────────────────────────────
-
-function CalendarioDemandas({ demandas, onClickDemanda }: {
-  demandas: Demanda[]
-  onClickDemanda: (d: Demanda) => void
-}) {
-  const hoje = new Date()
-  const [mes, setMes] = useState(hoje.getMonth())
-  const [ano, setAno] = useState(hoje.getFullYear())
-
-  const primeiroDia = new Date(ano, mes, 1).getDay()
-  const diasNoMes = new Date(ano, mes + 1, 0).getDate()
-  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-  const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
-
-  const eventosPorDia: Record<number, Demanda[]> = {}
-  demandas.forEach(d => {
-    if (!d.prazo) return
-    const dp = new Date(d.prazo + 'T00:00:00')
-    if (dp.getMonth() === mes && dp.getFullYear() === ano) {
-      const dia = dp.getDate()
-      if (!eventosPorDia[dia]) eventosPorDia[dia] = []
-      eventosPorDia[dia].push(d)
-    }
-  })
-
-  const prevMes = () => { if (mes === 0) { setMes(11); setAno(a => a - 1) } else setMes(m => m - 1) }
-  const nextMes = () => { if (mes === 11) { setMes(0); setAno(a => a + 1) } else setMes(m => m + 1) }
-
-  const cells: (number | null)[] = [
-    ...Array(primeiroDia).fill(null),
-    ...Array.from({ length: diasNoMes }, (_, i) => i + 1),
-  ]
-
-  return (
-    <div className="rounded-2xl p-4 flex flex-col gap-4"
-      style={{ background: 'var(--widget-bg)', border: '1px solid var(--border)' }}>
-      {/* Nav */}
-      <div className="flex items-center justify-between">
-        <button onClick={prevMes} className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
-          style={{ background: 'var(--surface)', color: 'var(--text-muted)' }}>‹</button>
-        <div className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-          {MESES[mes]} {ano}
-        </div>
-        <button onClick={nextMes} className="w-8 h-8 rounded-lg flex items-center justify-center text-sm"
-          style={{ background: 'var(--surface)', color: 'var(--text-muted)' }}>›</button>
-      </div>
-
-      {/* Grid */}
-      <div className="grid grid-cols-7 gap-1">
-        {DIAS_SEMANA.map(d => (
-          <div key={d} className="text-center text-[10px] font-semibold py-1"
-            style={{ color: 'var(--text-muted)' }}>{d}</div>
-        ))}
-        {cells.map((dia, i) => {
-          if (!dia) return <div key={i} />
-          const eventos = eventosPorDia[dia] || []
-          const isHoje = dia === hoje.getDate() && mes === hoje.getMonth() && ano === hoje.getFullYear()
-          return (
-            <div key={i}
-              className="rounded-xl p-1 min-h-[52px] flex flex-col gap-0.5"
-              style={{
-                background: isHoje ? 'rgba(91,91,214,0.15)' : eventos.length ? 'rgba(59,124,201,0.08)' : 'transparent',
-                border: isHoje ? '1px solid rgba(91,91,214,0.4)' : '1px solid transparent',
-              }}>
-              <div className="text-[11px] font-medium text-center"
-                style={{ color: isHoje ? '#a5a3f5' : 'var(--text-secondary)' }}>{dia}</div>
-              {eventos.slice(0, 2).map(ev => {
-                const dias = diasRestantes(ev.prazo)
-                const cor = dias <= 10 ? '#f87171' : dias <= 15 ? '#fbbf24' : '#6ee7a0'
-                return (
-                  <button key={ev.id} onClick={() => onClickDemanda(ev)}
-                    className="text-[9px] rounded px-1 py-0.5 truncate text-left w-full leading-tight"
-                    style={{ background: `${cor}20`, color: cor, border: `1px solid ${cor}30` }}>
-                    {ev.titulo}
-                  </button>
-                )
-              })}
-              {eventos.length > 2 && (
-                <div className="text-[9px] text-center" style={{ color: 'var(--text-muted)' }}>+{eventos.length - 2}</div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Legenda */}
-      <div className="flex gap-4 text-[10px] justify-center pt-1" style={{ color: 'var(--text-muted)' }}>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400/60" />≤ 10 dias</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400/60" />11–15 dias</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400/60" />≥ 16 dias</span>
-      </div>
-    </div>
-  )
-}
-
-// ─── Section Title helper ─────────────────────────────────────────────────────
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 mt-1">
-      <div className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>{children}</div>
-      <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+      {/* Modais */}
+      {formModal&&<FormModal uid={uid} demanda={editando} onClose={()=>{setFormModal(false);setEditando(null)}} />}
+      {detalhe&&<DetalheModal uid={uid} demanda={detalhe} onClose={()=>setDetalhe(null)} onEdit={()=>{setEditando(detalhe);setDetalhe(null);setFormModal(true)}} />}
     </div>
   )
 }
