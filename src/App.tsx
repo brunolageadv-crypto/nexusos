@@ -57,28 +57,48 @@ function NexusLogo() {
   )
 }
 
+// ─── Ícone Editais — coluna de paragrafos com marcador ────────────────────────
+function IconEditais({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Documento base */}
+      <rect x="2" y="1" width="11" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3"/>
+      {/* Dobra canto superior direito */}
+      <path d="M10 1 L13 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+      <path d="M10 1 L10 4 L13 4" fill="none" stroke="currentColor" strokeWidth="1.1"/>
+      {/* Linhas de texto */}
+      <line x1="4.5" y1="6.5"  x2="10.5" y2="6.5"  stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <line x1="4.5" y1="8.5"  x2="10.5" y2="8.5"  stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      <line x1="4.5" y1="10.5" x2="8.5"  y2="10.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+      {/* Selo / marcador de certificação — círculo com check */}
+      <circle cx="14" cy="13" r="3.5" fill="#1e2030" stroke="currentColor" strokeWidth="1.2"/>
+      <path d="M12.3 13 L13.5 14.2 L15.7 11.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 const NAV = [
   { section: 'PRINCIPAL', items: [
-    { id: 'dashboard',  label: 'Dashboard',         icon: '◈' },
+    { id: 'dashboard',  label: 'Dashboard',         icon: '◈',  svgIcon: null },
   ]},
   { section: 'JURÍDICO', items: [
-    { id: 'editais',    label: 'Editais',             icon: '⚖' },
-    { id: 'concursos',  label: 'Concursos',          icon: '🎯' },
-    { id: 'prontuario', label: 'Prontuário ADM',     icon: '📋' },
+    { id: 'editais',    label: 'Editais',            icon: null, svgIcon: 'editais' },
+    { id: 'concursos',  label: 'Concursos',          icon: '🎯', svgIcon: null },
+    { id: 'prontuario', label: 'Prontuário ADM',     icon: '📋', svgIcon: null },
   ]},
   { section: 'FINANÇAS & VIDA', items: [
-    { id: 'financeiro', label: 'Financeiro',         icon: '◎' },
-    { id: 'ponto',      label: 'Ponto Eletrônico',   icon: '⊙' },
-    { id: 'saude',      label: 'Saúde & Bem-Estar',  icon: '✚' },
-    { id: 'wishlist',   label: 'Wishlist & Compras', icon: '🛒' },
+    { id: 'financeiro', label: 'Financeiro',         icon: '◎',  svgIcon: null },
+    { id: 'ponto',      label: 'Ponto Eletrônico',   icon: '⊙',  svgIcon: null },
+    { id: 'saude',      label: 'Saúde & Bem-Estar',  icon: '✚',  svgIcon: null },
+    { id: 'wishlist',   label: 'Wishlist & Compras', icon: '🛒', svgIcon: null },
   ]},
   { section: 'ENTRETENIMENTO', items: [
-    { id: 'journal',    label: 'Diário',             icon: '✦' },
-    { id: 'media',      label: 'Media Tracker',      icon: '▶' },
-    { id: 'gaming',     label: 'Gaming Hub',         icon: '🎮' },
+    { id: 'journal',    label: 'Diário',             icon: '✦',  svgIcon: null },
+    { id: 'media',      label: 'Media Tracker',      icon: '▶',  svgIcon: null },
+    { id: 'gaming',     label: 'Gaming Hub',         icon: '🎮', svgIcon: null },
   ]},
   { section: 'UTILIDADES', items: [
-    { id: 'links',      label: 'Links de Interesse', icon: '🔗' },
+    { id: 'links',      label: 'Links de Interesse', icon: '🔗', svgIcon: null },
   ]},
 ]
 
@@ -86,40 +106,98 @@ function AppShell() {
   const [active, setActive] = useState('dashboard')
   const { theme, toggle } = useTheme()
   const { user, logout } = useAuth()
+
+  // Sidebar: 'fixed' = sempre visível | 'auto' = oculta/aparece no hover
+  const [sidebarMode, setSidebarMode] = useState<'fixed' | 'auto'>(
+    () => (localStorage.getItem('nexusos-sidebar-mode') as 'fixed' | 'auto') ?? 'fixed'
+  )
+  const [sidebarHovered, setSidebarHovered] = useState(false)
+
+  const sidebarVisible = sidebarMode === 'fixed' || sidebarHovered
+
+  const toggleSidebarMode = () => {
+    const next = sidebarMode === 'fixed' ? 'auto' : 'fixed'
+    setSidebarMode(next)
+    localStorage.setItem('nexusos-sidebar-mode', next)
+  }
+
   const currentLabel = NAV.flatMap(g => g.items).find(i => i.id === active)?.label ?? ''
   const displayName = user?.displayName ?? user?.email ?? 'Usuário'
   const avatarUrl = user?.photoURL ?? null
   const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className="app-shell" style={{ position: 'relative' }}>
+
+      {/* ── Zona de hover para revelar sidebar quando no modo auto ── */}
+      {sidebarMode === 'auto' && (
+        <div
+          onMouseEnter={() => setSidebarHovered(true)}
+          style={{
+            position: 'fixed', left: 0, top: 0, bottom: 0,
+            width: sidebarHovered ? 0 : 16,
+            zIndex: 40,
+          }}
+        />
+      )}
+
+      {/* ── SIDEBAR ── */}
+      <aside
+        className="sidebar"
+        onMouseEnter={() => sidebarMode === 'auto' && setSidebarHovered(true)}
+        onMouseLeave={() => sidebarMode === 'auto' && setSidebarHovered(false)}
+        style={{
+          position: sidebarMode === 'auto' ? 'fixed' : 'relative',
+          top: 0, left: 0, bottom: 0,
+          zIndex: 50,
+          transform: sidebarVisible ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
+          boxShadow: sidebarMode === 'auto' && sidebarHovered
+            ? '4px 0 32px rgba(0,0,0,0.5)'
+            : 'none',
+        }}
+      >
         <div className="sidebar-logo"><NexusLogo /></div>
+
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
           {NAV.map(group => (
             <div key={group.section} className="sidebar-section">
               <div className="sidebar-section-label">{group.section}</div>
               {group.items.map(item => (
-                <button key={item.id} className={`nav-item ${active === item.id ? 'active' : ''}`} onClick={() => setActive(item.id)}>
-                  <span className="nav-icon">{item.icon}</span>
+                <button
+                  key={item.id}
+                  className={`nav-item ${active === item.id ? 'active' : ''}`}
+                  onClick={() => setActive(item.id)}
+                >
+                  <span className="nav-icon">
+                    {item.svgIcon === 'editais'
+                      ? <IconEditais size={17} />
+                      : item.icon}
+                  </span>
                   <span className="nav-label">{item.label}</span>
                 </button>
               ))}
             </div>
           ))}
         </div>
+
+        {/* User block */}
         <div style={{ margin: '0 12px 8px', padding: '11px 13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid rgba(180,185,200,0.35)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(180,185,200,0.1)' }}>
-            {avatarUrl ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
+            {avatarUrl
+              ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName.split(' ')[0]}</div>
             <div style={{ fontSize: '0.58rem', color: 'rgba(180,185,200,0.4)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
           </div>
-          <button onClick={logout} title="Sair" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.18)', fontSize: '1rem', padding: 4, borderRadius: 6, flexShrink: 0, transition: 'color 0.2s' }}
+          <button onClick={logout} title="Sair"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.18)', fontSize: '1rem', padding: 4, borderRadius: 6, flexShrink: 0, transition: 'color 0.2s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444' }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.18)' }}>⏻</button>
         </div>
+
         <div className="sidebar-bottom">
           <button className="theme-btn" onClick={toggle}>
             <span style={{ fontSize: '1rem' }}>{theme === 'dark' ? '☀' : '◑'}</span>
@@ -128,14 +206,41 @@ function AppShell() {
         </div>
       </aside>
 
-      <div className="main-area">
+      {/* ── MAIN AREA ── */}
+      <div
+        className="main-area"
+        style={{
+          marginLeft: sidebarMode === 'fixed' ? 0 : 0,
+          transition: 'margin-left 0.28s cubic-bezier(0.4,0,0.2,1)',
+        }}
+      >
         <header className="topbar">
+          {/* Botão pin/unpin da sidebar */}
+          <button
+            onClick={toggleSidebarMode}
+            title={sidebarMode === 'fixed' ? 'Ocultar sidebar automaticamente' : 'Fixar sidebar'}
+            style={{
+              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+              border: '1px solid rgba(255,255,255,0.1)',
+              background: sidebarMode === 'auto' ? 'rgba(0,229,255,0.08)' : 'rgba(255,255,255,0.04)',
+              color: sidebarMode === 'auto' ? 'var(--text-accent)' : 'var(--text-muted)',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.85rem', transition: 'all 0.18s', marginRight: 4,
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-bright)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' }}
+          >
+            {sidebarMode === 'fixed' ? '⇤' : '⇥'}
+          </button>
+
           <span className="topbar-breadcrumb">nexus /</span>
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
-            <div className="sync-dot" /><span className="topbar-status">ONLINE</span>
+            <div className="sync-dot" />
+            <span className="topbar-status">ONLINE</span>
           </div>
         </header>
+
         <div className="page-content">
           {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} />}
           {active === 'editais'    && <GestorEditais />}
@@ -145,9 +250,9 @@ function AppShell() {
           {active === 'prontuario' && <ProntuarioADM />}
           {active === 'saude'      && <SaudeBemEstar />}
           {active === 'wishlist'   && <WishlistCompras />}
-          {active === 'journal'    && <Placeholder title="Diário" icon="✦" color="#ec4899" desc="Registre seus pensamentos e acompanhe seu humor" />}
-          {active === 'media'      && <Placeholder title="Media Tracker" icon="▶" color="#3b82f6" desc="Acompanhe filmes, séries e livros" />}
-          {active === 'gaming'     && <Placeholder title="Gaming Hub" icon="🎮" color="#7c3aed" desc="Gerencie seus jogos e sessões de gameplay" />}
+          {active === 'journal'    && <Placeholder title="Diário"             icon="✦"  color="#ec4899" desc="Registre seus pensamentos e acompanhe seu humor" />}
+          {active === 'media'      && <Placeholder title="Media Tracker"      icon="▶"  color="#3b82f6" desc="Acompanhe filmes, séries e livros" />}
+          {active === 'gaming'     && <Placeholder title="Gaming Hub"         icon="🎮" color="#7c3aed" desc="Gerencie seus jogos e sessões de gameplay" />}
           {active === 'links'      && <Placeholder title="Links de Interesse" icon="🔗" color="#00e5ff" desc="Organize seus links favoritos por categoria" />}
         </div>
       </div>
