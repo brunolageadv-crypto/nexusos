@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, onSnapshot, setDoc, deleteDoc, getFirestore } from 'firebase/firestore'
-import { getApp } from 'firebase/app'
+import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
+import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 
-function getDB() { return getFirestore(getApp() as any) }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,7 +113,6 @@ function ModalProgresso({ game, uid, onClose, onSave }: { game: Game; uid: strin
       dataFim: status === 'concluido' && !game.dataFim ? new Date().toISOString().slice(0, 10) : game.dataFim,
       updatedAt: Date.now(),
     }
-    const db = getDB()
     await setDoc(doc(db, 'users', uid, 'games', game.id), clean(updated))
     onSave(updated)
     setSaving(false)
@@ -207,7 +205,6 @@ function ModalGame({ game, uid, onClose }: { game: Game | null; uid: string | nu
   const save = async () => {
     if (!uid || !titulo.trim()) return
     setSaving(true)
-    const db = getDB()
     const id = isEdit ? game!.id : newId()
     const item: Game = {
       id, titulo: titulo.trim(), plataforma, status, progresso,
@@ -226,7 +223,6 @@ function ModalGame({ game, uid, onClose }: { game: Game | null; uid: string | nu
 
   const del = async () => {
     if (!uid || !game) return
-    const db = getDB()
     await deleteDoc(doc(db, 'users', uid, 'games', game.id))
     onClose()
   }
@@ -429,7 +425,6 @@ export default function GamingHub() {
 
   useEffect(() => {
     if (!uid) return
-    const db = getDB()
     return onSnapshot(collection(db, 'users', uid, 'games'), snap => {
       setGames(snap.docs.map(d => ({ id: d.id, ...d.data() } as Game)).sort((a, b) => b.updatedAt - a.updatedAt))
       setLoading(false)

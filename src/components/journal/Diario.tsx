@@ -1,18 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { collection, doc, onSnapshot, setDoc, getDoc, getFirestore } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
-import { getApp } from 'firebase/app'
+import { collection, doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore'
+import { db } from '../../lib/firebase'
+import { useUid } from '../../hooks/useUid'
 import { AGU_DISCIPLINAS } from '../editais/aguData'
 
 // ─── Firebase helpers ─────────────────────────────────────────────────────────
-function getDB() { return getFirestore(getApp() as any) }
-function useUid() {
-  const [uid, setUid] = useState<string | null>(null)
-  useEffect(() => {
-    return onAuthStateChanged(getAuth(getApp() as any), u => setUid(u?.uid ?? null))
-  }, [])
-  return uid
-}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type TipoNota = 'doutrina' | 'jurisprudencia' | 'decisao_adm' | 'insight' | 'pessoal' | 'ideia'
@@ -343,7 +335,7 @@ function SecaoProfissional({ logs, onChange }: { logs: LogProfissional[]; onChan
 
   const add = () => {
     if (!titulo.trim()) return
-    onChange([...logs, { id: newId(), tipo, titulo: titulo.trim(), descricao: descricao.trim(), processoSEI: sei || undefined }])
+    onChange([...logs, { id: newId(), tipo, titulo: titulo.trim(), descricao: descricao.trim(), ...(sei ? { processoSEI: sei } : {}) }])
     setTitulo(''); setDescricao(''); setSei('')
   }
 
@@ -488,7 +480,6 @@ function SecaoHabitos({ uid, data }: { uid: string | null; data: string }) {
 
   useEffect(() => {
     if (!uid) return
-    const db = getDB()
     const u1 = onSnapshot(collection(db, 'users', uid, 'habitos'), snap => {
       setHabitos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Habito)))
     })
@@ -500,7 +491,6 @@ function SecaoHabitos({ uid, data }: { uid: string | null; data: string }) {
 
   const toggle = async (habitoId: string) => {
     if (!uid) return
-    const db = getDB()
     const atual = registros[habitoId] === true
     const novo: Record<string, boolean> = { ...registros, [habitoId]: !atual }
     setRegistros(novo)
@@ -509,7 +499,6 @@ function SecaoHabitos({ uid, data }: { uid: string | null; data: string }) {
 
   const addHabito = async () => {
     if (!uid || !novoNome.trim()) return
-    const db = getDB()
     const id = newId()
     await setDoc(doc(db, 'users', uid, 'habitos', id), { id, nome: novoNome.trim(), icon: novoIcon, meta: 'diario' })
     setNovoNome('')
@@ -555,7 +544,6 @@ function SecaoAnexos({ uid, data }: { uid: string | null; data: string }) {
   const [novoTipo, setNovoTipo] = useState('link')
   useEffect(() => {
     if (!uid) return
-    const db = getDB()
     return onSnapshot(doc(db, 'users', uid, 'journalAnexos', data), snap => {
       setLinks(snap.exists() ? (snap.data().links || []) : [])
     })
@@ -563,7 +551,6 @@ function SecaoAnexos({ uid, data }: { uid: string | null; data: string }) {
 
   const save = async (novos: typeof links) => {
     if (!uid) return
-    const db = getDB()
     await setDoc(doc(db, 'users', uid, 'journalAnexos', data), { links: novos })
   }
 
@@ -607,7 +594,6 @@ function SecaoRelatorios({ uid }: { uid: string | null }) {
 
   useEffect(() => {
     if (!uid) return
-    const db = getDB()
     return onSnapshot(collection(db, 'users', uid, 'journal'), snap => {
       const list = snap.docs.map(d => ({ data: d.id, ...d.data() } as any))
         .sort((a: any, b: any) => b.data.localeCompare(a.data))
@@ -671,7 +657,6 @@ function useJournalDia(uid: string | null, data: string) {
 
   useEffect(() => {
     if (!uid) return
-    const db = getDB()
     getDoc(doc(db, 'users', uid, 'journal', data)).then(snap => {
       if (snap.exists()) setDia({ ...defaultDia(), ...snap.data() as JournalDia })
       else setDia(defaultDia())
@@ -685,8 +670,7 @@ function useJournalDia(uid: string | null, data: string) {
       if (timer.current) clearTimeout(timer.current)
       timer.current = setTimeout(async () => {
         if (!uid) return
-        const db = getDB()
-        setSaving(true)
+            setSaving(true)
         await setDoc(doc(db, 'users', uid, 'journal', data), next)
         setSaving(false)
         setSaved(true)

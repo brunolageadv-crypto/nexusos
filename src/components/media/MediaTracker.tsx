@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, onSnapshot, setDoc, deleteDoc, getFirestore } from 'firebase/firestore'
-import { getApp } from 'firebase/app'
+import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
+import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 
 // ─── Firebase ─────────────────────────────────────────────────────────────────
@@ -12,7 +12,6 @@ function clean<T extends object>(obj: T): T {
   ) as T
 }
 
-function getDB() { return getFirestore(getApp() as any) }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type MediaType   = 'filme' | 'serie' | 'livro'
@@ -178,7 +177,6 @@ function MediaDrawer({ item, uid, onClose, onSave }: { item: MediaItem; uid: str
     if (!uid) return
     setSaving(true)
     const updated = { ...editado, updatedAt: Date.now() }
-    const db = getDB()
     await setDoc(doc(db, 'users', uid, 'media', updated.id), clean(updated))
     onSave(updated)
     setSaving(false)
@@ -186,7 +184,6 @@ function MediaDrawer({ item, uid, onClose, onSave }: { item: MediaItem; uid: str
 
   const del = async () => {
     if (!uid) return
-    const db = getDB()
     await deleteDoc(doc(db, 'users', uid, 'media', item.id))
     onClose()
   }
@@ -379,7 +376,6 @@ function ModalAdicionar({ uid, onClose }: { uid: string | null; onClose: () => v
   const save = async () => {
     if (!uid || !titulo.trim()) return
     setSaving(true)
-    const db = getDB()
     const id = newId()
     const item: MediaItem = {
       id, tipo, status, titulo: titulo.trim(), rating: 0,
@@ -563,7 +559,6 @@ export default function MediaTracker() {
 
   useEffect(() => {
     if (!uid) return
-    const db = getDB()
     return onSnapshot(collection(db, 'users', uid, 'media'), snap => {
       setItens(snap.docs.map(d => ({ id: d.id, ...d.data() } as MediaItem)).sort((a, b) => b.criadoEm - a.criadoEm))
       setLoading(false)

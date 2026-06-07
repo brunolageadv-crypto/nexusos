@@ -1,17 +1,14 @@
 import { useEffect, useState } from 'react'
 import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
-import { getFirestore } from 'firebase/firestore'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
-import { getApp } from 'firebase/app'
+import { db } from '../../lib/firebase'
+import { useUid } from '../../hooks/useUid'
 
-function getDB() { return getFirestore(getApp() as any) }
-function useUid() {
-  const [uid, setUid] = useState<string | null>(null)
-  useEffect(() => {
-    return onAuthStateChanged(getAuth(getApp() as any), u => setUid(u?.uid ?? null))
-  }, [])
-  return uid
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T
 }
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Categoria = 'profissional' | 'pessoal' | 'sistemas' | 'interesse' | 'educacional' | 'diversos'
@@ -80,21 +77,19 @@ function ModalLink({ link, uid, onClose }: { link: Link | null; uid: string | nu
   const save = async () => {
     if (!uid || !url.trim()) return
     setSaving(true)
-    const db = getDB()
     const id = isEdit ? link!.id : newId()
     const urlFinal = url.startsWith('http') ? url : 'https://' + url
-    await setDoc(doc(db, 'users', uid, 'links', id), {
+    await setDoc(doc(db, 'users', uid, 'links', id), clean({
       id, titulo: titulo.trim() || dominio(urlFinal),
       url: urlFinal, descricao: descricao.trim() || undefined,
       categoria, criadoEm: link?.criadoEm || Date.now(),
-    })
+    }))
     setSaving(false)
     onClose()
   }
 
   const del = async () => {
     if (!uid || !link) return
-    const db = getDB()
     await deleteDoc(doc(db, 'users', uid, 'links', link.id))
     onClose()
   }
@@ -223,7 +218,6 @@ export default function LinksInteresse() {
 
   useEffect(() => {
     if (!uid) return
-    const db = getDB()
     return onSnapshot(collection(db, 'users', uid, 'links'), snap => {
       setLinks(snap.docs.map(d => ({ id: d.id, ...d.data() } as Link)).sort((a, b) => b.criadoEm - a.criadoEm))
       setLoading(false)

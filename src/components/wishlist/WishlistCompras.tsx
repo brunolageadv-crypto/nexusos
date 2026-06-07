@@ -256,7 +256,7 @@ function ModalLista({ uid, lista, onClose }: { uid: string | null; lista: ListaC
     if (!uid || !nome.trim()) return
     setSaving(true)
     const id = isEdit ? lista!.id : newId()
-    await setDoc(doc(db, 'users', uid, 'listasCompras', id), { id, nome, itens, concluida: lista?.concluida || false, criadoEm: lista?.criadoEm || Date.now() })
+    await setDoc(doc(db, 'users', uid, 'listasCompras', id), clean({ id, nome, itens, concluida: lista?.concluida || false, criadoEm: lista?.criadoEm || Date.now() }))
     setSaving(false)
     onClose()
   }
@@ -357,10 +357,9 @@ function AbaWishlist({ uid, itens, onEdit }: {
 
   const toggleStatus = async (item: ItemWishlist, novoStatus: Status) => {
     if (!uid) return
-    await updateDoc(doc(db, 'users', uid, 'wishlist', item.id), {
-      status: novoStatus,
-      dataCompra: novoStatus === 'comprado' ? new Date().toISOString().slice(0, 10) : undefined,
-    })
+    const updateData: Record<string, unknown> = { status: novoStatus }
+    if (novoStatus === 'comprado') updateData.dataCompra = new Date().toISOString().slice(0, 10)
+    await updateDoc(doc(db, 'users', uid, 'wishlist', item.id), updateData)
   }
 
   return (
