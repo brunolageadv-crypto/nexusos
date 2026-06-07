@@ -30,28 +30,55 @@ function ThemeProvider({ children }: { children: ReactNode }) {
 /* ═══ Logo SVG ════════════════════════════════════════════════ */
 function NexisLogo() {
   return (
-    <div style={{ padding: '4px 0 2px', userSelect: 'none' }}>
-      <svg width="164" height="42" viewBox="0 0 164 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <div style={{ padding: "6px 0 4px", userSelect: "none" }}>
+      <svg width="148" height="48" viewBox="0 0 148 48" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#b0b8c8"/>
-            <stop offset="100%" stopColor="#6e7a8a"/>
+          <linearGradient id="nxg1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#c8cdd8"/>
+            <stop offset="100%" stopColor="#7a8394"/>
           </linearGradient>
-          <linearGradient id="lg2" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#8892a4"/>
-            <stop offset="100%" stopColor="#5a6478"/>
+          <linearGradient id="nxg2" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#9aa3b2"/>
+            <stop offset="100%" stopColor="#5c6578"/>
           </linearGradient>
         </defs>
-        {/* Anel externo */}
-        <circle cx="21" cy="21" r="15" stroke="#2e333c" strokeWidth="1.5" fill="none"/>
-        {/* Arco superior destacado */}
-        <path d="M 8.5 13 A 15 15 0 0 1 33.5 13" stroke="url(#lg1)" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-        {/* N */}
-        <text x="21" y="26.5" textAnchor="middle" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="14" fill="#c4cad6" letterSpacing="-0.5">N</text>
-        {/* NEXIS */}
-        <text x="44" y="27" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="18" letterSpacing="3" fill="#d8dce6">NEXIS</text>
-        {/* .OS — fonte fina */}
-        <text x="112" y="27" fontFamily="Syne,sans-serif" fontWeight="300" fontSize="17" letterSpacing="1" fill="url(#lg2)">.OS</text>
+
+        {/* Marca gráfica — dois hexágonos sobrepostos, estilo cristal */}
+        {/* Hexágono externo */}
+        <polygon
+          points="20,4 36,13 36,31 20,40 4,31 4,13"
+          fill="none"
+          stroke="#3a4050"
+          strokeWidth="1.2"
+        />
+        {/* Hexágono interno rotacionado */}
+        <polygon
+          points="20,10 31,16 31,28 20,34 9,28 9,16"
+          fill="none"
+          stroke="url(#nxg1)"
+          strokeWidth="1.5"
+        />
+        {/* Linhas de conexão (vértice a vértice) */}
+        <line x1="20" y1="4"  x2="20" y2="10" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="36" y1="13" x2="31" y2="16" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="36" y1="31" x2="31" y2="28" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="20" y1="40" x2="20" y2="34" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="4"  y1="31" x2="9"  y2="28" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        <line x1="4"  y1="13" x2="9"  y2="16" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
+        {/* Ponto central */}
+        <circle cx="20" cy="22" r="2.5" fill="url(#nxg1)"/>
+
+        {/* NEXUS wordmark */}
+        <text
+          x="46" y="28"
+          fontFamily="Syne,sans-serif"
+          fontWeight="800"
+          fontSize="20"
+          letterSpacing="4"
+          fill="#dde1eb"
+        >NEXUS</text>
+        {/* Linha decorativa sob o texto */}
+        <line x1="46" y1="33" x2="142" y2="33" stroke="url(#nxg2)" strokeWidth="0.8"/>
       </svg>
     </div>
   )
@@ -158,7 +185,7 @@ function AppShell() {
 
       <div className="main-area">
         <header className="topbar">
-          <span className="topbar-breadcrumb">nexis.os /</span>
+          <span className="topbar-breadcrumb">nexus /</span>
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
             <div className="sync-dot" />

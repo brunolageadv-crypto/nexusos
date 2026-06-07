@@ -135,7 +135,7 @@ function useLayout() {
 }
 
 /* ─────────────────────────────────────────────────────────
-   DraggableWidget — wrapper com drag e resize
+   DraggableWidget — pointer events para drag fluido
 ───────────────────────────────────────────────────────── */
 interface DWProps {
   widget: Widget
@@ -148,107 +148,110 @@ interface DWProps {
 
 function DraggableWidget({ widget, editing, gridW, onMove, onResize, children }: DWProps) {
   const colW = gridW / COLS
-  const left = widget.col * colW + widget.col * GAP / COLS
-  const top = widget.row * (ROW_H + GAP)
-  const width = widget.w * colW + (widget.w - 1) * GAP / COLS
+  const left   = widget.col * colW + widget.col * (GAP / COLS)
+  const top    = widget.row * (ROW_H + GAP)
+  const width  = widget.w * colW + (widget.w - 1) * (GAP / COLS)
   const height = widget.h * ROW_H + (widget.h - 1) * GAP
 
-  const dragStart = useRef<{ mx: number; my: number; col: number; row: number } | null>(null)
-  const resStart = useRef<{ mx: number; my: number; w: number; h: number } | null>(null)
+  const dragRef = useRef<{ startX:number; startY:number; col:number; row:number }|null>(null)
+  const resRef  = useRef<{ startX:number; startY:number; w:number; h:number }|null>(null)
+  const handleRef = useRef<HTMLDivElement>(null)
+  const resHandleRef = useRef<HTMLDivElement>(null)
 
-  const onDragMouseDown = (e: React.MouseEvent) => {
+  // Drag com pointer events — mais fluido que mouse events
+  const startDrag = useCallback((e: React.PointerEvent) => {
     if (!editing) return
     e.preventDefault()
-    dragStart.current = { mx: e.clientX, my: e.clientY, col: widget.col, row: widget.row }
-    const onMove2 = (ev: MouseEvent) => {
-      if (!dragStart.current) return
-      const dx = ev.clientX - dragStart.current.mx
-      const dy = ev.clientY - dragStart.current.my
-      const newCol = Math.max(0, Math.min(COLS - widget.w, dragStart.current.col + snapCol(dx, gridW)))
-      const newRow = Math.max(0, dragStart.current.row + snapRow(dy))
-      onMove(widget.id, newCol, newRow)
-    }
-    const onUp = () => { dragStart.current = null; window.removeEventListener('mousemove', onMove2); window.removeEventListener('mouseup', onUp) }
-    window.addEventListener('mousemove', onMove2)
-    window.addEventListener('mouseup', onUp)
-  }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    dragRef.current = { startX: e.clientX, startY: e.clientY, col: widget.col, row: widget.row }
+  }, [editing, widget.col, widget.row])
 
-  const onResMouseDown = (e: React.MouseEvent) => {
+  const moveDrag = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    const dc = Math.round(dx / (colW + GAP / COLS))
+    const dr = Math.round(dy / (ROW_H + GAP))
+    const newCol = Math.max(0, Math.min(COLS - widget.w, dragRef.current.col + dc))
+    const newRow = Math.max(0, dragRef.current.row + dr)
+    onMove(widget.id, newCol, newRow)
+  }, [colW, widget.w, widget.id, onMove])
+
+  const endDrag = useCallback(() => { dragRef.current = null }, [])
+
+  // Resize com pointer events
+  const startRes = useCallback((e: React.PointerEvent) => {
     if (!editing) return
     e.preventDefault()
     e.stopPropagation()
-    resStart.current = { mx: e.clientX, my: e.clientY, w: widget.w, h: widget.h }
-    const onMove2 = (ev: MouseEvent) => {
-      if (!resStart.current) return
-      const dx = ev.clientX - resStart.current.mx
-      const dy = ev.clientY - resStart.current.my
-      const newW = Math.max(2, Math.min(COLS - widget.col, resStart.current.w + Math.round(dx / colW)))
-      const newH = Math.max(1, resStart.current.h + Math.round(dy / (ROW_H + GAP)))
-      onResize(widget.id, newW, newH)
-    }
-    const onUp = () => { resStart.current = null; window.removeEventListener('mousemove', onMove2); window.removeEventListener('mouseup', onUp) }
-    window.addEventListener('mousemove', onMove2)
-    window.addEventListener('mouseup', onUp)
-  }
+    e.currentTarget.setPointerCapture(e.pointerId)
+    resRef.current = { startX: e.clientX, startY: e.clientY, w: widget.w, h: widget.h }
+  }, [editing, widget.w, widget.h])
+
+  const moveRes = useCallback((e: React.PointerEvent) => {
+    if (!resRef.current) return
+    const dx = e.clientX - resRef.current.startX
+    const dy = e.clientY - resRef.current.startY
+    const newW = Math.max(2, Math.min(COLS - widget.col, resRef.current.w + Math.round(dx / (colW + GAP/COLS))))
+    const newH = Math.max(1, resRef.current.h + Math.round(dy / (ROW_H + GAP)))
+    onResize(widget.id, newW, newH)
+  }, [colW, widget.col, widget.id, onResize])
+
+  const endRes = useCallback(() => { resRef.current = null }, [])
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        left, top, width, height,
-        transition: editing ? 'none' : 'all 0.3s cubic-bezier(.4,0,.2,1)',
-        zIndex: editing ? 5 : 1,
-        boxSizing: 'border-box',
-      }}
-    >
-      {/* Drag handle */}
+    <div style={{
+      position: 'absolute', left, top, width, height,
+      transition: editing ? 'none' : 'left 0.25s ease, top 0.25s ease, width 0.25s ease, height 0.25s ease',
+      zIndex: dragRef.current ? 20 : editing ? 5 : 1,
+      boxSizing: 'border-box',
+    }}>
+
+      {/* Handle de drag */}
       {editing && (
         <div
-          onMouseDown={onDragMouseDown}
+          ref={handleRef}
+          onPointerDown={startDrag}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
           style={{
-            position: 'absolute', top: 0, left: 0, right: 0, height: 28,
-            cursor: 'grab', zIndex: 10,
+            position: 'absolute', top: 0, left: 0, right: 0, height: 30,
+            cursor: 'grab', zIndex: 10, touchAction: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: 'linear-gradient(180deg, rgba(0,229,255,0.15) 0%, transparent 100%)',
-            borderRadius: '12px 12px 0 0',
-            userSelect: 'none',
+            background: 'linear-gradient(180deg,rgba(0,229,255,0.12) 0%,transparent 100%)',
+            borderRadius: '12px 12px 0 0', userSelect: 'none',
           }}
         >
-          <div style={{ display: 'flex', gap: 3 }}>
-            {[0, 1, 2, 3, 4].map(i => (
-              <div key={i} style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(0,229,255,0.6)' }} />
-            ))}
+          <div style={{ display:'flex', gap:3 }}>
+            {[0,1,2,3,4,5].map(i=><div key={i} style={{ width:3,height:3,borderRadius:'50%',background:'rgba(0,229,255,0.55)' }}/>)}
           </div>
+          <span style={{ fontSize:'0.55rem', color:'rgba(0,229,255,0.4)', fontFamily:'var(--font-mono)', marginLeft:8 }}>{widget.w}×{widget.h}</span>
         </div>
       )}
 
-      {/* Content */}
-      <div style={{ width: '100%', height: '100%', overflow: 'hidden', borderRadius: 12, border: editing ? '1px solid rgba(0,229,255,0.3)' : undefined, boxShadow: editing ? '0 0 0 2px rgba(0,229,255,0.1)' : undefined }}>
+      {/* Conteúdo */}
+      <div style={{ width:'100%', height:'100%', overflow:'hidden', borderRadius:12, border: editing?'1px solid rgba(0,229,255,0.25)':'none', boxShadow: editing?'0 0 0 2px rgba(0,229,255,0.08)':'' }}>
         {children}
       </div>
 
-      {/* Resize handle */}
+      {/* Handle de resize */}
       {editing && (
         <div
-          onMouseDown={onResMouseDown}
+          ref={resHandleRef}
+          onPointerDown={startRes}
+          onPointerMove={moveRes}
+          onPointerUp={endRes}
+          onPointerCancel={endRes}
           style={{
-            position: 'absolute', bottom: 0, right: 0,
-            width: 20, height: 20,
-            cursor: 'nwse-resize', zIndex: 10,
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end',
-            padding: 4,
+            position:'absolute', bottom:0, right:0, width:22, height:22,
+            cursor:'nwse-resize', zIndex:10, touchAction:'none',
+            display:'flex', alignItems:'flex-end', justifyContent:'flex-end', padding:5,
           }}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M1 11L11 1M5 11L11 5M9 11L11 9" stroke="rgba(0,229,255,0.7)" strokeWidth="1.5" strokeLinecap="round"/>
+            <path d="M2 10L10 2M5 10L10 5M8 10L10 8" stroke="rgba(0,229,255,0.65)" strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-        </div>
-      )}
-
-      {/* Size indicator */}
-      {editing && (
-        <div style={{ position: 'absolute', top: 32, right: 6, fontSize: '0.58rem', color: 'rgba(0,229,255,0.5)', fontFamily: 'var(--font-mono)', background: 'rgba(0,0,0,0.4)', padding: '1px 5px', borderRadius: 4 }}>
-          {widget.w}×{widget.h}
         </div>
       )}
     </div>
