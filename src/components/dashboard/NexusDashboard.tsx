@@ -785,7 +785,7 @@ function WidgetEditalDinamico({ editalId, nome, cor, orgao, onNavigate }: {
   // Precisamos do total de subtópicos — buscamos do Firestore via onSnapshot
   const { editais } = useEditaisCadastrados()
   const edital = editais.find(e => e.id === editalId)
-  const allIds = edital ? edital.disciplinas.flatMap(d => d.topicos.flatMap(t => t.subtopicos.map(s => s.id))) : []
+  const allIds = edital ? edital.disciplinas.flatMap((d: any) => d.topicos.flatMap((t: any) => t.subtopicos.map((s: any) => s.id))) : []
   const stats = hooks.getStats(allIds)
   const r = (stats.pctConcluido/100) * 2 * Math.PI * 20
   const circ = 2 * Math.PI * 20

@@ -149,8 +149,7 @@ function SubRow({ subId, nome, hooks }: {
   )
 }
 
-function TopicBlock({ topicoId, nome, subtopicos, cor, hooks }: {
-  topicoId: string
+function TopicBlock({ nome, subtopicos, cor, hooks }: {
   nome: string
   subtopicos: { id: string; nome: string }[]
   cor: string
@@ -342,7 +341,7 @@ export default function EditalDetalhe({ edital, onVoltar }: Props) {
           </div>
 
           {disc.topicos.map(t => (
-            <TopicBlock key={t.id} topicoId={t.id} nome={t.nome} subtopicos={t.subtopicos} cor={disc.cor} hooks={hooks} />
+            <TopicBlock key={t.id} nome={t.nome} subtopicos={t.subtopicos} cor={disc.cor} hooks={hooks} />
           ))}
         </main>
       </div>
