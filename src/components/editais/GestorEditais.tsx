@@ -2,20 +2,13 @@
 import { useState, useEffect } from 'react'
 import { collection, doc, setDoc, deleteDoc, onSnapshot, getFirestore } from 'firebase/firestore'
 import { getApp } from 'firebase/app'
-import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { useEdital } from '../../hooks/useEdital'
 import type { EditalCadastrado, DisciplinaEdital, SubtopicoEdital } from '../../hooks/useEdital'
 import { AGU_DISCIPLINAS } from './aguData'
 import EditalDetalhe from './EditalDetalhe'
+import { useUid } from '../../hooks/useUid'
 
 function getDB() { return getFirestore(getApp() as any) }
-function useUid() {
-  const [uid, setUid] = useState<string | null>(null)
-  useEffect(() => {
-    return onAuthStateChanged(getAuth(getApp() as any), u => setUid(u?.uid ?? null))
-  }, [])
-  return uid
-}
 
 // ─── Converte dados AGU hardcoded para o formato genérico ─────────────────────
 function aguParaEdital(): EditalCadastrado {
