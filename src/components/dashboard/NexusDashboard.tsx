@@ -446,7 +446,7 @@ function ModulosCard({ global, ponto, onNavigate }: any) {
 function ContasPagarCard({ onNavigate }: { onNavigate: (id: string) => void }) {
   const { contas, vencendo, vencidas, totalPendente } = useContasPagar()
   const fmtMoeda = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  const fmtDate  = (d: string) => { if (!d) return '—'; const [y,m,dy] = d.split('-'); return `${dy}/${m}` }
+  const fmtDate  = (d: string) => { if (!d) return '—'; const [,m,dy] = d.split('-'); return `${dy}/${m}` }
   const daysUntil = (d: string) => Math.ceil((new Date(d).getTime() - Date.now()) / 86400000)
 
   return (
