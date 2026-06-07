@@ -1,15 +1,4 @@
-import { useState, useEffect } from 'react'
-import { auth } from '../lib/firebase'
-import { onAuthStateChanged } from 'firebase/auth'
-
-export function useUid(): string | null {
-  const [uid, setUid] = useState<string | null>(
-    () => auth?.currentUser?.uid ?? null
-  )
-  useEffect(() => {
-    if (!auth) return
-    if (auth.currentUser) setUid(auth.currentUser.uid)
-    return onAuthStateChanged(auth, user => setUid(user?.uid ?? null))
-  }, [])
-  return uid
-}
+// useUid.ts — lê o uid do contexto centralizado do App
+// O uid vem do useAuth() que já está resolvido antes do app carregar
+// Zero delay, zero onAuthStateChanged por componente
+export { useUid } from '../App'

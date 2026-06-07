@@ -14,6 +14,7 @@ import MediaTracker from './components/media/MediaTracker'
 import GamingHub from './components/gaming/GamingHub'
 import LinksInteresse from './components/links/LinksInteresse'
 
+// ─── Theme Context ─────────────────────────────────────────────────────────────
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
 export const useTheme = () => useContext(ThemeCtx)
@@ -32,6 +33,10 @@ function ThemeProvider({ children }: { children: ReactNode }) {
     </ThemeCtx.Provider>
   )
 }
+
+// ─── UID Context — uid disponível instantaneamente em todos os módulos ─────────
+const UidCtx = createContext<string | null>(null)
+export const useUid = () => useContext(UidCtx)
 
 function NexusLogo() {
   return (
@@ -61,20 +66,15 @@ function NexusLogo() {
   )
 }
 
-// ─── Ícone Editais — coluna de paragrafos com marcador ────────────────────────
 function IconEditais({ size = 18 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Documento base */}
       <rect x="2" y="1" width="11" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3"/>
-      {/* Dobra canto superior direito */}
       <path d="M10 1 L13 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
       <path d="M10 1 L10 4 L13 4" fill="none" stroke="currentColor" strokeWidth="1.1"/>
-      {/* Linhas de texto */}
       <line x1="4.5" y1="6.5"  x2="10.5" y2="6.5"  stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
       <line x1="4.5" y1="8.5"  x2="10.5" y2="8.5"  stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
       <line x1="4.5" y1="10.5" x2="8.5"  y2="10.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-      {/* Selo / marcador de certificação — círculo com check */}
       <circle cx="14" cy="13" r="3.5" fill="#1e2030" stroke="currentColor" strokeWidth="1.2"/>
       <path d="M12.3 13 L13.5 14.2 L15.7 11.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
@@ -110,13 +110,10 @@ function AppShell() {
   const [active, setActive] = useState('dashboard')
   const { theme, toggle } = useTheme()
   const { user, logout } = useAuth()
-
-  // Sidebar: 'fixed' = sempre visível | 'auto' = oculta/aparece no hover
   const [sidebarMode, setSidebarMode] = useState<'fixed' | 'auto'>(
     () => (localStorage.getItem('nexusos-sidebar-mode') as 'fixed' | 'auto') ?? 'fixed'
   )
   const [sidebarHovered, setSidebarHovered] = useState(false)
-
   const sidebarVisible = sidebarMode === 'fixed' || sidebarHovered
 
   const toggleSidebarMode = () => {
@@ -132,65 +129,38 @@ function AppShell() {
 
   return (
     <div className="app-shell" style={{ position: 'relative' }}>
-
-      {/* ── Zona de hover para revelar sidebar quando no modo auto ── */}
       {sidebarMode === 'auto' && (
-        <div
-          onMouseEnter={() => setSidebarHovered(true)}
-          style={{
-            position: 'fixed', left: 0, top: 0, bottom: 0,
-            width: sidebarHovered ? 0 : 16,
-            zIndex: 40,
-          }}
-        />
+        <div onMouseEnter={() => setSidebarHovered(true)}
+          style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: sidebarHovered ? 0 : 16, zIndex: 40 }} />
       )}
 
-      {/* ── SIDEBAR ── */}
-      <aside
-        className="sidebar"
+      <aside className="sidebar"
         onMouseEnter={() => sidebarMode === 'auto' && setSidebarHovered(true)}
         onMouseLeave={() => sidebarMode === 'auto' && setSidebarHovered(false)}
         style={{
           position: sidebarMode === 'auto' ? 'fixed' : 'relative',
-          top: 0, left: 0, bottom: 0,
-          zIndex: 50,
+          top: 0, left: 0, bottom: 0, zIndex: 50,
           transform: sidebarVisible ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
-          boxShadow: sidebarMode === 'auto' && sidebarHovered
-            ? '4px 0 32px rgba(0,0,0,0.5)'
-            : 'none',
-        }}
-      >
+          boxShadow: sidebarMode === 'auto' && sidebarHovered ? '4px 0 32px rgba(0,0,0,0.5)' : 'none',
+        }}>
         <div className="sidebar-logo"><NexusLogo /></div>
-
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
           {NAV.map(group => (
             <div key={group.section} className="sidebar-section">
               <div className="sidebar-section-label">{group.section}</div>
               {group.items.map(item => (
-                <button
-                  key={item.id}
-                  className={`nav-item ${active === item.id ? 'active' : ''}`}
-                  onClick={() => setActive(item.id)}
-                >
-                  <span className="nav-icon">
-                    {item.svgIcon === 'editais'
-                      ? <IconEditais size={17} />
-                      : item.icon}
-                  </span>
+                <button key={item.id} className={`nav-item ${active === item.id ? 'active' : ''}`} onClick={() => setActive(item.id)}>
+                  <span className="nav-icon">{item.svgIcon === 'editais' ? <IconEditais size={17} /> : item.icon}</span>
                   <span className="nav-label">{item.label}</span>
                 </button>
               ))}
             </div>
           ))}
         </div>
-
-        {/* User block */}
         <div style={{ margin: '0 12px 8px', padding: '11px 13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid rgba(180,185,200,0.35)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(180,185,200,0.1)' }}>
-            {avatarUrl
-              ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
+            {avatarUrl ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName.split(' ')[0]}</div>
@@ -201,7 +171,6 @@ function AppShell() {
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444' }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.18)' }}>⏻</button>
         </div>
-
         <div className="sidebar-bottom">
           <button className="theme-btn" onClick={toggle}>
             <span style={{ fontSize: '1rem' }}>{theme === 'dark' ? '☀' : '◑'}</span>
@@ -210,33 +179,15 @@ function AppShell() {
         </div>
       </aside>
 
-      {/* ── MAIN AREA ── */}
-      <div
-        className="main-area"
-        style={{
-          marginLeft: sidebarMode === 'fixed' ? 0 : 0,
-          transition: 'margin-left 0.28s cubic-bezier(0.4,0,0.2,1)',
-        }}
-      >
+      <div className="main-area" style={{ transition: 'margin-left 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
         <header className="topbar">
-          {/* Botão pin/unpin da sidebar */}
-          <button
-            onClick={toggleSidebarMode}
-            title={sidebarMode === 'fixed' ? 'Ocultar sidebar automaticamente' : 'Fixar sidebar'}
-            style={{
-              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-              border: '1px solid rgba(255,255,255,0.1)',
-              background: sidebarMode === 'auto' ? 'rgba(0,229,255,0.08)' : 'rgba(255,255,255,0.04)',
-              color: sidebarMode === 'auto' ? 'var(--text-accent)' : 'var(--text-muted)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.85rem', transition: 'all 0.18s', marginRight: 4,
-            }}
+          <button onClick={toggleSidebarMode}
+            title={sidebarMode === 'fixed' ? 'Ocultar sidebar' : 'Fixar sidebar'}
+            style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)', background: sidebarMode === 'auto' ? 'rgba(0,229,255,0.08)' : 'rgba(255,255,255,0.04)', color: sidebarMode === 'auto' ? 'var(--text-accent)' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', transition: 'all 0.18s', marginRight: 4 }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-bright)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' }}
-          >
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' }}>
             {sidebarMode === 'fixed' ? '⇤' : '⇥'}
           </button>
-
           <span className="topbar-breadcrumb">nexus /</span>
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
@@ -244,7 +195,6 @@ function AppShell() {
             <span className="topbar-status">ONLINE</span>
           </div>
         </header>
-
         <div className="page-content">
           {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} />}
           {active === 'editais'    && <GestorEditais />}
@@ -264,7 +214,6 @@ function AppShell() {
   )
 }
 
-
 function Root() {
   const { user, loading } = useAuth()
   if (loading) return (
@@ -274,7 +223,12 @@ function Root() {
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
-  return user ? <AppShell /> : <LoginPage />
+  // ── uid disponível instantaneamente via contexto ──────────────────────────────
+  return (
+    <UidCtx.Provider value={user?.uid ?? null}>
+      {user ? <AppShell /> : <LoginPage />}
+    </UidCtx.Provider>
+  )
 }
 
 export default function App() {
