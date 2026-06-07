@@ -85,14 +85,7 @@ function CardTitle({ icon, title, sub }: { icon: string; title: string; sub?: st
     </div>
   )
 }
-function Sec({ title }: { title: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '4px 0 12px' }}>
-      <span style={{ fontSize: '0.6rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap' }}>{title}</span>
-      <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
-    </div>
-  )
-}
+
 function Lbl({ children }: { children: React.ReactNode }) {
   return <label style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>{children}</label>
 }

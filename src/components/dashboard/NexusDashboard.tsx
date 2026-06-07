@@ -3,7 +3,7 @@ import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
-import { collection, query, orderBy, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore'
 
 interface Props { onNavigate: (id: string) => void }
 
