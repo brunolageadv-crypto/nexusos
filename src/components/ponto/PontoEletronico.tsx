@@ -28,7 +28,7 @@ const TIPOS: Record<TipoRegistro, { label: string; icon: string; color: string; 
   falta:      { label: 'Falta',       icon: '✗',  color: '#6b7280', bg: 'rgba(107,114,128,0.1)' },
 }
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-const COLORS_PIE = ['#00e5ff','#7c3aed','#3b82f6','#f59e0b','#10b981','#ef4444','#6b7280']
+// COLORS_PIE removido
 
 /* ═══ Helpers ════════════════════════════════════════════════ */
 function todayISO() { return new Date().toISOString().slice(0,10) }

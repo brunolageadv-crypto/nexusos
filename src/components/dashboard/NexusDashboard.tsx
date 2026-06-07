@@ -45,15 +45,6 @@ const WIDGET_LABELS: Record<string, string> = {
   'modulos': '▦ Módulos',
 }
 
-/* ── Snap to grid ── */
-function snapCol(px: number, totalW: number): number {
-  const colW = totalW / COLS
-  return Math.max(0, Math.min(COLS - 1, Math.round(px / colW)))
-}
-function snapRow(px: number): number {
-  return Math.max(0, Math.round(px / (ROW_H + GAP)))
-}
-
 /* ─────────────────────────────────────────────────────────
    Ring Gauge
 ───────────────────────────────────────────────────────── */
