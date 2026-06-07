@@ -22,8 +22,8 @@ const GAP = 14
 
 // Detecta mobile para layout alternativo
 function useIsMobile() {
-  const [mobile, setMobile] = React.useState(window.innerWidth < 768)
-  React.useEffect(() => {
+  const [mobile, setMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false)
+  useEffect(() => {
     const fn = () => setMobile(window.innerWidth < 768)
     window.addEventListener('resize', fn)
     return () => window.removeEventListener('resize', fn)
@@ -1137,6 +1137,7 @@ export default function NexusDashboard({ onNavigate }: Props) {
   const [showLayouts, setShowLayouts] = useState(false)
   const gridRef = useRef<HTMLDivElement>(null)
   const [gridW, setGridW] = useState(900)
+  const isMobile = useIsMobile()
 
   useEffect(() => {
     const obs = new ResizeObserver(e => setGridW(e[0].contentRect.width))
