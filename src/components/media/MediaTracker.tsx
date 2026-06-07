@@ -73,42 +73,6 @@ function progressoLabel(item: MediaItem): string {
   return ''
 }
 
-// ─── Busca automática de capa/metadados ──────────────────────────────────────
-async function buscarMetadados(titulo: string, tipo: MediaType): Promise<Partial<MediaItem>> {
-  try {
-    if (tipo === 'livro') {
-      const res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(titulo)}&limit=1`)
-      const data = await res.json()
-      const book = data.docs?.[0]
-      if (!book) return {}
-      const coverId = book.cover_i
-      return {
-        coverUrl: coverId ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg` : undefined,
-        subtitulo: book.author_name?.[0],
-        ano: book.first_publish_year?.toString(),
-        sinopse: undefined, // Open Library não retorna sinopse na busca
-      }
-    } else {
-      const res = await fetch(`https://www.omdbapi.com/?t=${encodeURIComponent(titulo)}&type=${tipo === 'serie' ? 'series' : 'movie'}&apikey=trilogy`)
-      const data = await res.json()
-      if (data.Response === 'False') {
-        // Fallback: buscar sem chave (modo demo limitado)
-        return {}
-      }
-      return {
-        coverUrl: data.Poster !== 'N/A' ? data.Poster : undefined,
-        ano: data.Year,
-        genero: data.Genre,
-        sinopse: data.Plot !== 'N/A' ? data.Plot : undefined,
-        subtitulo: data.Director !== 'N/A' ? data.Director : data.Actors,
-        totalEpisodios: tipo === 'serie' && data.totalSeasons ? parseInt(data.totalSeasons) * 13 : undefined,
-      }
-    }
-  } catch {
-    return {}
-  }
-}
-
 // ─── Constantes visuais ───────────────────────────────────────────────────────
 const TIPO_CONFIG: Record<MediaType, { label: string; icon: string; color: string }> = {
   filme: { label: 'Filme',  icon: '🎬', color: '#60a5fa' },
@@ -390,14 +354,21 @@ function MediaDrawer({ item, uid, onClose, onSave }: { item: MediaItem; uid: str
   )
 }
 
-// ─── Modal Adicionar ──────────────────────────────────────────────────────────
+// ─── Modal Adicionar (formulário manual completo) ────────────────────────────
 function ModalAdicionar({ uid, onClose }: { uid: string | null; onClose: () => void }) {
   const [titulo, setTitulo] = useState('')
   const [tipo, setTipo] = useState<MediaType>('filme')
   const [status, setStatus] = useState<MediaStatus>('fila')
-  const [buscando, setBuscando] = useState(false)
+  const [subtitulo, setSubtitulo] = useState('')
+  const [ano, setAno] = useState('')
+  const [genero, setGenero] = useState('')
+  const [coverUrl, setCoverUrl] = useState('')
+  const [totalEpisodios, setTotalEpisodios] = useState('')
+  const [totalPaginas, setTotalPaginas] = useState('')
+  const [totalCapitulos, setTotalCapitulos] = useState('')
+  const [sinopse, setSinopse] = useState('')
   const [saving, setSaving] = useState(false)
-  const IS: React.CSSProperties = { background: 'var(--input-bg)', border: '1px solid var(--border-md)', borderRadius: 8, padding: '8px 12px', color: 'var(--text-primary)', fontSize: '0.82rem', width: '100%', outline: 'none', boxSizing: 'border-box' }
+  const IS: React.CSSProperties = { background: 'var(--input-bg)', border: '1px solid var(--border-md)', borderRadius: 8, padding: '7px 10px', color: 'var(--text-primary)', fontSize: '0.8rem', width: '100%', outline: 'none', boxSizing: 'border-box' }
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -408,16 +379,23 @@ function ModalAdicionar({ uid, onClose }: { uid: string | null; onClose: () => v
   const save = async () => {
     if (!uid || !titulo.trim()) return
     setSaving(true)
-    setBuscando(true)
-    const meta = await buscarMetadados(titulo.trim(), tipo)
-    setBuscando(false)
     const db = getDB()
     const id = newId()
     const item: MediaItem = {
       id, tipo, status, titulo: titulo.trim(), rating: 0,
-      criadoEm: Date.now(), updatedAt: Date.now(),
+      subtitulo: subtitulo || undefined,
+      ano: ano || undefined,
+      genero: genero || undefined,
+      coverUrl: coverUrl || undefined,
+      sinopse: sinopse || undefined,
+      totalEpisodios: totalEpisodios ? parseInt(totalEpisodios) : undefined,
+      totalPaginas: totalPaginas ? parseInt(totalPaginas) : undefined,
+      totalCapitulos: totalCapitulos ? parseInt(totalCapitulos) : undefined,
+      episodiosAssistidos: 0,
+      paginaAtual: 0,
+      capituloAtual: 0,
       dataInicio: status === 'andamento' ? new Date().toISOString().slice(0, 10) : undefined,
-      ...meta,
+      criadoEm: Date.now(), updatedAt: Date.now(),
     }
     await setDoc(doc(db, 'users', uid, 'media', id), item)
     setSaving(false)
@@ -427,10 +405,16 @@ function ModalAdicionar({ uid, onClose }: { uid: string | null; onClose: () => v
   return (
     <div onClick={e => e.target === e.currentTarget && onClose()}
       style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-md)', borderRadius: 18, width: '100%', maxWidth: 480, padding: '24px', boxShadow: '0 32px 80px rgba(0,0,0,0.6)' }}>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: 20 }}>Adicionar Mídia</div>
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border-md)', borderRadius: 18, width: '100%', maxWidth: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.6)' }}>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Header */}
+        <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1rem', color: 'var(--text-primary)' }}>Adicionar Mídia</div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
           {/* Tipo */}
           <div>
             <label style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 8 }}>Tipo</label>
@@ -444,31 +428,84 @@ function ModalAdicionar({ uid, onClose }: { uid: string | null; onClose: () => v
             </div>
           </div>
 
-          {/* Título */}
-          <div>
-            <label style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 6 }}>Título *</label>
-            <input style={IS} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder={tipo === 'livro' ? 'Nome do livro...' : tipo === 'serie' ? 'Nome da série...' : 'Nome do filme...'} onKeyDown={e => e.key === 'Enter' && save()} autoFocus />
-            {buscando && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 5 }}>🔍 Buscando metadados e capa…</div>}
+          {/* Título + Status */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Título *</label>
+              <input style={IS} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder={tipo === 'livro' ? 'Nome do livro...' : tipo === 'serie' ? 'Nome da série...' : 'Nome do filme...'} autoFocus />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Status</label>
+              <select style={{ ...IS, width: 'auto' }} value={status} onChange={e => setStatus(e.target.value as MediaStatus)}>
+                {(Object.entries(STATUS_CONFIG) as [MediaStatus, any][]).map(([k, v]) => (
+                  <option key={k} value={k}>{v.icon} {v.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Status */}
-          <div>
-            <label style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 8 }}>Status inicial</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-              {(Object.entries(STATUS_CONFIG) as [MediaStatus, typeof STATUS_CONFIG[MediaStatus]][]).map(([k, v]) => (
-                <button key={k} onClick={() => setStatus(k)}
-                  style={{ padding: '8px', borderRadius: 8, border: `1px solid ${status === k ? v.color : 'var(--border-md)'}`, background: status === k ? `${v.color}15` : 'transparent', color: status === k ? v.color : 'var(--text-muted)', fontSize: '0.72rem', fontWeight: status === k ? 700 : 400, cursor: 'pointer', transition: 'all 0.15s' }}>
-                  {v.icon} {v.label}
-                </button>
-              ))}
+          {/* Subtítulo + Ano */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>
+                {tipo === 'livro' ? 'Autor' : tipo === 'serie' ? 'Criador / Estúdio' : 'Diretor / Elenco'}
+              </label>
+              <input style={IS} value={subtitulo} onChange={e => setSubtitulo(e.target.value)} placeholder="Opcional..." />
             </div>
+            <div>
+              <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Ano</label>
+              <input style={{ ...IS, width: 80 }} value={ano} onChange={e => setAno(e.target.value)} placeholder="2024" maxLength={4} />
+            </div>
+          </div>
+
+          {/* Gênero */}
+          <div>
+            <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Gênero</label>
+            <input style={IS} value={genero} onChange={e => setGenero(e.target.value)} placeholder="Ex: Drama, Ficção Científica, Fantasia..." />
+          </div>
+
+          {/* Progresso total — Série */}
+          {tipo === 'serie' && (
+            <div>
+              <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Total de episódios</label>
+              <input type="number" min={1} style={IS} value={totalEpisodios} onChange={e => setTotalEpisodios(e.target.value)} placeholder="Ex: 24" />
+            </div>
+          )}
+
+          {/* Progresso total — Livro */}
+          {tipo === 'livro' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Total de páginas</label>
+                <input type="number" min={1} style={IS} value={totalPaginas} onChange={e => setTotalPaginas(e.target.value)} placeholder="Ex: 400" />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Total de capítulos</label>
+                <input type="number" min={1} style={IS} value={totalCapitulos} onChange={e => setTotalCapitulos(e.target.value)} placeholder="Ex: 32" />
+              </div>
+            </div>
+          )}
+
+          {/* URL da capa */}
+          <div>
+            <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>URL da capa (opcional)</label>
+            <input style={IS} value={coverUrl} onChange={e => setCoverUrl(e.target.value)} placeholder="https://..." />
+            {coverUrl && <img src={coverUrl} alt="preview" style={{ marginTop: 8, height: 80, borderRadius: 6, objectFit: 'cover' }} onError={e => (e.target as HTMLImageElement).style.display = 'none'} />}
+          </div>
+
+          {/* Sinopse */}
+          <div>
+            <label style={{ fontSize: '0.62rem', color: 'var(--text-muted)', display: 'block', marginBottom: 5 }}>Sinopse (opcional)</label>
+            <textarea style={{ ...IS, minHeight: 60, resize: 'vertical', lineHeight: 1.5 }} value={sinopse} onChange={e => setSinopse(e.target.value)} placeholder="Breve descrição..." />
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 20, justifyContent: 'flex-end' }}>
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-md)', display: 'flex', gap: 10, justifyContent: 'flex-end', flexShrink: 0 }}>
           <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border-md)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '0.82rem', cursor: 'pointer' }}>Cancelar</button>
-          <button onClick={save} disabled={saving || !titulo.trim()} style={{ padding: '8px 22px', borderRadius: 8, background: saving ? 'rgba(96,165,250,0.2)' : `linear-gradient(135deg,${TIPO_CONFIG[tipo].color},${TIPO_CONFIG[tipo].color}bb)`, border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', opacity: !titulo.trim() ? 0.5 : 1 }}>
-            {saving ? (buscando ? 'Buscando…' : 'Salvando…') : '+ Adicionar'}
+          <button onClick={save} disabled={saving || !titulo.trim()}
+            style={{ padding: '8px 22px', borderRadius: 8, background: saving ? 'rgba(96,165,250,0.2)' : `linear-gradient(135deg,${TIPO_CONFIG[tipo].color},${TIPO_CONFIG[tipo].color}bb)`, border: 'none', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: saving || !titulo.trim() ? 'not-allowed' : 'pointer', opacity: !titulo.trim() ? 0.5 : 1 }}>
+            {saving ? 'Salvando…' : '+ Adicionar'}
           </button>
         </div>
       </div>
