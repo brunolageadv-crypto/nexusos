@@ -1,14 +1,16 @@
-// useEdital.ts — hook genérico para acompanhamento de qualquer edital
+// useEdital.ts
+// DESTINO: src/hooks/useEdital.ts
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { db } from '../lib/firebase'
-import { doc, getDoc, setDoc, collection, onSnapshot } from 'firebase/firestore'
-import { onAuthStateChanged } from 'firebase/auth'
-import { getAuth } from 'firebase/auth'
+import { getAuth, onAuthStateChanged } from 'firebase/auth'
+import { getFirestore, doc, getDoc, setDoc, collection, onSnapshot } from 'firebase/firestore'
+import { getApp } from 'firebase/app'
+
+function getDB() { return getFirestore(getApp()) }
 
 function useUid() {
   const [uid, setUid] = useState<string | null>(null)
   useEffect(() => {
-    const auth = getAuth()
+    const auth = getAuth(getApp())
     return onAuthStateChanged(auth, user => setUid(user?.uid ?? null))
   }, [])
   return uid
@@ -59,6 +61,7 @@ export function useEdital(editalId: string) {
 
   useEffect(() => {
     if (!uid || !editalId) return
+    const db = getDB()
     const local = loadLocal(editalId)
     setData(local)
     setSyncing(true)
@@ -80,6 +83,7 @@ export function useEdital(editalId: string) {
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => {
       if (uid) {
+        const db = getDB()
         setSyncing(true)
         setDoc(doc(db, 'users', uid, 'editaisProgress', editalId), newData)
           .then(() => setLastSync(new Date()))
@@ -122,12 +126,12 @@ export function useEdital(editalId: string) {
 
   const getStats = useCallback((ids: string[]) => {
     const states = ids.map(id => ({ ...defaultSubtopicoState(), ...(data[id] ?? {}) }))
-    const total       = states.length
-    const concluidos  = states.filter(s => s.statusMaterial === 'concluido').length
-    const emAndamento = states.filter(s => s.statusMaterial === 'em_andamento').length
-    const finalizados = states.filter(s => s.finalizado).length
-    const questoes    = states.reduce((a, s) => a + (s.questoes || 0), 0)
-    const acertos     = states.reduce((a, s) => a + (s.acertos  || 0), 0)
+    const total        = states.length
+    const concluidos   = states.filter(s => s.statusMaterial === 'concluido').length
+    const emAndamento  = states.filter(s => s.statusMaterial === 'em_andamento').length
+    const finalizados  = states.filter(s => s.finalizado).length
+    const questoes     = states.reduce((a, s) => a + (s.questoes || 0), 0)
+    const acertos      = states.reduce((a, s) => a + (s.acertos  || 0), 0)
     const pctConcluido = total    ? Math.round((concluidos / total)   * 100) : 0
     const pctAcerto    = questoes ? Math.round((acertos   / questoes) * 100) : 0
     return { total, concluidos, emAndamento, finalizados, questoes, acertos, pctConcluido, pctAcerto }
@@ -136,7 +140,6 @@ export function useEdital(editalId: string) {
   return { data, getState, updateField, cycleStatus, getStats, syncing, lastSync }
 }
 
-// ─── Hook para listar editais cadastrados do usuário ──────────────────────────
 export interface EditalCadastrado {
   id: string
   nome: string
@@ -175,8 +178,10 @@ export function useEditaisCadastrados() {
 
   useEffect(() => {
     if (!uid) return
+    const db = getDB()
     return onSnapshot(collection(db, 'users', uid, 'editais'), snap => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EditalCadastrado))
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as EditalCadastrado))
         .sort((a, b) => b.criadoEm - a.criadoEm)
       setEditais(list)
       setLoading(false)
