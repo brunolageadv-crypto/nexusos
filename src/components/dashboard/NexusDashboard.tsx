@@ -12,41 +12,43 @@ interface Props { onNavigate: (id: string) => void }
 ═══════════════════════════════════════════════════════════ */
 interface Widget {
   id: string
-  col: number   // 0-11
-  row: number   // 0-N
-  w: number     // colunas ocupadas (1-12)
-  h: number     // unidades de altura
+  col: number
+  row: number
+  w: number
+  h: number
   visible: boolean
 }
 
 const COLS = 12
-const ROW_H = 108  // px por unidade de altura
+const ROW_H = 108
 const GAP = 14
 
 const DEFAULT_LAYOUT: Widget[] = [
-  { id: 'kpi-edital',    col: 0, row: 0, w: 3, h: 1, visible: true },
-  { id: 'kpi-questoes',  col: 3, row: 0, w: 3, h: 1, visible: true },
-  { id: 'kpi-acerto',    col: 6, row: 0, w: 3, h: 1, visible: true },
-  { id: 'kpi-ponto',     col: 9, row: 0, w: 3, h: 1, visible: true },
-  { id: 'ponto-rapido',  col: 0, row: 1, w: 2, h: 3, visible: true },
-  { id: 'agu-panel',     col: 2, row: 1, w: 5, h: 3, visible: true },
-  { id: 'questoes-panel',col: 7, row: 1, w: 5, h: 3, visible: true },
-  { id: 'contas-pagar',  col: 0, row: 4, w: 6, h: 3, visible: true },
-  { id: 'concursos-dash',col: 6, row: 4, w: 6, h: 3, visible: true },
-  { id: 'modulos',       col: 0, row: 7, w: 12, h: 2, visible: true },
+  { id: 'kpi-edital',          col: 0,  row: 0, w: 3,  h: 1, visible: true  },
+  { id: 'kpi-questoes',        col: 3,  row: 0, w: 3,  h: 1, visible: true  },
+  { id: 'kpi-acerto',          col: 6,  row: 0, w: 3,  h: 1, visible: true  },
+  { id: 'kpi-ponto',           col: 9,  row: 0, w: 3,  h: 1, visible: true  },
+  { id: 'agu-panel',           col: 0,  row: 1, w: 5,  h: 3, visible: true  },
+  { id: 'questoes-panel',      col: 5,  row: 1, w: 4,  h: 3, visible: true  },
+  { id: 'revisao-alertas',     col: 9,  row: 1, w: 3,  h: 3, visible: true  },
+  { id: 'contas-pagar',        col: 0,  row: 4, w: 6,  h: 3, visible: true  },
+  { id: 'concursos-dash',      col: 6,  row: 4, w: 4,  h: 3, visible: true  },
+  { id: 'prontuario-calendar', col: 10, row: 4, w: 2,  h: 3, visible: true  },
+  { id: 'modulos',             col: 0,  row: 7, w: 12, h: 2, visible: true  },
 ]
 
 const WIDGET_LABELS: Record<string, string> = {
-  'kpi-edital': '📊 Progresso AGU',
-  'kpi-questoes': '📝 Questões',
-  'kpi-acerto': '🎯 % Acerto',
-  'kpi-ponto': '⊙ Horas Mês',
-  'ponto-rapido': '⊙ Ponto Rápido',
-  'agu-panel': '⚖ Painel AGU',
-  'questoes-panel': '◈ Questões',
-  'contas-pagar': '⚠ Contas a Pagar',
-  'concursos-dash': '🎯 Concursos',
-  'modulos': '▦ Módulos',
+  'kpi-edital':          '📊 Progresso AGU',
+  'kpi-questoes':        '📝 Questões',
+  'kpi-acerto':          '🎯 % Acerto',
+  'kpi-ponto':           '⊙ Horas Mês',
+  'agu-panel':           '⚖ Painel AGU',
+  'questoes-panel':      '◈ Questões',
+  'revisao-alertas':     '🔔 Revisões em Atraso',
+  'contas-pagar':        '⚠ Contas a Pagar',
+  'concursos-dash':      '🎯 Concursos',
+  'prontuario-calendar': '📅 Prazos ADM',
+  'modulos':             '▦ Módulos',
 }
 
 /* ─────────────────────────────────────────────────────────
@@ -81,24 +83,11 @@ function usePontoStats() {
   const minMes = registros.filter(r => r.data.startsWith(mesAtual)).reduce((a, r) => a + (r.minutos || 0), 0)
   const hMes = Math.floor(minMes / 60), mMes = minMes % 60
   const emServico = !!(regHoje?.entrada && !regHoje?.saida)
-  const fmtHoje = regHoje?.minutos ? `${Math.floor(regHoje.minutos / 60)}h${regHoje.minutos % 60 > 0 ? ` ${regHoje.minutos % 60}m` : ''}` : null
-  const nowHHMM = () => { const n = new Date(); return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}` }
-  const calcMin = (e: string, s: string) => { if (!e || !s) return 0; const [eh, em] = e.split(':').map(Number); const [sh, sm] = s.split(':').map(Number); return Math.max(0, (sh * 60 + sm) - (eh * 60 + em)) }
-  const baterEntrada = async () => {
-    if (!uid || !db || regHoje?.entrada) return
-    const h = nowHHMM(), id = regHoje?.id ?? (hoje + '_' + Date.now().toString(36))
-    await setDoc(doc(db, `users/${uid}/ponto`, id), { id, data: hoje, entrada: h, saida: '', minutos: 0, observacao: '' })
-  }
-  const baterSaida = async () => {
-    if (!uid || !db || !regHoje?.entrada || regHoje?.saida) return
-    const h = nowHHMM(), min = calcMin(regHoje.entrada, h)
-    await setDoc(doc(db, `users/${uid}/ponto`, regHoje.id), { ...regHoje, saida: h, minutos: min })
-  }
-  return { emServico, fmtHoje, hMes, mMes, baterEntrada, baterSaida, regHoje }
+  return { emServico, hMes, mMes, regHoje }
 }
 
 /* ─────────────────────────────────────────────────────────
-   useContasPagar — para widget dashboard
+   useContasPagar
 ───────────────────────────────────────────────────────── */
 function useContasPagar() {
   const [contas, setContas] = useState<any[]>([])
@@ -120,7 +109,7 @@ function useContasPagar() {
 }
 
 /* ─────────────────────────────────────────────────────────
-   useConcursosDash — para widget dashboard
+   useConcursosDash
 ───────────────────────────────────────────────────────── */
 function useConcursosDash() {
   const [concursos, setConcursos] = useState<any[]>([])
@@ -137,7 +126,44 @@ function useConcursosDash() {
 }
 
 /* ─────────────────────────────────────────────────────────
-   useLayout — carrega/salva layout no Firestore
+   useRevisaoAlertas — subtópicos AGU com revisão > 30 dias
+───────────────────────────────────────────────────────── */
+function useRevisaoAlertas() {
+  const { data, getState } = useEditaisAGU()
+  return useMemo(() => {
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+    const alertas: { id: string; nome: string; disciplina: string; dias: number }[] = []
+    for (const disc of AGU_DISCIPLINAS) {
+      for (const topico of disc.topicos) {
+        for (const sub of topico.subtopicos) {
+          const st = getState(sub.id)
+          if (!st.ultimaRevisao) continue
+          const rev = new Date(st.ultimaRevisao + 'T00:00:00')
+          const dias = Math.floor((hoje.getTime() - rev.getTime()) / 86400000)
+          if (dias >= 30) alertas.push({ id: sub.id, nome: sub.nome, disciplina: disc.nome, dias })
+        }
+      }
+    }
+    return alertas.sort((a, b) => b.dias - a.dias)
+  }, [data, getState])
+}
+
+/* ─────────────────────────────────────────────────────────
+   useProntuarioDemandas — prazos para o widget calendário
+───────────────────────────────────────────────────────── */
+function useProntuarioDemandas() {
+  const [demandas, setDemandas] = useState<any[]>([])
+  const uid = useUid()
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(collection(db, `users/${uid}/prontuario`), snap =>
+      setDemandas(snap.docs.map(d => d.data())))
+  }, [uid])
+  return demandas.filter(d => d.status !== 'concluida' && d.status !== 'cancelada' && d.prazo)
+}
+
+/* ─────────────────────────────────────────────────────────
+   useLayout
 ───────────────────────────────────────────────────────── */
 function useLayout() {
   const uid = useUid()
@@ -169,7 +195,7 @@ function useLayout() {
 }
 
 /* ─────────────────────────────────────────────────────────
-   DraggableWidget — pointer events para drag fluido
+   DraggableWidget
 ───────────────────────────────────────────────────────── */
 interface DWProps {
   widget: Widget
@@ -192,7 +218,6 @@ function DraggableWidget({ widget, editing, gridW, onMove, onResize, children }:
   const handleRef = useRef<HTMLDivElement>(null)
   const resHandleRef = useRef<HTMLDivElement>(null)
 
-  // Drag com pointer events — mais fluido que mouse events
   const startDrag = useCallback((e: React.PointerEvent) => {
     if (!editing) return
     e.preventDefault()
@@ -213,7 +238,6 @@ function DraggableWidget({ widget, editing, gridW, onMove, onResize, children }:
 
   const endDrag = useCallback(() => { dragRef.current = null }, [])
 
-  // Resize com pointer events
   const startRes = useCallback((e: React.PointerEvent) => {
     if (!editing) return
     e.preventDefault()
@@ -240,8 +264,6 @@ function DraggableWidget({ widget, editing, gridW, onMove, onResize, children }:
       zIndex: dragRef.current ? 20 : editing ? 5 : 1,
       boxSizing: 'border-box',
     }}>
-
-      {/* Handle de drag */}
       {editing && (
         <div
           ref={handleRef}
@@ -263,13 +285,9 @@ function DraggableWidget({ widget, editing, gridW, onMove, onResize, children }:
           <span style={{ fontSize:'0.55rem', color:'rgba(0,229,255,0.4)', fontFamily:'var(--font-mono)', marginLeft:8 }}>{widget.w}×{widget.h}</span>
         </div>
       )}
-
-      {/* Conteúdo */}
       <div style={{ width:'100%', height:'100%', overflow:'hidden', borderRadius:12, border: editing?'1px solid rgba(0,229,255,0.25)':'none', boxShadow: editing?'0 0 0 2px rgba(0,229,255,0.08)':'' }}>
         {children}
       </div>
-
-      {/* Handle de resize */}
       {editing && (
         <div
           ref={resHandleRef}
@@ -293,7 +311,7 @@ function DraggableWidget({ widget, editing, gridW, onMove, onResize, children }:
 }
 
 /* ─────────────────────────────────────────────────────────
-   Widget contents
+   KpiCard
 ───────────────────────────────────────────────────────── */
 function KpiCard({ label, value, sub, color }: { label: string; value: string | number; sub: string; color: string }) {
   return (
@@ -305,25 +323,9 @@ function KpiCard({ label, value, sub, color }: { label: string; value: string | 
   )
 }
 
-function PontoRapidoCard({ ponto, onNavigate }: { ponto: ReturnType<typeof usePontoStats>; onNavigate: (id: string) => void }) {
-  return (
-    <div className="card" style={{ height: '100%', padding: '14px 12px', textAlign: 'center', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>Ponto Rápido</div>
-      {ponto.emServico && <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: 7, padding: '5px 8px', fontSize: '0.65rem', color: '#10b981', fontFamily: 'var(--font-mono)' }}>🟢 EM SERVIÇO</div>}
-      {ponto.fmtHoje && <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: 'var(--text-accent)' }}>{ponto.fmtHoje}</div>}
-      <button onClick={ponto.baterEntrada} disabled={!!ponto.regHoje?.entrada}
-        style={{ flex: 1, borderRadius: 9, border: '1px solid rgba(16,185,129,0.4)', background: ponto.regHoje?.entrada ? 'rgba(16,185,129,0.05)' : 'rgba(16,185,129,0.12)', color: ponto.regHoje?.entrada ? 'rgba(16,185,129,0.3)' : '#10b981', fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.82rem', cursor: ponto.regHoje?.entrada ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}>
-        → ENTRADA
-      </button>
-      <button onClick={ponto.baterSaida} disabled={!ponto.regHoje?.entrada || !!ponto.regHoje?.saida}
-        style={{ flex: 1, borderRadius: 9, border: '1px solid rgba(239,68,68,0.4)', background: (!ponto.regHoje?.entrada || ponto.regHoje?.saida) ? 'rgba(239,68,68,0.05)' : 'rgba(239,68,68,0.12)', color: (!ponto.regHoje?.entrada || ponto.regHoje?.saida) ? 'rgba(239,68,68,0.3)' : '#ef4444', fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.82rem', cursor: (!ponto.regHoje?.entrada || ponto.regHoje?.saida) ? 'not-allowed' : 'pointer', transition: 'all 0.2s' }}>
-        ← SAÍDA
-      </button>
-      <button onClick={() => onNavigate('ponto')} style={{ padding: '5px', borderRadius: 7, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: '0.68rem', cursor: 'pointer' }}>Ver relatórios →</button>
-    </div>
-  )
-}
-
+/* ─────────────────────────────────────────────────────────
+   AguPanel
+───────────────────────────────────────────────────────── */
 function AguPanel({ global, lastFinalized, discStats, onNavigate }: any) {
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
@@ -365,6 +367,9 @@ function AguPanel({ global, lastFinalized, discStats, onNavigate }: any) {
   )
 }
 
+/* ─────────────────────────────────────────────────────────
+   QuestoesPanel
+───────────────────────────────────────────────────────── */
 function QuestoesPanel({ global, discStats, onNavigate }: any) {
   const worst = [...discStats].filter((d: any) => d.questoes > 0).sort((a: any, b: any) => a.pctAcerto - b.pctAcerto).slice(0, 3)
   return (
@@ -407,39 +412,78 @@ function QuestoesPanel({ global, discStats, onNavigate }: any) {
   )
 }
 
-function ModulosCard({ global, ponto, onNavigate }: any) {
-  const modulos = [
-    { id: 'editais', label: 'Editais AGU', icon: '⚖', desc: `${global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`, color: '#00e5ff' },
-    { id: 'concursos', label: 'Concursos', icon: '🎯', desc: 'Cadastro e acompanhamento', color: '#7c3aed' },
-    { id: 'ponto', label: 'Ponto Eletrônico', icon: '⊙', desc: ponto.emServico ? '🟢 Em serviço' : `${ponto.hMes}h no mês`, color: '#f59e0b' },
-    { id: 'financeiro', label: 'Financeiro', icon: '◎', desc: 'Receitas e despesas', color: '#10b981' },
-    { id: 'journal', label: 'Diário', icon: '✦', desc: 'Em breve', color: '#ec4899' },
-    { id: 'media', label: 'Media Tracker', icon: '▶', desc: 'Em breve', color: '#3b82f6' },
-  ]
+/* ─────────────────────────────────────────────────────────
+   RevisaoAlertasCard — subtópicos AGU sem revisão há ≥ 30 dias
+───────────────────────────────────────────────────────── */
+function RevisaoAlertasCard({ onNavigate }: { onNavigate: (id: string) => void }) {
+  const alertas = useRevisaoAlertas()
+  const [expanded, setExpanded] = useState(false)
+  const visible = expanded ? alertas : alertas.slice(0, 4)
+
+  const urgColor = (dias: number) => {
+    if (dias >= 60) return { bg: 'rgba(120,20,20,0.25)', border: 'rgba(185,74,74,0.4)', text: '#fca5a5', badge: '#b94a4a' }
+    if (dias >= 45) return { bg: 'rgba(120,80,10,0.2)',  border: 'rgba(196,124,46,0.4)', text: '#fcd34d', badge: '#c47c2e' }
+    return              { bg: 'rgba(90,70,10,0.18)',   border: 'rgba(160,140,50,0.3)', text: '#d4b96a', badge: '#a09550' }
+  }
+
   return (
-    <div className="card" style={{ height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>MÓDULOS</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 10, flex: 1 }}>
-        {modulos.map(m => (
-          <button key={m.id} onClick={() => onNavigate(m.id)} className="card"
-            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: 'var(--card-bg)', border: '1px solid var(--border)', textAlign: 'left', width: '100%', transition: 'all 0.18s', padding: '10px 12px' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = m.color; (e.currentTarget as HTMLElement).style.boxShadow = `0 0 14px ${m.color}22` }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = ''; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
-            <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>{m.icon}</span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700, color: m.color, fontSize: '0.78rem', fontFamily: 'var(--font-display)' }}>{m.label}</div>
-              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.desc}</div>
-            </div>
-          </button>
-        ))}
+    <div className="card" style={{ padding: 0, overflow: 'hidden', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(90deg,rgba(251,191,36,0.05)0%,transparent 100%)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 1 }}>🔔 Revisões em Atraso</div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>AGU · +30 dias sem revisar</div>
+        </div>
+        {alertas.length > 0 && (
+          <div style={{ padding: '2px 9px', borderRadius: 20, background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', fontSize: '0.72rem', fontWeight: 800, color: '#fbbf24' }}>
+            {alertas.length}
+          </div>
+        )}
+      </div>
+
+      {/* Lista */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+        {alertas.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+            <div style={{ fontSize: '1.4rem', marginBottom: 8 }}>✅</div>
+            Nenhum subtópico com revisão atrasada
+          </div>
+        ) : (
+          <>
+            {visible.map(a => {
+              const c = urgColor(a.dias)
+              return (
+                <div key={a.id} style={{ margin: '0 10px 6px', padding: '7px 10px', borderRadius: 8, background: c.bg, border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.nome}</div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.disciplina.replace('Direito ', '')}</div>
+                  </div>
+                  <div style={{ flexShrink: 0, padding: '2px 7px', borderRadius: 12, background: `${c.badge}25`, border: `1px solid ${c.badge}50`, fontSize: '0.65rem', fontWeight: 800, color: c.text }}>
+                    {a.dias}d
+                  </div>
+                </div>
+              )
+            })}
+            {alertas.length > 4 && (
+              <button onClick={() => setExpanded(e => !e)}
+                style={{ display: 'block', width: 'calc(100% - 20px)', margin: '0 10px', padding: '5px', borderRadius: 7, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer', fontFamily: 'var(--font-display)', fontWeight: 600 }}>
+                {expanded ? '▲ Recolher' : `▼ +${alertas.length - 4} alertas`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <button onClick={() => onNavigate('editais')} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px solid rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.05)', color: '#d4a820', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
+          Abrir Editais AGU →
+        </button>
       </div>
     </div>
   )
 }
 
-/* ─────────────────────────────────────────────────────────
-   MAIN DASHBOARD
-───────────────────────────────────────────────────────── */
 /* ─────────────────────────────────────────────────────────
    ContasPagarCard
 ───────────────────────────────────────────────────────── */
@@ -470,12 +514,9 @@ function ContasPagarCard({ onNavigate }: { onNavigate: (id: string) => void }) {
           )}
         </div>
       </div>
-
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {contas.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-            Nenhuma conta pendente
-          </div>
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.78rem' }}>Nenhuma conta pendente</div>
         ) : contas.slice(0, 8).map((c: any, i: number) => {
           const d = daysUntil(c.vencimento)
           const vencida = d < 0
@@ -490,14 +531,11 @@ function ContasPagarCard({ onNavigate }: { onNavigate: (id: string) => void }) {
                   {c.categoria ? ` · ${c.categoria}` : ''}
                 </div>
               </div>
-              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.85rem', color: cor, flexShrink: 0 }}>
-                {fmtMoeda(c.valor)}
-              </div>
+              <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.85rem', color: cor, flexShrink: 0 }}>{fmtMoeda(c.valor)}</div>
             </div>
           )
         })}
       </div>
-
       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <button onClick={() => onNavigate('financeiro')} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.06)', color: '#f59e0b', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
           Ver Financeiro →
@@ -543,12 +581,9 @@ function ConcursosDashCard({ onNavigate }: { onNavigate: (id: string) => void })
           </div>
         </div>
       </div>
-
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
         {concursos.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-            Nenhum concurso cadastrado
-          </div>
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.78rem' }}>Nenhum concurso cadastrado</div>
         ) : concursos.slice(0, 6).map((c: any, i: number) => {
           const cor = STATUS_COLOR[c.status] ?? '#64748b'
           const dProva = c.dataProva ? daysUntil(c.dataProva) : null
@@ -569,9 +604,7 @@ function ConcursosDashCard({ onNavigate }: { onNavigate: (id: string) => void })
                     </span>
                   )}
                   {c.dataInscricaoFim && (
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                      📝 até {fmtDate(c.dataInscricaoFim)}
-                    </span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>📝 até {fmtDate(c.dataInscricaoFim)}</span>
                   )}
                   {c.remuneracao && (
                     <span style={{ fontSize: '0.68rem', color: '#10b981' }}>💰 {c.remuneracao}</span>
@@ -582,7 +615,6 @@ function ConcursosDashCard({ onNavigate }: { onNavigate: (id: string) => void })
           )
         })}
       </div>
-
       <div style={{ padding: '8px 16px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
         <button onClick={() => onNavigate('concursos')} style={{ width: '100%', padding: '7px', borderRadius: 7, border: '1px solid rgba(124,58,237,0.3)', background: 'rgba(124,58,237,0.06)', color: '#a78bfa', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}>
           Ver Concursos →
@@ -592,11 +624,156 @@ function ConcursosDashCard({ onNavigate }: { onNavigate: (id: string) => void })
   )
 }
 
+/* ─────────────────────────────────────────────────────────
+   ProntuarioCalendarCard — mini calendário de prazos ADM
+───────────────────────────────────────────────────────── */
+function ProntuarioCalendarCard({ onNavigate }: { onNavigate: (id: string) => void }) {
+  const demandas = useProntuarioDemandas()
+  const hoje = new Date()
+  const [mes, setMes] = useState(hoje.getMonth())
+  const [ano, setAno] = useState(hoje.getFullYear())
+
+  const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  const DIAS  = ['D','S','T','Q','Q','S','S']
+  const primeiroDia = new Date(ano, mes, 1).getDay()
+  const diasNoMes  = new Date(ano, mes + 1, 0).getDate()
+
+  const diasRestantes = (prazo: string) => {
+    const p = new Date(prazo + 'T00:00:00')
+    const h = new Date(); h.setHours(0,0,0,0)
+    return Math.ceil((p.getTime() - h.getTime()) / 86400000)
+  }
+  const prazoColor = (dias: number) => dias <= 0 ? '#ef4444' : dias <= 10 ? '#f87171' : dias <= 15 ? '#fbbf24' : '#6ee7a0'
+
+  const eventosPorDia: Record<number, any[]> = {}
+  demandas.forEach(d => {
+    const dp = new Date(d.prazo + 'T00:00:00')
+    if (dp.getMonth() === mes && dp.getFullYear() === ano) {
+      const dia = dp.getDate()
+      if (!eventosPorDia[dia]) eventosPorDia[dia] = []
+      eventosPorDia[dia].push(d)
+    }
+  })
+
+  const cells = [...Array(primeiroDia).fill(null), ...Array.from({ length: diasNoMes }, (_, i) => i + 1)]
+  const prevMes = () => { if (mes === 0) { setMes(11); setAno(a => a-1) } else setMes(m => m-1) }
+  const nextMes = () => { if (mes === 11) { setMes(0); setAno(a => a+1) } else setMes(m => m+1) }
+
+  const proximos = [...demandas]
+    .map(d => ({ ...d, dias: diasRestantes(d.prazo) }))
+    .sort((a,b) => a.dias - b.dias)
+    .slice(0, 3)
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(90deg,rgba(91,91,214,0.05)0%,transparent 100%)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>📅 Prazos ADM</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button onClick={prevMes} style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+          <span style={{ fontSize: '0.6rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', minWidth: 40, textAlign: 'center' }}>{MESES[mes]}/{ano.toString().slice(2)}</span>
+          <button onClick={nextMes} style={{ width: 20, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+        </div>
+      </div>
+
+      {/* Mini calendário */}
+      <div style={{ padding: '8px 10px', flexShrink: 0 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1, marginBottom: 3 }}>
+          {DIAS.map((d,i) => <div key={i} style={{ textAlign: 'center', fontSize: '0.55rem', fontWeight: 700, color: 'var(--text-muted)' }}>{d}</div>)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 1 }}>
+          {cells.map((dia, i) => {
+            if (!dia) return <div key={i} />
+            const eventos = eventosPorDia[dia] || []
+            const isHoje = dia === hoje.getDate() && mes === hoje.getMonth() && ano === hoje.getFullYear()
+            const cor = eventos.length > 0 ? prazoColor(diasRestantes(eventos[0].prazo)) : undefined
+            return (
+              <div key={i} style={{
+                minHeight: 20, borderRadius: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                background: isHoje ? 'rgba(91,91,214,0.25)' : eventos.length ? `${cor}18` : 'transparent',
+                border: `1px solid ${isHoje ? 'rgba(91,91,214,0.5)' : eventos.length ? `${cor}35` : 'transparent'}`,
+              }}>
+                <span style={{ fontSize: '0.58rem', color: isHoje ? '#a5a3f5' : cor ?? 'var(--text-muted)', fontWeight: isHoje || eventos.length ? 700 : 400 }}>{dia}</span>
+                {eventos.length > 0 && <div style={{ width: 3, height: 3, borderRadius: '50%', background: cor, marginTop: 1 }} />}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Proximos vencimentos */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 10px 6px' }}>
+        {proximos.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '10px 0', fontSize: '0.68rem', color: 'var(--text-muted)' }}>Sem demandas com prazo</div>
+        ) : (
+          <>
+            <div style={{ fontSize: '0.55rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Próximos vencimentos</div>
+            {proximos.map((d: any) => {
+              const cor = prazoColor(d.dias)
+              return (
+                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', marginBottom: 3, borderRadius: 6, background: `${cor}10`, border: `1px solid ${cor}20` }}>
+                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: cor, flexShrink: 0 }} />
+                  <span style={{ flex: 1, fontSize: '0.65rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.titulo}</span>
+                  <span style={{ fontSize: '0.6rem', fontWeight: 800, color: cor, flexShrink: 0 }}>{d.dias <= 0 ? 'Venc.' : `${d.dias}d`}</span>
+                </div>
+              )
+            })}
+          </>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: '6px 10px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+        <button onClick={() => onNavigate('prontuario')} style={{ width: '100%', padding: '5px', borderRadius: 6, border: '1px solid rgba(91,91,214,0.3)', background: 'rgba(91,91,214,0.06)', color: '#a5a3f5', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.68rem', cursor: 'pointer' }}>
+          Prontuário ADM →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────────────────────
+   ModulosCard
+───────────────────────────────────────────────────────── */
+function ModulosCard({ global, ponto, onNavigate }: any) {
+  const modulos = [
+    { id: 'editais',    label: 'Editais AGU',     icon: '⚖', desc: `${global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`, color: '#00e5ff' },
+    { id: 'concursos',  label: 'Concursos',       icon: '🎯', desc: 'Cadastro e acompanhamento',                           color: '#7c3aed' },
+    { id: 'prontuario', label: 'Prontuário ADM',  icon: '📋', desc: 'Demandas e prazos',                                  color: '#5b5bd6' },
+    { id: 'ponto',      label: 'Ponto Eletrônico',icon: '⊙', desc: ponto.emServico ? '🟢 Em serviço' : `${ponto.hMes}h no mês`, color: '#f59e0b' },
+    { id: 'financeiro', label: 'Financeiro',      icon: '◎', desc: 'Receitas e despesas',                                 color: '#10b981' },
+    { id: 'journal',    label: 'Diário',          icon: '✦', desc: 'Em breve',                                            color: '#ec4899' },
+    { id: 'media',      label: 'Media Tracker',   icon: '▶', desc: 'Em breve',                                            color: '#3b82f6' },
+  ]
+  return (
+    <div className="card" style={{ height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: 12 }}>MÓDULOS</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))', gap: 10, flex: 1 }}>
+        {modulos.map(m => (
+          <button key={m.id} onClick={() => onNavigate(m.id)} className="card"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: 'var(--card-bg)', border: '1px solid var(--border)', textAlign: 'left', width: '100%', transition: 'all 0.18s', padding: '10px 12px' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = m.color; (e.currentTarget as HTMLElement).style.boxShadow = `0 0 14px ${m.color}22` }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = ''; (e.currentTarget as HTMLElement).style.boxShadow = '' }}>
+            <span style={{ fontSize: '1.4rem', flexShrink: 0 }}>{m.icon}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: m.color, fontSize: '0.78rem', fontFamily: 'var(--font-display)' }}>{m.label}</div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.desc}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN DASHBOARD
+═══════════════════════════════════════════════════════════ */
 export default function NexusDashboard({ onNavigate }: Props) {
   const hooks = useEditaisAGU()
   const ponto = usePontoStats()
-  useContasPagar()  // usado nos widgets
-  useConcursosDash() // usado nos widgets
   const { layout, saveLayout, resetLayout } = useLayout()
   const [editing, setEditing] = useState(false)
   const [showPanel, setShowPanel] = useState(false)
@@ -639,24 +816,23 @@ export default function NexusDashboard({ onNavigate }: Props) {
 
   const toggleVisible = (id: string) => saveLayout(layout.map(w => w.id === id ? { ...w, visible: !w.visible } : w))
 
-  // Altura total da grade
   const maxRow = layout.filter(w => w.visible).reduce((a, w) => Math.max(a, w.row + w.h), 0)
   const gridH = maxRow * ROW_H + (maxRow - 1) * GAP + 20
-
   const colW = gridW / COLS
 
   function renderWidget(w: Widget) {
     switch (w.id) {
-      case 'kpi-edital': return <KpiCard label="Progresso Edital" value={`${global.pctConcluido}%`} sub={`${global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`} color="#00e5ff" />
-      case 'kpi-questoes': return <KpiCard label="Questões Feitas" value={global.questoes || '—'} sub={`${global.acertos} acertos`} color="#7c3aed" />
-      case 'kpi-acerto': return <KpiCard label="% Acerto Geral" value={global.questoes > 0 ? `${global.pctAcerto}%` : '—'} sub="performance geral" color="#10b981" />
-      case 'kpi-ponto': return <KpiCard label="Horas no Mês" value={`${ponto.hMes}h${ponto.mMes > 0 ? ` ${ponto.mMes}m` : ''}`} sub={ponto.emServico ? '🟢 Em serviço' : 'Ponto eletrônico'} color="#f59e0b" />
-      case 'ponto-rapido': return <PontoRapidoCard ponto={ponto} onNavigate={onNavigate} />
-      case 'agu-panel': return <AguPanel global={global} lastFinalized={lastFinalized} discStats={discStats} onNavigate={onNavigate} />
-      case 'questoes-panel': return <QuestoesPanel global={global} discStats={discStats} onNavigate={onNavigate} />
-      case 'contas-pagar':   return <ContasPagarCard onNavigate={onNavigate} />
-      case 'concursos-dash': return <ConcursosDashCard onNavigate={onNavigate} />
-      case 'modulos': return <ModulosCard global={global} ponto={ponto} onNavigate={onNavigate} />
+      case 'kpi-edital':          return <KpiCard label="Progresso Edital"  value={`${global.pctConcluido}%`} sub={`${global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`} color="#00e5ff" />
+      case 'kpi-questoes':        return <KpiCard label="Questões Feitas"   value={global.questoes || '—'} sub={`${global.acertos} acertos`} color="#7c3aed" />
+      case 'kpi-acerto':          return <KpiCard label="% Acerto Geral"    value={global.questoes > 0 ? `${global.pctAcerto}%` : '—'} sub="performance geral" color="#10b981" />
+      case 'kpi-ponto':           return <KpiCard label="Horas no Mês"      value={`${ponto.hMes}h${ponto.mMes > 0 ? ` ${ponto.mMes}m` : ''}`} sub={ponto.emServico ? '🟢 Em serviço' : 'Ponto eletrônico'} color="#f59e0b" />
+      case 'agu-panel':           return <AguPanel global={global} lastFinalized={lastFinalized} discStats={discStats} onNavigate={onNavigate} />
+      case 'questoes-panel':      return <QuestoesPanel global={global} discStats={discStats} onNavigate={onNavigate} />
+      case 'revisao-alertas':     return <RevisaoAlertasCard onNavigate={onNavigate} />
+      case 'contas-pagar':        return <ContasPagarCard onNavigate={onNavigate} />
+      case 'concursos-dash':      return <ConcursosDashCard onNavigate={onNavigate} />
+      case 'prontuario-calendar': return <ProntuarioCalendarCard onNavigate={onNavigate} />
+      case 'modulos':             return <ModulosCard global={global} ponto={ponto} onNavigate={onNavigate} />
       default: return null
     }
   }
@@ -664,7 +840,7 @@ export default function NexusDashboard({ onNavigate }: Props) {
   return (
     <div style={{ padding: '16px 20px', minHeight: '100%' }}>
 
-      {/* ── Toolbar ── */}
+      {/* Toolbar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', flex: 1 }}>
           Dashboard {editing && <span style={{ color: '#f59e0b' }}>· Modo Edição</span>}
@@ -682,7 +858,7 @@ export default function NexusDashboard({ onNavigate }: Props) {
         )}
       </div>
 
-      {/* ── Painel de widgets ── */}
+      {/* Painel de widgets */}
       {showPanel && (
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', marginBottom: 14, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <div style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>Mostrar / Ocultar Widgets</div>
@@ -694,7 +870,7 @@ export default function NexusDashboard({ onNavigate }: Props) {
         </div>
       )}
 
-      {/* ── Grid ── */}
+      {/* Grid */}
       {editing && (
         <div style={{ background: 'repeating-linear-gradient(90deg, rgba(0,229,255,0.03) 0px, rgba(0,229,255,0.03) 1px, transparent 1px, transparent calc(100%/' + COLS + '))', position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0 }} />
       )}

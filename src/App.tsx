@@ -6,6 +6,7 @@ import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
 import PontoEletronico from './components/ponto/PontoEletronico'
 import Financeiro from './components/financeiro/Financeiro'
+import ProntuarioADM from './components/prontuario/ProntuarioADM'
 
 /* ═══ Theme ══════════════════════════════════════════════════ */
 type Theme = 'dark' | 'light'
@@ -27,11 +28,10 @@ function ThemeProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/* ═══ Logo NEXUS — corrigida ═════════════════════════════════ */
+/* ═══ Logo NEXUS ═════════════════════════════════════════════ */
 function NexusLogo() {
   return (
     <div style={{ padding: '8px 0 6px', userSelect: 'none' }}>
-      {/* viewBox 200x46 — espaço suficiente para hexágono + NEXUS */}
       <svg width="200" height="46" viewBox="0 0 200 46" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="ng1" x1="0" y1="0" x2="0" y2="1">
@@ -43,29 +43,21 @@ function NexusLogo() {
             <stop offset="100%" stopColor="#5c6578"/>
           </linearGradient>
         </defs>
-
-        {/* Hexágono externo */}
         <polygon points="21,3 37,12 37,30 21,39 5,30 5,12"
           fill="none" stroke="#3a4050" strokeWidth="1.2"/>
-        {/* Hexágono interno */}
         <polygon points="21,9 32,15 32,27 21,33 10,27 10,15"
           fill="none" stroke="url(#ng1)" strokeWidth="1.5"/>
-        {/* Linhas vértice a vértice */}
         <line x1="21" y1="3"  x2="21" y2="9"  stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="37" y1="12" x2="32" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="37" y1="30" x2="32" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="21" y1="39" x2="21" y2="33" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="5"  y1="30" x2="10" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
         <line x1="5"  y1="12" x2="10" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        {/* Ponto central */}
         <circle cx="21" cy="21" r="2.5" fill="url(#ng1)"/>
-
-        {/* NEXUS — x=48, fontSize=19, letterSpacing menor para caber */}
         <text x="48" y="27"
           fontFamily="Syne,sans-serif" fontWeight="800"
           fontSize="19" letterSpacing="3"
           fill="#dde1eb">NEXUS</text>
-        {/* Linha decorativa */}
         <line x1="48" y1="33" x2="196" y2="33" stroke="url(#ng2)" strokeWidth="0.7"/>
       </svg>
     </div>
@@ -186,7 +178,7 @@ function AppShell() {
           {active === 'concursos'  && <Concursos />}
           {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
-          {active === 'prontuario' && <Placeholder title="Prontuário ADM"     icon="📋" color="#3b82f6" />}
+          {active === 'prontuario' && <ProntuarioADM />}
           {active === 'saude'      && <Placeholder title="Saúde & Bem-Estar"  icon="✚"  color="#10b981" />}
           {active === 'wishlist'   && <Placeholder title="Wishlist & Compras" icon="🛒" color="#f59e0b" />}
           {active === 'journal'    && <Placeholder title="Diário"             icon="✦"  color="#ec4899" />}
