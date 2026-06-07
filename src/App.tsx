@@ -158,7 +158,7 @@ function AppShell() {
             </div>
           ))}
         </div>
-        <div style={{ margin: '0 12px 8px', padding: '11px 13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="sidebar-user-block" style={{ margin: '0 12px 8px', padding: '11px 13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid rgba(180,185,200,0.35)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(180,185,200,0.1)' }}>
             {avatarUrl ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
           </div>
@@ -182,6 +182,7 @@ function AppShell() {
       <div className="main-area" style={{ transition: 'margin-left 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
         <header className="topbar">
           <button onClick={toggleSidebarMode}
+            className="desktop-only"
             title={sidebarMode === 'fixed' ? 'Ocultar sidebar' : 'Fixar sidebar'}
             style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)', background: sidebarMode === 'auto' ? 'rgba(0,229,255,0.08)' : 'rgba(255,255,255,0.04)', color: sidebarMode === 'auto' ? 'var(--text-accent)' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', transition: 'all 0.18s', marginRight: 4 }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-bright)' }}
