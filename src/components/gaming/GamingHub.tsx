@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
-import { getFirestore } from 'firebase/firestore'
+import { collection, doc, onSnapshot, setDoc, deleteDoc, getFirestore } from 'firebase/firestore'
 import { getAuth, onAuthStateChanged } from 'firebase/auth'
 import { getApp } from 'firebase/app'
 
