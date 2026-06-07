@@ -192,7 +192,23 @@ function AppShell() {
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
             <div className="sync-dot" />
-            <span className="topbar-status">ONLINE</span>
+            <span className="topbar-status" style={{ display: 'none' }} id="topbar-online">ONLINE</span>
+            {/* Botão tema — visível sempre no mobile, oculto no desktop onde fica na sidebar */}
+            <button
+              onClick={toggle}
+              title={theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
+              className="mobile-theme-btn"
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                border: '1px solid var(--border-md)',
+                background: 'var(--card-bg)',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.9rem',
+              }}>
+              {theme === 'dark' ? '☀' : '◑'}
+            </button>
           </div>
         </header>
         <div className="page-content">

@@ -690,43 +690,27 @@ body, .sidebar, .topbar, .card, .kpi-card, .nav-item, .main-area {
 /* ══════════════════════════════════════════════════════════════
    MOBILE — bottom nav
 ══════════════════════════════════════════════════════════════ */
-/* ── Botão tema desktop: visível; mobile: na topbar ── */
-.mobile-theme-btn {
-  display: none;
-}
-@media (max-width: 768px) {
-  .mobile-theme-btn { display: flex !important; }
-  .theme-btn { display: none !important; }
-}
-
-/* ── Bottom navigation bar ── */
 @media (max-width: 768px) {
   html { font-size: 14px; }
+
   .app-shell { flex-direction: column; }
 
-  /* Barra inferior fixa */
   .sidebar {
     width: 100% !important;
     min-width: 100% !important;
-    height: 62px !important;
+    height: auto !important;
     flex-direction: row !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
     order: 2;
     border-right: none !important;
-    border-top: 1px solid rgba(255,255,255,0.08) !important;
-    position: fixed !important;
+    border-top: 1px solid rgba(255,255,255,0.06) !important;
+    position: sticky !important;
     bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    z-index: 100 !important;
+    z-index: 50 !important;
     padding: 0 !important;
-    background: #1B2030 !important;
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.25) !important;
-    align-items: stretch !important;
   }
 
-  /* Ocultar elementos desnecessários */
   .sidebar-logo,
   .sidebar-bottom { display: none !important; }
 
@@ -735,80 +719,36 @@ body, .sidebar, .topbar, .card, .kpi-card, .nav-item, .main-area {
     flex-direction: row !important;
     padding: 0 !important;
     border: none !important;
-    align-items: stretch !important;
   }
 
   .sidebar-section-label { display: none !important; }
 
-  /* Items da nav bottom */
   .nav-item {
     flex-direction: column !important;
-    gap: 3px !important;
-    padding: 8px 6px !important;
+    gap: 2px !important;
+    padding: 10px 12px !important;
     margin: 0 !important;
     border-radius: 0 !important;
-    font-size: 0.55rem !important;
+    font-size: 0.57rem !important;
     white-space: nowrap !important;
-    min-width: 50px !important;
-    flex: 1 !important;
+    min-width: 56px !important;
     justify-content: center !important;
     align-items: center !important;
     width: auto !important;
-    height: 62px !important;
-    border-left: none !important;
-    color: rgba(255,255,255,0.4) !important;
-    transition: color 0.15s, background 0.15s !important;
   }
 
-  .nav-item:hover {
-    color: rgba(255,255,255,0.75) !important;
-    background: rgba(255,255,255,0.05) !important;
-  }
+  .nav-item.active::before { display: none; }
+  .nav-item.active { border-bottom: 2px solid var(--accent) !important; }
 
-  .nav-item.active {
-    color: #6B8EF5 !important;
-    background: rgba(107,142,245,0.1) !important;
-    border-left: none !important;
-    border-top: 2px solid #6B8EF5 !important;
-    padding-top: 6px !important;
-  }
-
-  .nav-item.active::before { display: none !important; }
-
-  .nav-icon {
-    font-size: 1.2rem !important;
-    width: auto !important;
-    opacity: 1 !important;
-  }
-
-  .nav-label {
-    font-size: 0.54rem !important;
-    font-weight: 500 !important;
-    letter-spacing: 0 !important;
-    line-height: 1 !important;
-  }
-
-  /* Main area com espaço para a bottom bar */
-  .main-area {
-    order: 1 !important;
-    height: calc(100vh - 62px) !important;
-    padding-bottom: 0 !important;
-    margin-bottom: 0 !important;
-  }
-
-  .topbar {
-    padding: 0 14px !important;
-    height: 48px !important;
-    min-height: 48px !important;
-  }
-
-  .topbar-breadcrumb { display: none !important; }
+  .nav-icon { font-size: 1.15rem !important; width: auto !important; }
+  .nav-label { font-size: 0.57rem !important; }
+  .main-area { order: 1; height: calc(100vh - 60px); }
+  .topbar { padding: 0 14px !important; height: 44px !important; min-height: 44px !important; }
 }
 
-/* Telefones pequenos: ocultar labels na nav */
-@media (max-width: 390px) {
+@media (max-width: 480px) {
+  .nav-item { padding: 8px 10px !important; min-width: 46px !important; }
   .nav-label { display: none !important; }
-  .nav-item { min-width: 44px !important; padding: 8px 4px !important; }
   .nav-icon { font-size: 1.3rem !important; }
 }
 
