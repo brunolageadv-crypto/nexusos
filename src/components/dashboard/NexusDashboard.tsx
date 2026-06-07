@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
+import { useEditaisCadastrados, useEdital } from '../../hooks/useEdital'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
@@ -175,6 +176,7 @@ function useWishlistStats() {
   const listasAtivas = listas.filter(l => !l.concluida)
   return { pendentes, prioritarios, totalPendente, listasAtivas, totalItens: itens.length }
 }
+
 
 // ─── Layout multi ─────────────────────────────────────────────────────────────
 function useLayouts() {
@@ -774,6 +776,69 @@ function WishlistWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
   )
 }
 
+// ─── WidgetEditalDinamico — widget genérico para qualquer edital ─────────────
+function WidgetEditalDinamico({ editalId, nome, cor, orgao, onNavigate }: {
+  editalId: string; nome: string; cor: string; orgao: string
+  onNavigate: (id: string) => void
+}) {
+  const hooks = useEdital(editalId)
+  // Precisamos do total de subtópicos — buscamos do Firestore via onSnapshot
+  const { editais } = useEditaisCadastrados()
+  const edital = editais.find(e => e.id === editalId)
+  const allIds = edital ? edital.disciplinas.flatMap(d => d.topicos.flatMap(t => t.subtopicos.map(s => s.id))) : []
+  const stats = hooks.getStats(allIds)
+  const r = (stats.pctConcluido/100) * 2 * Math.PI * 20
+  const circ = 2 * Math.PI * 20
+
+  return (
+    <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
+      <div style={{ height:3,background:`linear-gradient(90deg,${cor},${cor}44)` }}/>
+      <div style={{ padding:'10px 14px',borderBottom:'1px solid var(--border-md)',background:`linear-gradient(90deg,${cor}08,transparent)`,flexShrink:0,display:'flex',alignItems:'center',gap:10 }}>
+        <div style={{ flex:1,minWidth:0 }}>
+          <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.58rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:1 }}>{orgao}</div>
+          <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.8rem',color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{nome}</div>
+        </div>
+        <svg width={50} height={50} style={{ transform:'rotate(-90deg)',flexShrink:0 }}>
+          <circle cx={25} cy={25} r={20} fill="none" stroke="var(--bg-4)" strokeWidth={4}/>
+          <circle cx={25} cy={25} r={20} fill="none" stroke={cor} strokeWidth={4} strokeLinecap="round"
+            strokeDasharray={`${r} ${circ}`} style={{ transition:'stroke-dasharray 1s ease',filter:`drop-shadow(0 0 4px ${cor})` }}/>
+        </svg>
+      </div>
+      <div style={{ flex:1,padding:'10px 14px',display:'flex',flexDirection:'column',gap:8,overflowY:'auto' }}>
+        <div style={{ display:'flex',gap:12 }}>
+          <div style={{ flex:1,textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.3rem',color:cor,lineHeight:1 }}>{stats.pctConcluido}%</div>
+            <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>Progresso</div>
+          </div>
+          <div style={{ flex:1,textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.3rem',color:'#7c3aed',lineHeight:1 }}>{stats.questoes>0?`${stats.pctAcerto}%`:'—'}</div>
+            <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>Acerto</div>
+          </div>
+          <div style={{ flex:1,textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.3rem',color:'#10b981',lineHeight:1 }}>{stats.concluidos}</div>
+            <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>Concluídos</div>
+          </div>
+        </div>
+        {allIds.length > 0 && (
+          <div>
+            <div style={{ display:'flex',justifyContent:'space-between',fontSize:'0.62rem',color:'var(--text-muted)',marginBottom:4 }}>
+              <span>{stats.concluidos}/{allIds.length} subtópicos</span>
+            </div>
+            <div style={{ height:5,borderRadius:3,background:'var(--bg-4)',overflow:'hidden' }}>
+              <div style={{ height:'100%',width:`${stats.pctConcluido}%`,background:`linear-gradient(90deg,${cor},${cor}aa)`,borderRadius:3,transition:'width 0.6s',boxShadow:`0 0 8px ${cor}60` }}/>
+            </div>
+          </div>
+        )}
+      </div>
+      <div style={{ padding:'6px 14px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
+        <button onClick={()=>onNavigate('editais')} style={{ width:'100%',padding:'6px',borderRadius:7,border:`1px solid ${cor}35`,background:`${cor}08`,color:cor,fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer' }}>
+          Abrir edital →
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── ModulosCard ──────────────────────────────────────────────────────────────
 function ModulosCard({ global, ponto, onNavigate }: any) {
   const modulos = [
@@ -872,7 +937,17 @@ export default function NexusDashboard({ onNavigate }: Props) {
       case 'saude-widget':        return <SaudeWidget onNavigate={onNavigate} />
       case 'wishlist-widget':     return <WishlistWidget onNavigate={onNavigate} />
       case 'modulos':             return <ModulosCard global={global} ponto={ponto} onNavigate={onNavigate} />
-      default: return null
+      default: {
+        // Widget dinâmico de edital customizado
+        if (w.id.startsWith('edital-') || w.id.startsWith('agu-')) {
+          const parts = WIDGET_LABELS[w.id]?.split(' · ') || []
+          const nome = parts[0]?.replace('⚖ ', '') || w.id
+          const orgao = parts[1] || ''
+          const cor = parts[2] || '#4f46e5'
+          return <WidgetEditalDinamico editalId={w.id} nome={nome} cor={cor} orgao={orgao} onNavigate={onNavigate} />
+        }
+        return null
+      }
     }
   }
 

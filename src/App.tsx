@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from './hooks/useAuth'
 import LoginPage from './auth/LoginPage'
-import EditaisAGU from './components/editais/EditaisAGU'
+import GestorEditais from './components/editais/GestorEditais'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
 import PontoEletronico from './components/ponto/PontoEletronico'
@@ -62,7 +62,7 @@ const NAV = [
     { id: 'dashboard',  label: 'Dashboard',         icon: '◈' },
   ]},
   { section: 'JURÍDICO', items: [
-    { id: 'editais',    label: 'Editais AGU',        icon: '⚖' },
+    { id: 'editais',    label: 'Editais',             icon: '⚖' },
     { id: 'concursos',  label: 'Concursos',          icon: '🎯' },
     { id: 'prontuario', label: 'Prontuário ADM',     icon: '📋' },
   ]},
@@ -138,7 +138,7 @@ function AppShell() {
         </header>
         <div className="page-content">
           {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} />}
-          {active === 'editais'    && <EditaisAGU />}
+          {active === 'editais'    && <GestorEditais />}
           {active === 'concursos'  && <Concursos />}
           {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
