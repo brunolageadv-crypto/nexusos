@@ -18,6 +18,10 @@ interface Registro {
 }
 
 /* ═══ Constants ══════════════════════════════════════════════ */
+// Getter seguro para tipo desconhecido
+const TIPO_FALLBACK = { label: 'Trabalho', icon: '⊙', color: '#00e5ff', bg: 'rgba(0,229,255,0.1)' }
+function getTipo(tipo: string) { return TIPOS[tipo as TipoRegistro] ?? TIPO_FALLBACK }
+
 const TIPOS: Record<TipoRegistro, { label: string; icon: string; color: string; bg: string }> = {
   trabalho:   { label: 'Trabalho',    icon: '⊙',  color: '#00e5ff', bg: 'rgba(0,229,255,0.1)' },
   homeoffice: { label: 'Home Office', icon: '⌂',  color: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
@@ -300,10 +304,10 @@ export default function PontoEletronico() {
                   <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                     <div style={{
                       width:36, height:36, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
-                      background: TIPOS[regHoje.tipo].bg, fontSize:'1.1rem', border:`1px solid ${TIPOS[regHoje.tipo].color}44`, flexShrink:0,
-                    }}>{TIPOS[regHoje.tipo].icon}</div>
+                      background: getTipo(regHoje.tipo).bg, fontSize:'1.1rem', border:`1px solid ${getTipo(regHoje.tipo).color}44`, flexShrink:0,
+                    }}>{getTipo(regHoje.tipo).icon}</div>
                     <div>
-                      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, color:TIPOS[regHoje.tipo].color, fontSize:'0.88rem' }}>{TIPOS[regHoje.tipo].label}</div>
+                      <div style={{ fontFamily:'var(--font-display)', fontWeight:700, color:getTipo(regHoje.tipo).color, fontSize:'0.88rem' }}>{getTipo(regHoje.tipo).label}</div>
                       {regHoje.minutos>0 && <div style={{ fontSize:'0.75rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{regHoje.entrada} → {regHoje.saida} · {fmtHM(regHoje.minutos)}</div>}
                     </div>
                     <button onClick={()=>{ setEditing(regHoje); setModal(true) }} style={{ marginLeft:'auto', background:'none', border:'1px solid var(--border)', borderRadius:6, padding:'4px 8px', color:'var(--text-muted)', cursor:'pointer', fontSize:'0.72rem' }}>✎</button>
@@ -327,7 +331,7 @@ export default function PontoEletronico() {
               ) : (
                 <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
                   {registros.slice(0,25).map(r => {
-                    const tp = TIPOS[r.tipo]
+                    const tp = getTipo(r.tipo)
                     return (
                       <div key={r.id} className="card" style={{ padding:'12px 14px', display:'flex', alignItems:'center', gap:12, transition:'all 0.15s' }}
                         onMouseEnter={e=>(e.currentTarget as HTMLElement).style.borderColor='var(--border-md)'}
@@ -462,7 +466,7 @@ export default function PontoEletronico() {
               {regMesFiltro.length===0 ? (
                 <div style={{ textAlign:'center', padding:32, color:'var(--text-muted)', fontSize:'0.82rem' }}>Nenhum registro neste mês</div>
               ) : regMesFiltro.map((r,i) => {
-                const tp = TIPOS[r.tipo]
+                const tp = getTipo(r.tipo)
                 return (
                   <div key={r.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 18px', borderBottom: i<regMesFiltro.length-1?'1px solid var(--border)':'none' }}>
                     <span style={{ fontSize:'1rem', width:24, textAlign:'center' }}>{tp.icon}</span>
