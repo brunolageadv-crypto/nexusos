@@ -33,6 +33,12 @@ const DEFAULT_WIDGETS: Widget[] = [
   { id: 'saude-widget',        col: 10, row: 4, w: 2,  h: 3, visible: true },
   { id: 'wishlist-widget',      col: 0,  row: 7, w: 4,  h: 3, visible: true },
   { id: 'modulos',             col: 4,  row: 7, w: 8,  h: 3, visible: true },
+  { id: 'gaming-widget',       col: 0,  row: 10, w: 4,  h: 3, visible: false },
+  { id: 'media-widget',        col: 4,  row: 10, w: 4,  h: 3, visible: false },
+  { id: 'diario-widget',       col: 8,  row: 10, w: 4,  h: 3, visible: false },
+  { id: 'links-widget',        col: 0,  row: 13, w: 4,  h: 3, visible: false },
+  { id: 'financeiro-widget',   col: 4,  row: 13, w: 4,  h: 3, visible: false },
+  { id: 'concursos-widget',    col: 8,  row: 13, w: 4,  h: 3, visible: false },
 ]
 
 const WIDGET_LABELS: Record<string, string> = {
@@ -49,6 +55,12 @@ const WIDGET_LABELS: Record<string, string> = {
   'saude-widget':        '✚ Saúde',
   'wishlist-widget':     '🛒 Wishlist',
   'modulos':             '▦ Módulos',
+  'gaming-widget':     '🎮 Gaming Hub',
+  'media-widget':      '▶ Media Tracker',
+  'diario-widget':     '✦ Diário',
+  'links-widget':      '🔗 Links',
+  'financeiro-widget': '◎ Financeiro',
+  'concursos-widget':  '🎯 Concursos',
 }
 
 // ─── Ring ─────────────────────────────────────────────────────────────────────
@@ -839,6 +851,233 @@ function WidgetEditalDinamico({ editalId, nome, cor, orgao, onNavigate }: {
   )
 }
 
+// ─── GamingWidget ─────────────────────────────────────────────────────────────
+function GamingWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
+  const uid = useUid()
+  const [games, setGames] = useState<any[]>([])
+  useEffect(() => {
+    if (!uid) return
+    return onSnapshot(collection(db, `users/${uid}/games`), snap => {
+      setGames(snap.docs.map(d => d.data()))
+    })
+  }, [uid])
+  const jogando = games.filter(g => g.status === 'jogando')
+  const concluidos = games.filter(g => g.status === 'concluido').length
+  return (
+    <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
+      <div style={{ padding:'10px 14px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(124,58,237,0.07)0%,transparent 100%)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+        <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em' }}>🎮 Gaming Hub</div>
+        <div style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>{games.length} jogos · {concluidos} ✓</div>
+      </div>
+      <div style={{ flex:1,padding:'10px 14px',display:'flex',flexDirection:'column',gap:7,overflowY:'auto' }}>
+        {jogando.length === 0
+          ? <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8 }}>
+              <span style={{ fontSize:'2rem' }}>🎮</span>
+              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Nenhum jogo em andamento</p>
+            </div>
+          : jogando.slice(0,3).map((g:any) => (
+              <div key={g.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 10px',borderRadius:9,background:'rgba(124,58,237,0.06)',border:'1px solid rgba(124,58,237,0.2)' }}>
+                {g.coverUrl
+                  ? <img src={g.coverUrl} style={{ width:32,height:42,objectFit:'cover',borderRadius:5,flexShrink:0 }} />
+                  : <div style={{ width:32,height:42,borderRadius:5,background:'rgba(124,58,237,0.15)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:'1rem' }}>🎮</div>
+                }
+                <div style={{ flex:1,minWidth:0 }}>
+                  <div style={{ fontSize:'0.78rem',fontWeight:700,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{g.titulo}</div>
+                  <div style={{ fontSize:'0.6rem',color:'var(--text-muted)',marginTop:1 }}>{g.plataforma}</div>
+                  <div style={{ height:3,borderRadius:2,background:'var(--bg-4)',overflow:'hidden',marginTop:4 }}>
+                    <div style={{ height:'100%',width:`${g.progresso||0}%`,background:'#7c3aed',borderRadius:2 }}/>
+                  </div>
+                </div>
+                <div style={{ fontSize:'0.72rem',fontWeight:700,color:'#a78bfa',flexShrink:0 }}>{g.progresso||0}%</div>
+              </div>
+            ))
+        }
+      </div>
+      <div style={{ padding:'6px 14px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
+        <button onClick={()=>onNavigate('gaming')} style={{ width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(124,58,237,0.3)',background:'rgba(124,58,237,0.06)',color:'#a78bfa',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer' }}>
+          Gaming Hub →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── MediaWidget ───────────────────────────────────────────────────────────────
+function MediaWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
+  const uid = useUid()
+  const [itens, setItens] = useState<any[]>([])
+  useEffect(() => {
+    if (!uid) return
+    return onSnapshot(collection(db, `users/${uid}/media`), snap => {
+      setItens(snap.docs.map(d => d.data()))
+    })
+  }, [uid])
+  const andamento = itens.filter(i => i.status === 'andamento')
+  const TYPE_COLOR: Record<string,string> = { filme:'#60a5fa', serie:'#a78bfa', livro:'#34d399' }
+  const TYPE_ICON: Record<string,string> = { filme:'🎬', serie:'📺', livro:'📚' }
+  return (
+    <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
+      <div style={{ padding:'10px 14px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(59,130,246,0.07)0%,transparent 100%)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+        <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em' }}>▶ Media Tracker</div>
+        <div style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>{andamento.length} em andamento</div>
+      </div>
+      <div style={{ flex:1,padding:'10px 14px',display:'flex',flexDirection:'column',gap:7,overflowY:'auto' }}>
+        {andamento.length === 0
+          ? <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8 }}>
+              <span style={{ fontSize:'2rem' }}>▶</span>
+              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Nada em andamento</p>
+            </div>
+          : andamento.slice(0,4).map((item:any) => {
+              const cor = TYPE_COLOR[item.tipo] || '#60a5fa'
+              const pct = item.tipo==='serie'
+                ? Math.round(((item.episodiosAssistidos||0)/(item.totalEpisodios||1))*100)
+                : item.tipo==='livro'
+                  ? Math.round(((item.paginaAtual||0)/(item.totalPaginas||1))*100)
+                  : (item.status==='concluido'?100:0)
+              return (
+                <div key={item.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 10px',borderRadius:9,background:`${cor}08`,border:`1px solid ${cor}25` }}>
+                  {item.coverUrl
+                    ? <img src={item.coverUrl} style={{ width:28,height:40,objectFit:'cover',borderRadius:5,flexShrink:0 }} />
+                    : <div style={{ width:28,height:40,borderRadius:5,background:`${cor}18`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontSize:'0.9rem' }}>{TYPE_ICON[item.tipo]||'▶'}</div>
+                  }
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:'0.75rem',fontWeight:600,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{item.titulo}</div>
+                    <div style={{ height:3,borderRadius:2,background:'var(--bg-4)',overflow:'hidden',marginTop:4 }}>
+                      <div style={{ height:'100%',width:`${pct}%`,background:cor,borderRadius:2 }}/>
+                    </div>
+                  </div>
+                  <span style={{ fontSize:'0.62rem',fontWeight:700,color:cor,flexShrink:0 }}>{pct}%</span>
+                </div>
+              )
+            })
+        }
+      </div>
+      <div style={{ padding:'6px 14px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
+        <button onClick={()=>onNavigate('media')} style={{ width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(59,130,246,0.3)',background:'rgba(59,130,246,0.06)',color:'#60a5fa',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer' }}>
+          Media Tracker →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── DiarioWidget ──────────────────────────────────────────────────────────────
+function DiarioWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
+  const uid = useUid()
+  const [hoje, setHoje] = useState<any>(null)
+  useEffect(() => {
+    if (!uid) return
+    const data = new Date().toISOString().slice(0,10)
+    return onSnapshot(doc(db, 'users', uid, 'journal', data), snap => {
+      setHoje(snap.exists() ? snap.data() : null)
+    })
+  }, [uid])
+  const HUMOR_EMOJI = ['😢','😕','😐','😊','😄']
+  const HUMOR_COR = ['#ef4444','#f87171','#fbbf24','#a3e635','#6ee7a0']
+  const HUMOR_LABEL = ['Péssimo','Ruim','Neutro','Bom','Ótimo']
+  const tasks = hoje?.planejamento || []
+  const feitas = tasks.filter((t:any) => t.feito).length
+  const dataHoje = new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})
+  return (
+    <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
+      <div style={{ padding:'10px 14px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(236,72,153,0.07)0%,transparent 100%)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+        <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em' }}>✦ Diário</div>
+        <div style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>{dataHoje}</div>
+      </div>
+      <div style={{ flex:1,padding:'12px 14px',display:'flex',flexDirection:'column',gap:10 }}>
+        {!hoje
+          ? <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8 }}>
+              <span style={{ fontSize:'2rem' }}>✦</span>
+              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Sem registro hoje</p>
+            </div>
+          : <>
+            <div style={{ display:'flex',alignItems:'center',gap:12 }}>
+              <div style={{ textAlign:'center' }}>
+                <div style={{ fontSize:'2rem' }}>{HUMOR_EMOJI[(hoje.humor||3)-1]}</div>
+                <div style={{ fontSize:'0.58rem',color:HUMOR_COR[(hoje.humor||3)-1],fontWeight:700 }}>{HUMOR_LABEL[(hoje.humor||3)-1]}</div>
+              </div>
+              <div style={{ flex:1 }}>
+                {tasks.length > 0 && <>
+                  <div style={{ display:'flex',justifyContent:'space-between',fontSize:'0.65rem',color:'var(--text-muted)',marginBottom:4 }}>
+                    <span>Tasks</span>
+                    <span style={{ fontWeight:700,color:feitas===tasks.length?'#6ee7a0':'var(--text-muted)' }}>{feitas}/{tasks.length}</span>
+                  </div>
+                  <div style={{ height:5,borderRadius:3,background:'var(--bg-4)',overflow:'hidden' }}>
+                    <div style={{ height:'100%',width:`${tasks.length?Math.round((feitas/tasks.length)*100):0}%`,background:'linear-gradient(90deg,#ec4899,#f472b6)',borderRadius:3 }}/>
+                  </div>
+                </>}
+                {hoje.fraseDoDia && <p style={{ margin:'8px 0 0',fontSize:'0.7rem',color:'var(--text-secondary)',fontStyle:'italic',lineHeight:1.4,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden' }}>"{hoje.fraseDoDia}"</p>}
+              </div>
+            </div>
+            <div style={{ display:'flex',gap:6 }}>
+              {[{v:hoje.ideias?.length||0,l:'Ideias',c:'#a78bfa'},{v:hoje.estudos?.length||0,l:'Notas',c:'#60a5fa'},{v:hoje.timeline?.length||0,l:'Eventos',c:'#f59e0b'}].map(k=>(
+                <div key={k.l} style={{ flex:1,padding:'6px',borderRadius:8,background:'var(--surface)',border:'1px solid var(--border)',textAlign:'center' }}>
+                  <div style={{ fontSize:'0.9rem',fontWeight:700,color:k.c }}>{k.v}</div>
+                  <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:1 }}>{k.l}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        }
+      </div>
+      <div style={{ padding:'6px 14px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
+        <button onClick={()=>onNavigate('journal')} style={{ width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(236,72,153,0.3)',background:'rgba(236,72,153,0.06)',color:'#f472b6',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer' }}>
+          Abrir Diário →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── LinksWidget ───────────────────────────────────────────────────────────────
+function LinksWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
+  const uid = useUid()
+  const [links, setLinks] = useState<any[]>([])
+  useEffect(() => {
+    if (!uid) return
+    return onSnapshot(collection(db, `users/${uid}/links`), snap => {
+      setLinks(snap.docs.map(d => d.data()).sort((a:any,b:any) => b.criadoEm - a.criadoEm))
+    })
+  }, [uid])
+  const CAT_COR: Record<string,string> = { profissional:'#60a5fa',pessoal:'#34d399',sistemas:'#a78bfa',interesse:'#fbbf24',educacional:'#f97316',diversos:'#9ca3af' }
+  return (
+    <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
+      <div style={{ padding:'10px 14px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(0,229,255,0.05)0%,transparent 100%)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+        <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em' }}>🔗 Links</div>
+        <div style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>{links.length} salvos</div>
+      </div>
+      <div style={{ flex:1,overflowY:'auto',padding:'4px 0' }}>
+        {links.length === 0
+          ? <div style={{ display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'100%',gap:8,padding:'16px' }}>
+              <span style={{ fontSize:'2rem' }}>🔗</span>
+              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Nenhum link salvo</p>
+            </div>
+          : links.slice(0,6).map((l:any) => {
+              const cor = CAT_COR[l.categoria] || '#9ca3af'
+              return (
+                <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer"
+                  style={{ display:'flex',alignItems:'center',gap:10,padding:'7px 14px',borderBottom:'1px solid var(--border)',textDecoration:'none',transition:'background 0.15s' }}
+                  onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='var(--surface)'}
+                  onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='transparent'}>
+                  <div style={{ width:3,height:24,borderRadius:2,background:cor,flexShrink:0 }}/>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:'0.75rem',fontWeight:600,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{l.titulo}</div>
+                    <div style={{ fontSize:'0.6rem',color:'var(--text-muted)',marginTop:1 }}>{l.url.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]}</div>
+                  </div>
+                </a>
+              )
+            })
+        }
+      </div>
+      <div style={{ padding:'6px 14px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
+        <button onClick={()=>onNavigate('links')} style={{ width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(0,229,255,0.2)',background:'rgba(0,229,255,0.05)',color:'var(--text-accent)',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer' }}>
+          Links de Interesse →
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── ModulosCard ──────────────────────────────────────────────────────────────
 function ModulosCard({ global, ponto, onNavigate }: any) {
   const modulos = [
@@ -849,10 +1088,10 @@ function ModulosCard({ global, ponto, onNavigate }: any) {
     { id:'financeiro', label:'Financeiro',       icon:'◎', desc:'Receitas e despesas',                                 color:'#10b981' },
     { id:'saude',      label:'Saúde',            icon:'✚', desc:'Bem-estar diário',                                    color:'#34d399' },
     { id:'wishlist',   label:'Wishlist',         icon:'🛒', desc:'Lista de desejos & compras',                         color:'#f59e0b' },
-    { id:'journal',    label:'Diário',           icon:'✦', desc:'Em breve',                                            color:'#ec4899' },
-    { id:'media',      label:'Media Tracker',    icon:'▶', desc:'Em breve',                                            color:'#3b82f6' },
-    { id:'gaming',     label:'Gaming Hub',       icon:'🎮', desc:'Em breve',                                           color:'#7c3aed' },
-    { id:'links',      label:'Links',            icon:'🔗', desc:'Em breve',                                           color:'#00e5ff' },
+    { id:'journal',    label:'Diário',           icon:'✦', desc:'Registros e reflexões',                              color:'#ec4899' },
+    { id:'media',      label:'Media Tracker',    icon:'▶', desc:'Filmes, séries e livros',                            color:'#3b82f6' },
+    { id:'gaming',     label:'Gaming Hub',       icon:'🎮', desc:'Progresso e backlog',                               color:'#7c3aed' },
+    { id:'links',      label:'Links',            icon:'🔗', desc:'Links de interesse',                                color:'#00e5ff' },
   ]
   return (
     <div className="card" style={{ height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
@@ -936,6 +1175,12 @@ export default function NexusDashboard({ onNavigate }: Props) {
       case 'prontuario-calendar': return <ProntuarioCalendarCard onNavigate={onNavigate} />
       case 'saude-widget':        return <SaudeWidget onNavigate={onNavigate} />
       case 'wishlist-widget':     return <WishlistWidget onNavigate={onNavigate} />
+      case 'gaming-widget':      return <GamingWidget onNavigate={onNavigate} />
+      case 'media-widget':       return <MediaWidget onNavigate={onNavigate} />
+      case 'diario-widget':      return <DiarioWidget onNavigate={onNavigate} />
+      case 'links-widget':       return <LinksWidget onNavigate={onNavigate} />
+      case 'financeiro-widget':  return <ContasPagarCard onNavigate={onNavigate} />
+      case 'concursos-widget':   return <ConcursosDashCard onNavigate={onNavigate} />
       case 'modulos':             return <ModulosCard global={global} ponto={ponto} onNavigate={onNavigate} />
       default: {
         // Widget dinâmico de edital customizado
