@@ -14,7 +14,6 @@ import MediaTracker from './components/media/MediaTracker'
 import GamingHub from './components/gaming/GamingHub'
 import LinksInteresse from './components/links/LinksInteresse'
 
-// ─── Theme Context ─────────────────────────────────────────────────────────────
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
 export const useTheme = () => useContext(ThemeCtx)
@@ -34,7 +33,6 @@ function ThemeProvider({ children }: { children: ReactNode }) {
   )
 }
 
-// ─── UID Context — uid disponível instantaneamente em todos os módulos ─────────
 const UidCtx = createContext<string | null>(null)
 export const useUid = () => useContext(UidCtx)
 
@@ -92,19 +90,22 @@ const NAV = [
   ]},
   { section: 'FINANÇAS & VIDA', items: [
     { id: 'financeiro', label: 'Financeiro',         icon: '◎',  svgIcon: null },
-    { id: 'ponto',      label: 'Ponto Eletrônico',   icon: '⊙',  svgIcon: null },
-    { id: 'saude',      label: 'Saúde & Bem-Estar',  icon: '✚',  svgIcon: null },
-    { id: 'wishlist',   label: 'Wishlist & Compras', icon: '🛒', svgIcon: null },
+    { id: 'ponto',      label: 'Ponto',              icon: '⊙',  svgIcon: null },
+    { id: 'saude',      label: 'Saúde',              icon: '✚',  svgIcon: null },
+    { id: 'wishlist',   label: 'Wishlist',           icon: '🛒', svgIcon: null },
   ]},
   { section: 'ENTRETENIMENTO', items: [
     { id: 'journal',    label: 'Diário',             icon: '✦',  svgIcon: null },
-    { id: 'media',      label: 'Media Tracker',      icon: '▶',  svgIcon: null },
-    { id: 'gaming',     label: 'Gaming Hub',         icon: '🎮', svgIcon: null },
+    { id: 'media',      label: 'Media',              icon: '▶',  svgIcon: null },
+    { id: 'gaming',     label: 'Gaming',             icon: '🎮', svgIcon: null },
   ]},
   { section: 'UTILIDADES', items: [
-    { id: 'links',      label: 'Links de Interesse', icon: '🔗', svgIcon: null },
+    { id: 'links',      label: 'Links',              icon: '🔗', svgIcon: null },
   ]},
 ]
+
+// Todos os itens para o bottom nav mobile
+const ALL_NAV_ITEMS = NAV.flatMap(g => g.items)
 
 function AppShell() {
   const [active, setActive] = useState('dashboard')
@@ -122,19 +123,21 @@ function AppShell() {
     localStorage.setItem('nexusos-sidebar-mode', next)
   }
 
-  const currentLabel = NAV.flatMap(g => g.items).find(i => i.id === active)?.label ?? ''
+  const currentLabel = ALL_NAV_ITEMS.find(i => i.id === active)?.label ?? ''
   const displayName = user?.displayName ?? user?.email ?? 'Usuário'
   const avatarUrl = user?.photoURL ?? null
   const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
   return (
     <div className="app-shell" style={{ position: 'relative' }}>
+
+      {/* ── SIDEBAR DESKTOP ── */}
       {sidebarMode === 'auto' && (
         <div onMouseEnter={() => setSidebarHovered(true)}
-          style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: sidebarHovered ? 0 : 16, zIndex: 40 }} />
+          style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 16, zIndex: 40 }} />
       )}
 
-      <aside className="sidebar"
+      <aside className="sidebar desktop-sidebar"
         onMouseEnter={() => sidebarMode === 'auto' && setSidebarHovered(true)}
         onMouseLeave={() => sidebarMode === 'auto' && setSidebarHovered(false)}
         style={{
@@ -158,16 +161,16 @@ function AppShell() {
             </div>
           ))}
         </div>
-        <div className="sidebar-user-block" style={{ margin: '0 12px 8px', padding: '11px 13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ margin: '0 12px 8px', padding: '11px 13px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid rgba(180,185,200,0.35)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(180,185,200,0.1)' }}>
-            {avatarUrl ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontFamily: 'var(--font-display)', fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
+            {avatarUrl ? <img src={avatarUrl} alt={displayName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '0.78rem', fontWeight: 800, color: '#c4cad6' }}>{initials}</span>}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', fontFamily: 'var(--font-display)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName.split(' ')[0]}</div>
-            <div style={{ fontSize: '0.58rem', color: 'rgba(180,185,200,0.4)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.85)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName.split(' ')[0]}</div>
+            <div style={{ fontSize: '0.58rem', color: 'rgba(180,185,200,0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user?.email}</div>
           </div>
           <button onClick={logout} title="Sair"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.18)', fontSize: '1rem', padding: 4, borderRadius: 6, flexShrink: 0, transition: 'color 0.2s' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.18)', fontSize: '1rem', padding: 4, borderRadius: 6 }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#ef4444' }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.18)' }}>⏻</button>
         </div>
@@ -179,39 +182,26 @@ function AppShell() {
         </div>
       </aside>
 
-      <div className="main-area" style={{ transition: 'margin-left 0.28s cubic-bezier(0.4,0,0.2,1)' }}>
+      {/* ── MAIN AREA ── */}
+      <div className="main-area">
         <header className="topbar">
           <button onClick={toggleSidebarMode}
             className="desktop-only"
             title={sidebarMode === 'fixed' ? 'Ocultar sidebar' : 'Fixar sidebar'}
-            style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)', background: sidebarMode === 'auto' ? 'rgba(0,229,255,0.08)' : 'rgba(255,255,255,0.04)', color: sidebarMode === 'auto' ? 'var(--text-accent)' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', transition: 'all 0.18s', marginRight: 4 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--border-bright)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)' }}>
+            style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', marginRight: 4 }}>
             {sidebarMode === 'fixed' ? '⇤' : '⇥'}
           </button>
-          <span className="topbar-breadcrumb">nexus /</span>
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
             <div className="sync-dot" />
-            <span className="topbar-status" style={{ display: 'none' }} id="topbar-online">ONLINE</span>
-            {/* Botão tema — visível sempre no mobile, oculto no desktop onde fica na sidebar */}
-            <button
-              onClick={toggle}
-              title={theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
-              className="mobile-theme-btn"
-              style={{
-                width: 32, height: 32, borderRadius: 8,
-                border: '1px solid var(--border-md)',
-                background: 'var(--card-bg)',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.9rem',
-              }}>
+            {/* Botão tema — só aparece no mobile */}
+            <button onClick={toggle} className="mobile-only"
+              style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-md)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>
               {theme === 'dark' ? '☀' : '◑'}
             </button>
           </div>
         </header>
+
         <div className="page-content">
           {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} />}
           {active === 'editais'    && <GestorEditais />}
@@ -227,6 +217,21 @@ function AppShell() {
           {active === 'links'      && <LinksInteresse />}
         </div>
       </div>
+
+      {/* ── BOTTOM NAV MOBILE — completamente separado da sidebar ── */}
+      <nav className="mobile-bottom-nav">
+        {ALL_NAV_ITEMS.map(item => (
+          <button key={item.id}
+            className={`mobile-nav-btn ${active === item.id ? 'active' : ''}`}
+            onClick={() => setActive(item.id)}>
+            <span className="mobile-nav-icon">
+              {item.svgIcon === 'editais' ? <IconEditais size={20} /> : item.icon}
+            </span>
+            <span className="mobile-nav-label">{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
     </div>
   )
 }
@@ -236,11 +241,10 @@ function Root() {
   if (loading) return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-0)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
       <div style={{ width: 40, height: 40, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#c4cad6', animation: 'spin 0.8s linear infinite' }} />
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.72rem', color: 'var(--text-muted)', letterSpacing: '0.12em' }}>AUTENTICANDO…</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', letterSpacing: '0.12em' }}>AUTENTICANDO…</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
-  // ── uid disponível instantaneamente via contexto ──────────────────────────────
   return (
     <UidCtx.Provider value={user?.uid ?? null}>
       {user ? <AppShell /> : <LoginPage />}
