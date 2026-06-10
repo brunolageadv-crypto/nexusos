@@ -1853,7 +1853,7 @@ function PainelVisaoGeralSaude({ onNavigate, dragging, dragOver, onDragStart, on
   while(true){ const ds=dCheck.toISOString().slice(0,10); if(!registros.find((r:any)=>r.data===ds)) break; streak++; dCheck.setDate(dCheck.getDate()-1) }
   const cor='#34d399'
   return (
-    <button onClick={()=>onNavigate('saude')} draggable onDragStart={()=>onDragStart?.('saude')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'saude')} onDrop={e=>onDrop?.(e,'saude')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='saude'?0.45:1 }
+    <button onClick={()=>onNavigate('saude')} draggable onDragStart={()=>onDragStart?.('saude')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'saude')} onDrop={e=>onDrop?.(e,'saude')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='saude'?0.45:1 }}
       onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
@@ -1881,7 +1881,7 @@ function PainelVisaoGeralWishlist({ onNavigate, dragging, dragOver, onDragStart,
   const cor='#f59e0b'
   const pct = itens.length>0?Math.round((itens.filter(i=>i.status==='comprado').length/itens.length)*100):0
   return (
-    <button onClick={()=>onNavigate('wishlist')} draggable onDragStart={()=>onDragStart?.('wishlist')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'wishlist')} onDrop={e=>onDrop?.(e,'wishlist')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='wishlist'?0.45:1 }
+    <button onClick={()=>onNavigate('wishlist')} draggable onDragStart={()=>onDragStart?.('wishlist')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'wishlist')} onDrop={e=>onDrop?.(e,'wishlist')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='wishlist'?0.45:1 }}
       onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
@@ -1918,7 +1918,7 @@ function PainelVisaoGeralDiario({ onNavigate, dragging, dragOver, onDragStart, o
   const pct = tasks.length>0?Math.round((feitas/tasks.length)*100):0
   const cor='#ec4899'
   return (
-    <button onClick={()=>onNavigate('journal')} draggable onDragStart={()=>onDragStart?.('diario')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'diario')} onDrop={e=>onDrop?.(e,'diario')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='diario'?0.45:1 }
+    <button onClick={()=>onNavigate('journal')} draggable onDragStart={()=>onDragStart?.('diario')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'diario')} onDrop={e=>onDrop?.(e,'diario')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='diario'?0.45:1 }}
       onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
@@ -1950,7 +1950,7 @@ function PainelVisaoGeralGaming({ onNavigate, dragging, dragOver, onDragStart, o
   const cor='#7c3aed'
   const pct=games.length>0?Math.round((zerados.length/games.length)*100):0
   return (
-    <button onClick={()=>onNavigate('gaming')} draggable onDragStart={()=>onDragStart?.('gaming')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'gaming')} onDrop={e=>onDrop?.(e,'gaming')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='gaming'?0.45:1 }
+    <button onClick={()=>onNavigate('gaming')} draggable onDragStart={()=>onDragStart?.('gaming')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'gaming')} onDrop={e=>onDrop?.(e,'gaming')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='gaming'?0.45:1 }}
       onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
@@ -1982,7 +1982,7 @@ function PainelVisaoGeralMedia({ onNavigate, dragging, dragOver, onDragStart, on
   const cor='#3b82f6'
   const pct=itens.length>0?Math.round((concluidos.length/itens.length)*100):0
   return (
-    <button onClick={()=>onNavigate('media')} draggable onDragStart={()=>onDragStart?.('media')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'media')} onDrop={e=>onDrop?.(e,'media')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='media'?0.45:1 }
+    <button onClick={()=>onNavigate('media')} draggable onDragStart={()=>onDragStart?.('media')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'media')} onDrop={e=>onDrop?.(e,'media')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='media'?0.45:1 }}
       onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
