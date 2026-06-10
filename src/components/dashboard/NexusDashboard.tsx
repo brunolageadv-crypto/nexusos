@@ -1205,22 +1205,22 @@ function BarraInferior() {
 
   const cardSty = (cor: string): React.CSSProperties => ({
     display:'flex', flexDirection:'column', gap:6, padding:'14px 18px',
-    borderRadius:14, border:`1px solid ${cor}25`,
-    background:`linear-gradient(135deg,${cor}0d 0%,${cor}05 100%)`,
+    borderRadius:14, border:`1px solid ${cor}30`,
+    background:`linear-gradient(135deg,${cor}10 0%,${cor}06 100%)`,
     flexShrink:0, minWidth:120,
   })
-  const labelSty: React.CSSProperties = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'#64748b' }
+  const labelSty: React.CSSProperties = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--text-muted)' }
   const valSty = (cor: string): React.CSSProperties => ({ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.1rem', color:cor, lineHeight:1 })
 
   return (
-    <div style={{ borderTop:'1px solid #1e293b', background:'#0f172a', flexShrink:0, padding:'14px 20px' }}>
+    <div style={{ borderTop:'1px solid rgba(0,0,0,0.08)', background:'var(--bg-1)', flexShrink:0, padding:'14px 20px' }}>
       <div style={{ display:'flex', gap:10, overflowX:'auto', flexWrap:'nowrap', alignItems:'stretch' }}>
 
         {/* Relógio */}
         <div style={{ ...cardSty('#6366f1'), minWidth:148 } as React.CSSProperties}>
           <div style={labelSty}>⏱ Horário local</div>
           <div style={{ fontFamily:'var(--font-mono)', fontWeight:900, fontSize:'1.5rem', color:'#818cf8', letterSpacing:'0.06em', lineHeight:1 }}>{horaStr}</div>
-          <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{diaSemanaShort} · UTC-3 · Brasil</div>
+          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{diaSemanaShort} · UTC-3 · Brasil</div>
         </div>
 
         {/* Data */}
@@ -1230,14 +1230,14 @@ function BarraInferior() {
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.6rem', color:'#60a5fa', lineHeight:1 }}>{diaMes}</span>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.85rem', color:'#93c5fd' }}>{mes.slice(0,3).toUpperCase()} {ano}</span>
           </div>
-          <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{diaSemana}</div>
+          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{diaSemana}</div>
         </div>
 
         {/* Localização */}
         <div style={{ ...cardSty('#10b981'), minWidth:148 } as React.CSSProperties}>
           <div style={labelSty}>📍 Localização</div>
           <div style={valSty('#34d399')}>{loc.cidade}</div>
-          <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{loc.uf} · Brasil 🇧🇷</div>
+          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{loc.uf} · Brasil 🇧🇷</div>
         </div>
 
         {/* Progresso do Ano */}
@@ -1246,10 +1246,10 @@ function BarraInferior() {
             <div style={labelSty}>📊 Ano {ano}</div>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#fbbf24' }}>{pctAno}%</span>
           </div>
-          <div style={{ height:8, borderRadius:4, background:'#1e293b', overflow:'hidden', position:'relative' }}>
+          <div style={{ height:8, borderRadius:4, background:'rgba(0,0,0,0.08)', overflow:'hidden', position:'relative' }}>
             <div style={{ height:'100%', width:`${pctAno}%`, background:'linear-gradient(90deg,#d97706,#fbbf24)', borderRadius:4, boxShadow:'0 0 10px rgba(251,191,36,0.4)' }} />
           </div>
-          <div style={{ fontSize:'0.6rem', color:'#64748b', fontFamily:'var(--font-mono)' }}>Dia {diasNoAno} de {totalDias} · S{semanaISO}</div>
+          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>Dia {diasNoAno} de {totalDias} · S{semanaISO}</div>
         </div>
 
         {/* Progresso do Mês */}
@@ -1258,10 +1258,10 @@ function BarraInferior() {
             <div style={labelSty}>🗓 {mes.slice(0,3).toUpperCase()}</div>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#f87171' }}>{pctMes}%</span>
           </div>
-          <div style={{ height:8, borderRadius:4, background:'#1e293b', overflow:'hidden' }}>
+          <div style={{ height:8, borderRadius:4, background:'rgba(0,0,0,0.08)', overflow:'hidden' }}>
             <div style={{ height:'100%', width:`${pctMes}%`, background:'linear-gradient(90deg,#dc2626,#f87171)', borderRadius:4 }} />
           </div>
-          <div style={{ fontSize:'0.6rem', color:'#64748b', fontFamily:'var(--font-mono)' }}>{diasRestMes} dias restantes</div>
+          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{diasRestMes} dias restantes</div>
         </div>
 
         {/* News ticker */}
@@ -1275,7 +1275,7 @@ function BarraInferior() {
               <div style={{ fontSize:'0.75rem', color:'#c4b5fd', fontWeight:600, lineHeight:1.4, flex:1 }}>
                 {news[newsIdx % news.length]?.titulo}
               </div>
-              <div style={{ fontSize:'0.58rem', color:'#64748b', fontFamily:'var(--font-mono)' }}>
+              <div style={{ fontSize:'0.58rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>
                 Fonte: {news[newsIdx % news.length]?.fonte}
               </div>
             </>
@@ -1510,9 +1510,9 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:14 }}>
         {modulos.map(m => (
-          <button key={m.id} onClick={()=>onNavigate(m.id==='contas'?'financeiro':m.id)}
+          <button key={m.id} onClick={()=>onNavigate(m.id==='financeiro2'?'financeiro':m.id)}
             style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${m.cor}25`, background:`linear-gradient(135deg,${m.cor}0a,transparent)`, textAlign:'left', cursor:'pointer', transition:'all 0.2s' }}
             onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${m.cor}20`}}
             onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
@@ -1563,9 +1563,9 @@ function PainelVisaoGeralSaude({ onNavigate }: any) {
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
         <div>
-          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Saúde</div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Saúde</div>
           <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{streak}d</div>
-          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{regMes.length} registros este mês</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{regMes.length} registros este mês</div>
         </div>
         <span style={{ fontSize:'1.5rem', opacity:0.6 }}>✚</span>
       </div>
@@ -1591,14 +1591,14 @@ function PainelVisaoGeralWishlist({ onNavigate }: any) {
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
         <div>
-          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Wishlist</div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Wishlist</div>
           <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{pendentes.length} itens</div>
-          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{fmtBRL(total)} estimado</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{fmtBRL(total)} estimado</div>
         </div>
         <span style={{ fontSize:'1.5rem', opacity:0.6 }}>🛒</span>
       </div>
       <div style={{ marginTop:8 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'var(--text-muted)', marginBottom:4 }}>
           <span>Adquiridos</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
         </div>
         <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
@@ -1628,14 +1628,14 @@ function PainelVisaoGeralDiario({ onNavigate }: any) {
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
         <div>
-          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Diário · Hoje</div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Diário · Hoje</div>
           <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{tasks.length} tasks</div>
-          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{feitas} concluídas · {dados?.timeline?.length||0} eventos</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{feitas} concluídas · {dados?.timeline?.length||0} eventos</div>
         </div>
         <span style={{ fontSize:'1.5rem', opacity:0.6 }}>✦</span>
       </div>
       <div style={{ marginTop:8 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'var(--text-muted)', marginBottom:4 }}>
           <span>Progresso</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
         </div>
         <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
@@ -1660,14 +1660,14 @@ function PainelVisaoGeralGaming({ onNavigate }: any) {
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
         <div>
-          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Gaming</div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Gaming</div>
           <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{jogando.length} jogando</div>
-          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{zerados.length} zerados · {games.length} total</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{zerados.length} zerados · {games.length} total</div>
         </div>
         <span style={{ fontSize:'1.5rem', opacity:0.6 }}>🎮</span>
       </div>
       <div style={{ marginTop:8 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'var(--text-muted)', marginBottom:4 }}>
           <span>Zerados</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
         </div>
         <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
@@ -1692,14 +1692,14 @@ function PainelVisaoGeralMedia({ onNavigate }: any) {
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
         <div>
-          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Media Tracker</div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Media Tracker</div>
           <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{assistindo.length} em andamento</div>
-          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{concluidos.length} concluídos · {itens.length} total</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{concluidos.length} concluídos · {itens.length} total</div>
         </div>
         <span style={{ fontSize:'1.5rem', opacity:0.6 }}>▶</span>
       </div>
       <div style={{ marginTop:8 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'var(--text-muted)', marginBottom:4 }}>
           <span>Concluídos</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
         </div>
         <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
@@ -2059,7 +2059,7 @@ function PainelGenerico({ modulo, onNavigate }: { modulo: typeof VIS_MODULOS[0];
 }
 
 function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:string)=>void; global:any; discStats:any[] }) {
-  const [moduloAtivo, setModuloAtivo] = useState('editais')
+  const [moduloAtivo, setModuloAtivo] = useState('visao-geral')
   const mod = VIS_MODULOS.find(m => m.id === moduloAtivo) || VIS_MODULOS[0]
 
   function renderPainel() {
