@@ -1548,7 +1548,6 @@ export default function NexusDashboard({ onNavigate, dashView = 'widgets' }: Pro
     }
   }
 
-  return (
   if (dashView === 'visual') {
     return <VisualDashboard onNavigate={onNavigate} global={global} discStats={discStats} />
   }
