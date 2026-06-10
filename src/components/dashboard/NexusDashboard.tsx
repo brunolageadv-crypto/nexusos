@@ -1145,7 +1145,7 @@ function IconEditaisVis({ size=16, color='currentColor' }: { size?:number; color
 
 const VIS_MODULOS = [
   { id: 'visao-geral', icon: '◈',  label: 'Visão Geral', cor: '#6366f1', svgIcon: null },
-  { id: 'editais',    icon: null,  label: 'Editais',     cor: '#00e5ff', svgIcon: 'editais' },
+  { id: 'editais',    icon: '',    label: 'Editais',     cor: '#00e5ff', svgIcon: 'editais' },
   { id: 'concursos',  icon: '🎯', label: 'Concursos',   cor: '#7c3aed', svgIcon: null },
   { id: 'financeiro', icon: '◎',  label: 'Financeiro',  cor: '#10b981', svgIcon: null },
   { id: 'prontuario', icon: '📋', label: 'Prontuário',  cor: '#5b5bd6', svgIcon: null },
@@ -1203,14 +1203,14 @@ function BarraInferior() {
   const pctMes = Math.round((diasNoMes/totalDiasMes)*100)
   const diasRestMes = totalDiasMes - diaMes
 
-  const cardSty = (cor: string): React.CSSProperties => ({
+  const cardSty = (cor: string) => ({
     display:'flex', flexDirection:'column', gap:6, padding:'14px 18px',
     borderRadius:14, border:`1px solid ${cor}25`,
     background:`linear-gradient(135deg,${cor}0d 0%,${cor}05 100%)`,
     flexShrink:0, minWidth:120,
   })
-  const labelSty: React.CSSProperties = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'#64748b' }
-  const valSty = (cor: string): React.CSSProperties => ({ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.1rem', color:cor, lineHeight:1 })
+  const labelSty = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'#64748b' }
+  const valSty = (cor: string) => ({ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.1rem', color:cor, lineHeight:1 })
 
   return (
     <div style={{ borderTop:'1px solid #1e293b', background:'#0f172a', flexShrink:0, padding:'14px 20px' }}>
@@ -1286,8 +1286,6 @@ function BarraInferior() {
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
     </div>
   )
-}
-
 }
 
 function PainelEditais({ onNavigate, global, discStats }: any) {
