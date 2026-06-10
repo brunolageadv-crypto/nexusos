@@ -292,8 +292,9 @@ function FormContaPagar({ cats, initial, onSave, onClose }: { cats: Categoria[];
 }
 
 /* ═══ Projeção 12 meses (tipo fatura) ════════════════════════ */
-function ProjecaoAnual({ contas }: { contas: ContaPagar[] }) {
+function ProjecaoAnual({ contas, transacoes }: { contas: ContaPagar[]; transacoes: Transacao[] }) {
   const recorrentes = contas.filter(c => c.recorrente)
+  const transRecorrentes = transacoes.filter(t => t.recorrente)
   const hoje = new Date()
 
   const meses = useMemo(() => {
@@ -301,19 +302,21 @@ function ProjecaoAnual({ contas }: { contas: ContaPagar[] }) {
       const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1)
       const ano = d.getFullYear()
       const mes = d.getMonth()
-      const total = recorrentes.reduce((a, c) => a + c.valor, 0)
+      const totalContas = recorrentes.reduce((a, c) => a + c.valor, 0)
+      const totalTrans = transRecorrentes.reduce((a, t) => a + t.valor, 0)
+      const total = totalContas + totalTrans
       const label = MESES[mes] + '/' + String(ano).slice(2)
       const isMesAtual = ano === hoje.getFullYear() && mes === hoje.getMonth()
       return { label, total, isMesAtual, ano, mes }
     })
   }, [contas])
 
-  if (recorrentes.length === 0) {
+  if (recorrentes.length === 0 && transRecorrentes.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
         <div style={{ fontSize: 36, marginBottom: 8 }}>🔄</div>
-        <div style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: '0.82rem' }}>Nenhuma despesa recorrente cadastrada</div>
-        <div style={{ fontSize: '0.72rem', marginTop: 8, opacity: 0.6 }}>Marque uma conta como "Recorrente mensal" para projetá-la aqui</div>
+        <div style={{ fontFamily: 'var(--font-display)', letterSpacing: '0.1em', textTransform: 'uppercase', fontSize: '0.82rem' }}>Nenhum item recorrente cadastrado</div>
+        <div style={{ fontSize: '0.72rem', marginTop: 8, opacity: 0.6 }}>Marque uma transação ou conta como "Recorrente mensal" para projetá-la aqui</div>
       </div>
     )
   }
@@ -325,7 +328,7 @@ function ProjecaoAnual({ contas }: { contas: ContaPagar[] }) {
       {/* Resumo recorrentes */}
       <div className="card" style={{ padding: '16px 20px' }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>
-          Despesas Recorrentes Mensais ({recorrentes.length})
+          Itens Recorrentes Mensais ({recorrentes.length + transRecorrentes.length})
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {recorrentes.map(c => (
@@ -370,7 +373,7 @@ function ProjecaoAnual({ contas }: { contas: ContaPagar[] }) {
         </div>
         <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Total projetado (12 meses)</span>
-          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#ef4444' }}>{fmtMoeda(recorrentes.reduce((a, c) => a + c.valor, 0) * 12)}</span>
+          <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.1rem', color: '#ef4444' }}>{fmtMoeda((recorrentes.reduce((a, c) => a + c.valor, 0) + transRecorrentes.reduce((a, t) => a + t.valor, 0)) * 12)}</span>
         </div>
       </div>
     </div>
@@ -596,7 +599,7 @@ export default function Financeiro() {
         )}
 
         {/* PROJEÇÃO ANUAL */}
-        {tab === 'projecao' && <ProjecaoAnual contas={contas} />}
+        {tab === 'projecao' && <ProjecaoAnual contas={contas} transacoes={transacoes} />}
 
         {/* RELATÓRIOS */}
         {tab === 'relatorios' && (
