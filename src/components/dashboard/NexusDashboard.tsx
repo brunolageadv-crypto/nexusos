@@ -1203,28 +1203,28 @@ function BarraInferior() {
   const pctMes = Math.round((diasNoMes/totalDiasMes)*100)
   const diasRestMes = totalDiasMes - diaMes
 
-  const cardSty = (cor: string) => ({
+  const cardSty = (cor: string): React.CSSProperties => ({
     display:'flex', flexDirection:'column', gap:6, padding:'14px 18px',
     borderRadius:14, border:`1px solid ${cor}25`,
     background:`linear-gradient(135deg,${cor}0d 0%,${cor}05 100%)`,
     flexShrink:0, minWidth:120,
   })
-  const labelSty = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'#64748b' }
-  const valSty = (cor: string) => ({ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.1rem', color:cor, lineHeight:1 })
+  const labelSty: React.CSSProperties = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'#64748b' }
+  const valSty = (cor: string): React.CSSProperties => ({ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.1rem', color:cor, lineHeight:1 })
 
   return (
     <div style={{ borderTop:'1px solid #1e293b', background:'#0f172a', flexShrink:0, padding:'14px 20px' }}>
       <div style={{ display:'flex', gap:10, overflowX:'auto', flexWrap:'nowrap', alignItems:'stretch' }}>
 
         {/* Relógio */}
-        <div style={{ ...cardSty('#6366f1'), minWidth:148 }}>
+        <div style={{ ...cardSty('#6366f1'), minWidth:148 } as React.CSSProperties}>
           <div style={labelSty}>⏱ Horário local</div>
           <div style={{ fontFamily:'var(--font-mono)', fontWeight:900, fontSize:'1.5rem', color:'#818cf8', letterSpacing:'0.06em', lineHeight:1 }}>{horaStr}</div>
           <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{diaSemanaShort} · UTC-3 · Brasil</div>
         </div>
 
         {/* Data */}
-        <div style={{ ...cardSty('#3b82f6'), minWidth:148 }}>
+        <div style={{ ...cardSty('#3b82f6'), minWidth:148 } as React.CSSProperties}>
           <div style={labelSty}>📅 Data</div>
           <div style={{ display:'flex', alignItems:'baseline', gap:5 }}>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.6rem', color:'#60a5fa', lineHeight:1 }}>{diaMes}</span>
@@ -1234,14 +1234,14 @@ function BarraInferior() {
         </div>
 
         {/* Localização */}
-        <div style={{ ...cardSty('#10b981'), minWidth:148 }}>
+        <div style={{ ...cardSty('#10b981'), minWidth:148 } as React.CSSProperties}>
           <div style={labelSty}>📍 Localização</div>
           <div style={valSty('#34d399')}>{loc.cidade}</div>
           <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{loc.uf} · Brasil 🇧🇷</div>
         </div>
 
         {/* Progresso do Ano */}
-        <div style={{ ...cardSty('#f59e0b'), minWidth:200 }}>
+        <div style={{ ...cardSty('#f59e0b'), minWidth:200 } as React.CSSProperties}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div style={labelSty}>📊 Ano {ano}</div>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#fbbf24' }}>{pctAno}%</span>
@@ -1253,7 +1253,7 @@ function BarraInferior() {
         </div>
 
         {/* Progresso do Mês */}
-        <div style={{ ...cardSty('#ef4444'), minWidth:185 }}>
+        <div style={{ ...cardSty('#ef4444'), minWidth:185 } as React.CSSProperties}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
             <div style={labelSty}>🗓 {mes.slice(0,3).toUpperCase()}</div>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#f87171' }}>{pctMes}%</span>
@@ -1265,7 +1265,7 @@ function BarraInferior() {
         </div>
 
         {/* News ticker */}
-        <div style={{ ...cardSty('#8b5cf6'), flex:1, minWidth:280 }}>
+        <div style={{ ...cardSty('#8b5cf6'), flex:1, minWidth:280 } as React.CSSProperties}>
           <div style={{ display:'flex', alignItems:'center', gap:6 }}>
             <div style={labelSty}>📰 Notícias</div>
             <div style={{ width:5, height:5, borderRadius:'50%', background:'#a78bfa', animation:'pulse 2s infinite', flexShrink:0 }} />
