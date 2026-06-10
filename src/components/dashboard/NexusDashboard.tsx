@@ -17,7 +17,7 @@ interface Layout {
 }
 
 const COLS = 12
-const ROW_H = 108
+const ROW_H = 120
 const GAP = 14
 
 // Detecta mobile para layout alternativo
@@ -1165,10 +1165,28 @@ function useLocationInfo() {
 function BarraInferior() {
   const loc = useLocationInfo()
   const [hora, setHora] = useState(new Date())
+  const [news, setNews] = useState<{titulo:string;fonte:string}[]>([])
+  const [newsIdx, setNewsIdx] = useState(0)
+
   useEffect(() => { const t = setInterval(() => setHora(new Date()), 1000); return () => clearInterval(t) }, [])
+  useEffect(() => {
+    // Notícias simuladas — em produção conectar a RSS/API
+    const mockNews = [
+      { titulo: 'AGU divulga cronograma de concurso público para Advogado da União', fonte: 'AGU' },
+      { titulo: 'STF retoma julgamento sobre privatizações em sessão plenária', fonte: 'STF' },
+      { titulo: 'Governo anuncia reajuste no funcionalismo público federal', fonte: 'Ministério da Gestão' },
+      { titulo: 'Brasil sobe no ranking de competitividade global do FMI', fonte: 'FMI' },
+      { titulo: 'Senado aprova projeto de reforma administrativa', fonte: 'Senado Federal' },
+      { titulo: 'IBGE divulga dados de crescimento do PIB no primeiro trimestre', fonte: 'IBGE' },
+    ]
+    setNews(mockNews)
+    const t = setInterval(() => setNewsIdx(i => (i + 1) % mockNews.length), 6000)
+    return () => clearInterval(t)
+  }, [])
+
   const DIAS_PT = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado']
-  const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
   const DIAS_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+  const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
   const diaSemana = DIAS_PT[hora.getDay()]
   const diaSemanaShort = DIAS_SHORT[hora.getDay()]
   const diaMes = hora.getDate()
@@ -1180,79 +1198,96 @@ function BarraInferior() {
   const diasNoAno = Math.floor((hora.getTime() - new Date(hora.getFullYear(),0,0).getTime())/86400000)
   const totalDias = (ano%4===0&&(ano%100!==0||ano%400===0))?366:365
   const pctAno = Math.round((diasNoAno/totalDias)*100)
-  const pctMes = Math.round((diaMes / new Date(ano, mesNum, 0).getDate()) * 100)
-  const diasRestMes = new Date(ano, mesNum, 0).getDate() - diaMes
-  const proximaFeira = (() => { const d = new Date(hora); let n = 6 - d.getDay(); if(n <= 0) n += 7; return n })()
+  const diasNoMes = diaMes
+  const totalDiasMes = new Date(ano, mesNum, 0).getDate()
+  const pctMes = Math.round((diasNoMes/totalDiasMes)*100)
+  const diasRestMes = totalDiasMes - diaMes
 
-  const cardBase: React.CSSProperties = { display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'10px 18px', borderRadius:12, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', minWidth:90, flexShrink:0, gap:4, transition:'all 0.2s', cursor:'default' }
-  const labelSty: React.CSSProperties = { fontFamily:'var(--font-mono)', fontSize:'0.55rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em' }
-  const valSty = (cor?:string): React.CSSProperties => ({ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1rem', color:cor||'var(--text-primary)', lineHeight:1 })
+  const cardSty = (cor: string): React.CSSProperties => ({
+    display:'flex', flexDirection:'column', gap:6, padding:'14px 18px',
+    borderRadius:14, border:`1px solid ${cor}25`,
+    background:`linear-gradient(135deg,${cor}0d 0%,${cor}05 100%)`,
+    flexShrink:0, minWidth:120,
+  })
+  const labelSty: React.CSSProperties = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'#64748b' }
+  const valSty = (cor: string): React.CSSProperties => ({ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.1rem', color:cor, lineHeight:1 })
 
   return (
-    <div style={{ borderTop:'1px solid rgba(255,255,255,0.1)', background:'linear-gradient(180deg,rgba(99,102,241,0.04) 0%,rgba(0,0,0,0.1) 100%)', flexShrink:0, padding:'14px 20px 14px' }}>
+    <div style={{ borderTop:'1px solid #1e293b', background:'#0f172a', flexShrink:0, padding:'14px 20px' }}>
       <div style={{ display:'flex', gap:10, overflowX:'auto', flexWrap:'nowrap', alignItems:'stretch' }}>
+
         {/* Relógio */}
-        <div style={{ ...cardBase, minWidth:120, background:'linear-gradient(135deg,rgba(99,102,241,0.12),rgba(99,102,241,0.04))', border:'1px solid rgba(99,102,241,0.25)' }}>
-          <div style={{ fontFamily:'var(--font-mono)', fontWeight:900, fontSize:'1.4rem', color:'#818cf8', letterSpacing:'0.05em', lineHeight:1 }}>{horaStr}</div>
-          <div style={{ ...labelSty, color:'rgba(129,140,248,0.6)', marginTop:2 }}>{diaSemanaShort} · UTC-3</div>
+        <div style={{ ...cardSty('#6366f1'), minWidth:148 }}>
+          <div style={labelSty}>⏱ Horário local</div>
+          <div style={{ fontFamily:'var(--font-mono)', fontWeight:900, fontSize:'1.5rem', color:'#818cf8', letterSpacing:'0.06em', lineHeight:1 }}>{horaStr}</div>
+          <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{diaSemanaShort} · UTC-3 · Brasil</div>
         </div>
+
         {/* Data */}
-        <div style={{ ...cardBase, minWidth:130, background:'linear-gradient(135deg,rgba(59,130,246,0.1),rgba(59,130,246,0.03))', border:'1px solid rgba(59,130,246,0.2)' }}>
+        <div style={{ ...cardSty('#3b82f6'), minWidth:148 }}>
+          <div style={labelSty}>📅 Data</div>
           <div style={{ display:'flex', alignItems:'baseline', gap:5 }}>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.6rem', color:'#60a5fa', lineHeight:1 }}>{diaMes}</span>
-            <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.9rem', color:'#93c5fd' }}>{mes.slice(0,3)}</span>
+            <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.85rem', color:'#93c5fd' }}>{mes.slice(0,3).toUpperCase()} {ano}</span>
           </div>
-          <div style={{ ...labelSty, color:'rgba(96,165,250,0.6)' }}>{diaSemana.slice(0,3)} · {ano}</div>
+          <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{diaSemana}</div>
         </div>
+
         {/* Localização */}
-        <div style={{ ...cardBase, minWidth:140, background:'linear-gradient(135deg,rgba(16,185,129,0.1),rgba(16,185,129,0.03))', border:'1px solid rgba(16,185,129,0.2)' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-            <span style={{ fontSize:'1.1rem' }}>📍</span>
-            <div>
-              <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'0.88rem', color:'#34d399', lineHeight:1 }}>{loc.cidade}</div>
-              <div style={{ ...labelSty, color:'rgba(52,211,153,0.6)', marginTop:2 }}>{loc.uf} · Brasil 🇧🇷</div>
-            </div>
-          </div>
+        <div style={{ ...cardSty('#10b981'), minWidth:148 }}>
+          <div style={labelSty}>📍 Localização</div>
+          <div style={valSty('#34d399')}>{loc.cidade}</div>
+          <div style={{ fontSize:'0.6rem', color:'#475569', fontFamily:'var(--font-mono)' }}>{loc.uf} · Brasil 🇧🇷</div>
         </div>
+
         {/* Progresso do Ano */}
-        <div style={{ ...cardBase, minWidth:180, background:'linear-gradient(135deg,rgba(245,158,11,0.1),rgba(245,158,11,0.03))', border:'1px solid rgba(245,158,11,0.2)' }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', width:'100%', marginBottom:5 }}>
-            <span style={{ ...labelSty, color:'rgba(251,191,36,0.7)' }}>PROGRESSO {ano}</span>
+        <div style={{ ...cardSty('#f59e0b'), minWidth:200 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={labelSty}>📊 Ano {ano}</div>
             <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#fbbf24' }}>{pctAno}%</span>
           </div>
-          <div style={{ width:'100%', height:8, borderRadius:4, background:'rgba(255,255,255,0.07)', overflow:'hidden', position:'relative' }}>
-            <div style={{ height:'100%', width:`${pctAno}%`, background:'linear-gradient(90deg,#f59e0b,#fbbf24)', borderRadius:4, transition:'width 1s', boxShadow:'0 0 10px rgba(245,158,11,0.5)' }} />
+          <div style={{ height:8, borderRadius:4, background:'#1e293b', overflow:'hidden', position:'relative' }}>
+            <div style={{ height:'100%', width:`${pctAno}%`, background:'linear-gradient(90deg,#d97706,#fbbf24)', borderRadius:4, boxShadow:'0 0 10px rgba(251,191,36,0.4)' }} />
           </div>
-          <div style={{ ...labelSty, color:'rgba(251,191,36,0.5)', marginTop:4 }}>Dia {diasNoAno} de {totalDias}</div>
+          <div style={{ fontSize:'0.6rem', color:'#64748b', fontFamily:'var(--font-mono)' }}>Dia {diasNoAno} de {totalDias} · S{semanaISO}</div>
         </div>
+
         {/* Progresso do Mês */}
-        <div style={{ ...cardBase, minWidth:165, background:'linear-gradient(135deg,rgba(239,68,68,0.08),rgba(239,68,68,0.02))', border:'1px solid rgba(239,68,68,0.15)' }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', width:'100%', marginBottom:5 }}>
-            <span style={{ ...labelSty, color:'rgba(252,165,165,0.7)' }}>{mes.toUpperCase()}</span>
-            <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#fca5a5' }}>{pctMes}%</span>
+        <div style={{ ...cardSty('#ef4444'), minWidth:185 }}>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={labelSty}>🗓 {mes.slice(0,3).toUpperCase()}</div>
+            <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#f87171' }}>{pctMes}%</span>
           </div>
-          <div style={{ width:'100%', height:8, borderRadius:4, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
-            <div style={{ height:'100%', width:`${pctMes}%`, background:'linear-gradient(90deg,#ef4444,#f87171)', borderRadius:4, transition:'width 1s' }} />
+          <div style={{ height:8, borderRadius:4, background:'#1e293b', overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${pctMes}%`, background:'linear-gradient(90deg,#dc2626,#f87171)', borderRadius:4 }} />
           </div>
-          <div style={{ ...labelSty, color:'rgba(252,165,165,0.5)', marginTop:4 }}>{diasRestMes} dias restantes</div>
+          <div style={{ fontSize:'0.6rem', color:'#64748b', fontFamily:'var(--font-mono)' }}>{diasRestMes} dias restantes</div>
         </div>
-        {/* Semana */}
-        <div style={{ ...cardBase, minWidth:100 }}>
-          <div style={valSty('#c084fc')}>S{semanaISO}</div>
-          <div style={labelSty}>Semana ISO</div>
-          <div style={{ ...labelSty, color:'rgba(192,132,252,0.5)', marginTop:2 }}>6ª em {proximaFeira}d</div>
-        </div>
-        {/* Temperatura placeholder */}
-        <div style={{ ...cardBase, minWidth:90 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-            <span style={{ fontSize:'1.2rem' }}>🌤</span>
-            <span style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1rem', color:'var(--text-primary)' }}>BH</span>
+
+        {/* News ticker */}
+        <div style={{ ...cardSty('#8b5cf6'), flex:1, minWidth:280 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <div style={labelSty}>📰 Notícias</div>
+            <div style={{ width:5, height:5, borderRadius:'50%', background:'#a78bfa', animation:'pulse 2s infinite', flexShrink:0 }} />
           </div>
-          <div style={labelSty}>Belo Horizonte</div>
+          {news.length > 0 && (
+            <>
+              <div style={{ fontSize:'0.75rem', color:'#c4b5fd', fontWeight:600, lineHeight:1.4, flex:1 }}>
+                {news[newsIdx % news.length]?.titulo}
+              </div>
+              <div style={{ fontSize:'0.58rem', color:'#64748b', fontFamily:'var(--font-mono)' }}>
+                Fonte: {news[newsIdx % news.length]?.fonte}
+              </div>
+            </>
+          )}
         </div>
+
       </div>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
     </div>
   )
+}
+
 }
 
 function PainelEditais({ onNavigate, global, discStats }: any) {
@@ -1502,7 +1537,178 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
           </button>
         ))}
       </div>
+
+      {/* Row 2 — Saúde, Wishlist, Diário, Gaming, Media */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:14 }}>
+        <PainelVisaoGeralSaude onNavigate={onNavigate} />
+        <PainelVisaoGeralWishlist onNavigate={onNavigate} />
+        <PainelVisaoGeralDiario onNavigate={onNavigate} />
+        <PainelVisaoGeralGaming onNavigate={onNavigate} />
+        <PainelVisaoGeralMedia onNavigate={onNavigate} />
+      </div>
     </div>
+  )
+}
+
+function PainelVisaoGeralSaude({ onNavigate }: any) {
+  const uid = useUid()
+  const [registros, setRegistros] = useState<any[]>([])
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/saude`), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
+  const mes = new Date().toISOString().slice(0,7)
+  const regMes = registros.filter(r=>r.data?.startsWith(mes))
+  let streak=0; const dCheck=new Date()
+  while(true){ const ds=dCheck.toISOString().slice(0,10); if(!registros.find((r:any)=>r.data===ds)) break; streak++; dCheck.setDate(dCheck.getDate()-1) }
+  const cor='#34d399'
+  return (
+    <button onClick={()=>onNavigate('saude')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'pointer', transition:'all 0.2s' }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Saúde</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{streak}d</div>
+          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{regMes.length} registros este mês</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>✚</span>
+      </div>
+      <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
+        <div style={{ height:'100%', width:`${Math.min(100,streak*10)}%`, background:`linear-gradient(90deg,${cor},${cor}99)`, borderRadius:3, boxShadow:`0 0 8px ${cor}40` }} />
+      </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralWishlist({ onNavigate }: any) {
+  const uid = useUid()
+  const [itens, setItens] = useState<any[]>([])
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/wishlist`), s=>setItens(s.docs.map(d=>d.data()))) }, [uid])
+  const pendentes = itens.filter(i=>i.status!=='comprado'&&i.status!=='cancelado')
+  const total = pendentes.reduce((a:number,i:any)=>a+(i.preco||0),0)
+  const fmtBRL=(v:number)=>v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
+  const cor='#f59e0b'
+  const pct = itens.length>0?Math.round((itens.filter(i=>i.status==='comprado').length/itens.length)*100):0
+  return (
+    <button onClick={()=>onNavigate('wishlist')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'pointer', transition:'all 0.2s' }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Wishlist</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{pendentes.length} itens</div>
+          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{fmtBRL(total)} estimado</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>🛒</span>
+      </div>
+      <div style={{ marginTop:8 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+          <span>Adquiridos</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
+        </div>
+        <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
+          <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${cor},${cor}99)`, borderRadius:3 }} />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralDiario({ onNavigate }: any) {
+  const uid = useUid()
+  const [dados, setDados] = useState<any>(null)
+  const hoje = new Date().toISOString().slice(0,10)
+  useEffect(() => {
+    if(!uid||!db) return
+    import('firebase/firestore').then(({getDoc})=>{
+      getDoc(doc(db,'users',uid,'journal',hoje)).then(s=>{ if(s.exists()) setDados(s.data()) })
+    })
+  }, [uid])
+  const tasks = dados?.planejamento||[]; const feitas=tasks.filter((t:any)=>t.feito).length
+  const pct = tasks.length>0?Math.round((feitas/tasks.length)*100):0
+  const cor='#ec4899'
+  return (
+    <button onClick={()=>onNavigate('journal')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'pointer', transition:'all 0.2s' }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Diário · Hoje</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{tasks.length} tasks</div>
+          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{feitas} concluídas · {dados?.timeline?.length||0} eventos</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>✦</span>
+      </div>
+      <div style={{ marginTop:8 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+          <span>Progresso</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
+        </div>
+        <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
+          <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${cor},${cor}99)`, borderRadius:3 }} />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralGaming({ onNavigate }: any) {
+  const uid = useUid()
+  const [games, setGames] = useState<any[]>([])
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/games`), s=>setGames(s.docs.map(d=>d.data()))) }, [uid])
+  const jogando=games.filter(g=>g.status==='jogando')
+  const zerados=games.filter(g=>g.status==='zerado'||g.status==='concluido')
+  const cor='#7c3aed'
+  const pct=games.length>0?Math.round((zerados.length/games.length)*100):0
+  return (
+    <button onClick={()=>onNavigate('gaming')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'pointer', transition:'all 0.2s' }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Gaming</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{jogando.length} jogando</div>
+          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{zerados.length} zerados · {games.length} total</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>🎮</span>
+      </div>
+      <div style={{ marginTop:8 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+          <span>Zerados</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
+        </div>
+        <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
+          <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${cor},${cor}99)`, borderRadius:3 }} />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralMedia({ onNavigate }: any) {
+  const uid = useUid()
+  const [itens, setItens] = useState<any[]>([])
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/media`), s=>setItens(s.docs.map(d=>d.data()))) }, [uid])
+  const assistindo=itens.filter(i=>i.status==='assistindo'||i.status==='em_andamento'||i.status==='lendo')
+  const concluidos=itens.filter(i=>i.status==='concluido'||i.status==='assistido'||i.status==='lido')
+  const cor='#3b82f6'
+  const pct=itens.length>0?Math.round((concluidos.length/itens.length)*100):0
+  return (
+    <button onClick={()=>onNavigate('media')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'pointer', transition:'all 0.2s' }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'#64748b', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Media Tracker</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{assistindo.length} em andamento</div>
+          <div style={{ fontSize:'0.68rem', color:'#64748b', marginTop:3 }}>{concluidos.length} concluídos · {itens.length} total</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>▶</span>
+      </div>
+      <div style={{ marginTop:8 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'#64748b', marginBottom:4 }}>
+          <span>Concluídos</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
+        </div>
+        <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
+          <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${cor},${cor}99)`, borderRadius:3 }} />
+        </div>
+      </div>
+    </button>
   )
 }
 

@@ -44,6 +44,17 @@ function monthOf(d: string) { return d.slice(0,7) }
 function weekOf(iso: string) { const d=new Date(iso+'T12:00'); const day=d.getDay(); const diff=d.getDate()-day+(day===0?-6:1); const mon=new Date(d); mon.setDate(diff); return mon.toISOString().slice(0,10) }
 function newId() { return Date.now().toString(36)+Math.random().toString(36).slice(2,6) }
 
+const META_DIA = 480 // 8 horas em minutos
+const TIPOS_COMPUTA_HORA: TipoRegistro[] = ['trabalho','homeoffice','viagem']
+
+function saldoDia(minutos: number): { valor: number; tipo: 'credito'|'debito'|'zerado' } {
+  const diff = minutos - META_DIA
+  if (diff > 0) return { valor: diff, tipo: 'credito' }
+  if (diff < 0) return { valor: Math.abs(diff), tipo: 'debito' }
+  return { valor: 0, tipo: 'zerado' }
+}
+function fmtSaldo(min: number): string { const h=Math.floor(min/60),m=min%60; return `${h}h${m>0?` ${m}m`:''}` }
+
 const inp: React.CSSProperties = { background:'var(--input-bg)', border:'1px solid var(--border)', borderRadius:8, color:'var(--text-primary)', fontFamily:'var(--font-body)', fontSize:'0.88rem', padding:'8px 12px', width:'100%' }
 
 /* ═══ Hook ═══════════════════════════════════════════════════ */
@@ -258,12 +269,19 @@ export default function PontoEletronico() {
             <div style={{ fontSize:'0.72rem', color:'var(--text-muted)', marginTop:2 }}>Registro de horas e ocorrências</div>
           </div>
           <div style={{ display:'flex', gap:20, flexWrap:'wrap' }}>
-            {[
-              { l:'Horas no Mês', v:fmtHM(minMes), c:'var(--text-accent)' },
-              { l:'Dias Registrados', v:diasMes, c:'#10b981' },
-              { l:'Faltas', v:faltasMes, c:'#ef4444' },
-              { l:'Férias', v:feriasMes, c:'#f59e0b' },
-            ].map(k=>(
+            {(() => {
+              const diasComHora = regMesAtual.filter(r=>TIPOS_COMPUTA_HORA.includes(r.tipo)&&r.minutos>0)
+              const saldoTotal = diasComHora.reduce((a,r)=>a+(r.minutos-META_DIA),0)
+              const saldoCor = saldoTotal>=0?'#10b981':'#ef4444'
+              const saldoLabel = saldoTotal>=0?`+${fmtHM(saldoTotal)}`:`-${fmtHM(Math.abs(saldoTotal))}`
+              return [
+                { l:'Horas no Mês', v:fmtHM(minMes), c:'var(--text-accent)' },
+                { l:'Saldo (±8h/dia)', v:saldoLabel, c:saldoCor },
+                { l:'Dias Registrados', v:diasMes, c:'#60a5fa' },
+                { l:'Faltas', v:faltasMes, c:'#ef4444' },
+                { l:'Férias', v:feriasMes, c:'#f59e0b' },
+              ]
+            })().map(k=>(
               <div key={k.l} style={{ textAlign:'center' }}>
                 <div style={{ fontFamily:'var(--font-display)', fontSize:'1.3rem', fontWeight:800, color:k.c, lineHeight:1 }}>{k.v}</div>
                 <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginTop:2 }}>{k.l}</div>
@@ -353,6 +371,15 @@ export default function PontoEletronico() {
                             {r.saida   && <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.78rem', color:'#ef4444' }}>← {r.saida}</span>}
                             {r.minutos>0 && <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.78rem', color:'var(--text-accent)' }}>{fmtHM(r.minutos)}</span>}
                             {r.observacao && <span style={{ fontSize:'0.72rem', color:'var(--text-muted)', fontStyle:'italic', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:160 }}>{r.observacao}</span>}
+                            {TIPOS_COMPUTA_HORA.includes(r.tipo) && r.minutos > 0 && (() => {
+                              const s = saldoDia(r.minutos)
+                              if (s.tipo === 'zerado') return null
+                              return (
+                                <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', fontWeight:700, padding:'1px 7px', borderRadius:10, background: s.tipo==='credito'?'rgba(16,185,129,0.12)':'rgba(239,68,68,0.12)', color: s.tipo==='credito'?'#10b981':'#ef4444', border:`1px solid ${s.tipo==='credito'?'rgba(16,185,129,0.25)':'rgba(239,68,68,0.25)'}` }}>
+                                  {s.tipo==='credito'?'+':'-'}{fmtSaldo(s.valor)}
+                                </span>
+                              )
+                            })()}
                           </div>
                         </div>
 
@@ -397,6 +424,42 @@ export default function PontoEletronico() {
                 <button style={chartTabSt('tipo')} onClick={()=>setChartType('tipo')}>Por Tipo</button>
               </div>
             </div>
+
+            {/* Saldo de horas do mês */}
+            {(() => {
+              const diasHora = regMesFiltro.filter(r=>TIPOS_COMPUTA_HORA.includes(r.tipo)&&r.minutos>0)
+              const saldoTot = diasHora.reduce((a,r)=>a+(r.minutos-META_DIA),0)
+              const creditos = diasHora.filter(r=>r.minutos>META_DIA).reduce((a,r)=>a+(r.minutos-META_DIA),0)
+              const debitos = diasHora.filter(r=>r.minutos<META_DIA).reduce((a,r)=>a+(META_DIA-r.minutos),0)
+              const metaMes = diasHora.length * META_DIA
+              const pctMeta = metaMes>0?Math.round((diasHora.reduce((a,r)=>a+r.minutos,0)/metaMes)*100):0
+              return (
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12, marginBottom:8 }}>
+                  <div style={{ padding:'14px 18px', borderRadius:14, background:'rgba(0,229,255,0.06)', border:'1px solid rgba(0,229,255,0.2)' }}>
+                    <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Saldo do mês</div>
+                    <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.4rem', color:saldoTot>=0?'#10b981':'#ef4444', lineHeight:1 }}>{saldoTot>=0?'+':'-'}{fmtSaldo(Math.abs(saldoTot))}</div>
+                    <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', marginTop:4 }}>Meta: 8h/dia · {diasHora.length} dias</div>
+                  </div>
+                  <div style={{ padding:'14px 18px', borderRadius:14, background:'rgba(16,185,129,0.06)', border:'1px solid rgba(16,185,129,0.2)' }}>
+                    <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Créditos</div>
+                    <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.4rem', color:'#10b981', lineHeight:1 }}>+{fmtSaldo(creditos)}</div>
+                    <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', marginTop:4 }}>{diasHora.filter(r=>r.minutos>META_DIA).length} dias acima de 8h</div>
+                  </div>
+                  <div style={{ padding:'14px 18px', borderRadius:14, background:'rgba(239,68,68,0.06)', border:'1px solid rgba(239,68,68,0.2)' }}>
+                    <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>Débitos</div>
+                    <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.4rem', color:'#ef4444', lineHeight:1 }}>-{fmtSaldo(debitos)}</div>
+                    <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', marginTop:4 }}>{diasHora.filter(r=>r.minutos<META_DIA).length} dias abaixo de 8h</div>
+                  </div>
+                  <div style={{ padding:'14px 18px', borderRadius:14, background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)' }}>
+                    <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:6 }}>% da meta mensal</div>
+                    <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.4rem', color:'#f59e0b', lineHeight:1 }}>{pctMeta}%</div>
+                    <div style={{ height:4, borderRadius:2, background:'rgba(255,255,255,0.07)', marginTop:8, overflow:'hidden' }}>
+                      <div style={{ height:'100%', width:`${Math.min(100,pctMeta)}%`, background:'linear-gradient(90deg,#d97706,#fbbf24)', borderRadius:2 }} />
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Resumo do mês filtrado */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:12 }}>
@@ -477,6 +540,11 @@ export default function PontoEletronico() {
                     <span style={{ fontSize:'0.72rem', padding:'2px 8px', borderRadius:12, background:tp.bg, color:tp.color, fontWeight:700 }}>{tp.label}</span>
                     {r.minutos>0 && <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.78rem', color:'var(--text-accent)', minWidth:50, textAlign:'right' }}>{fmtHM(r.minutos)}</span>}
                     {r.entrada && <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', color:'var(--text-muted)' }}>{r.entrada}–{r.saida}</span>}
+                    {TIPOS_COMPUTA_HORA.includes(r.tipo) && r.minutos>0 && (() => {
+                      const s=saldoDia(r.minutos)
+                      if(s.tipo==='zerado') return null
+                      return <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', fontWeight:700, color:s.tipo==='credito'?'#10b981':'#ef4444' }}>{s.tipo==='credito'?'+':'-'}{fmtSaldo(s.valor)}</span>
+                    })()}
                     <button onClick={async()=>{ if(confirm(`Apagar?`)) await remove(r.id) }}
                       style={{ background:'none', border:'1px solid rgba(239,68,68,0.2)', borderRadius:6, padding:'3px 7px', color:'#f87171', cursor:'pointer', fontSize:'0.7rem' }}>✕</button>
                   </div>

@@ -58,7 +58,7 @@
   --text-accent:    #4F6BED;
 
   /* Sidebar sempre escura — contraste intencional */
-  --sidebar-bg:    #2C3347;
+  --sidebar-bg:    #1B2030;
   --sidebar-text:  rgba(255,255,255,0.55);
   --sidebar-active:rgba(255,255,255,0.95);
 
@@ -108,7 +108,7 @@
   --text-subtle:    #475569;
   --text-accent:    #6B8EF5;
 
-  --sidebar-bg:    #252B3B;
+  --sidebar-bg:    #0F1117;
   --sidebar-text:  rgba(255,255,255,0.45);
   --sidebar-active:rgba(255,255,255,0.92);
 
@@ -365,6 +365,12 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.page-content > div {
+  flex: 1;
+  min-height: 0;
 }
 
 /* ══════════════════════════════════════════════════════════════
