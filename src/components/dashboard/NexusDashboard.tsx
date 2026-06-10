@@ -1138,6 +1138,8 @@ export default function NexusDashboard({ onNavigate }: Props) {
   const gridRef = useRef<HTMLDivElement>(null)
   const [gridW, setGridW] = useState(900)
   const isMobile = useIsMobile()
+  const { editais: editaisCadastrados } = useEditaisCadastrados()
+  const [editalCarouselIdx, setEditalCarouselIdx] = useState(0)
 
   useEffect(() => {
     const obs = new ResizeObserver(e => setGridW(e[0].contentRect.width))
@@ -1176,7 +1178,38 @@ export default function NexusDashboard({ onNavigate }: Props) {
 
   function renderWidget(w: Widget) {
     switch (w.id) {
-      case 'kpi-edital':          return <KpiCard label="Progresso Edital"  value={`${global.pctConcluido}%`} sub={`${global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`} color="#00e5ff" />
+      case 'kpi-edital': {
+        // Carousel: show AGU built-in + any cadastrado editais
+        const allEditaisForCarousel = [
+          { id: 'agu-builtin', nome: 'Edital AGU', orgao: 'AGU', cor: '#00e5ff', isBuiltin: true },
+          ...editaisCadastrados.map(e => ({ id: e.id, nome: e.nome, orgao: e.orgao, cor: e.cor, isBuiltin: false }))
+        ]
+        const totalEditais = allEditaisForCarousel.length
+        const safeidx = editalCarouselIdx % totalEditais
+        const current = allEditaisForCarousel[safeidx]
+        if (current.isBuiltin) {
+          return (
+            <div style={{ position:'relative', height:'100%' }}>
+              <KpiCard label="Progresso AGU" value={`${global.pctConcluido}%`} sub={`${global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`} color="#00e5ff" />
+              {totalEditais > 1 && (
+                <div style={{ position:'absolute', bottom:6, right:8, display:'flex', gap:4, alignItems:'center' }}>
+                  <span style={{ fontSize:'0.6rem', color:'rgba(255,255,255,0.3)', fontFamily:'var(--font-mono)' }}>{safeidx+1}/{totalEditais}</span>
+                  <button onClick={e=>{e.stopPropagation();setEditalCarouselIdx(i=>(i+1)%totalEditais)}} style={{ width:22,height:22,borderRadius:6,border:'1px solid rgba(0,229,255,0.3)',background:'rgba(0,229,255,0.08)',color:'#00e5ff',fontSize:'0.8rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0 }}>›</button>
+                </div>
+              )}
+            </div>
+          )
+        }
+        return (
+          <div style={{ position:'relative', height:'100%' }}>
+            <WidgetEditalDinamico editalId={current.id} nome={current.nome} cor={current.cor} orgao={current.orgao} onNavigate={onNavigate} />
+            <div style={{ position:'absolute', bottom:6, right:8, display:'flex', gap:4, alignItems:'center' }}>
+              <span style={{ fontSize:'0.6rem', color:'rgba(255,255,255,0.3)', fontFamily:'var(--font-mono)' }}>{safeidx+1}/{totalEditais}</span>
+              <button onClick={e=>{e.stopPropagation();setEditalCarouselIdx(i=>(i+1)%totalEditais)}} style={{ width:22,height:22,borderRadius:6,border:`1px solid ${current.cor}40`,background:`${current.cor}12`,color:current.cor,fontSize:'0.8rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0 }}>›</button>
+            </div>
+          </div>
+        )
+      }
       case 'kpi-questoes':        return <KpiCard label="Questões Feitas"   value={global.questoes||'—'} sub={`${global.acertos} acertos`} color="#7c3aed" />
       case 'kpi-acerto':          return <KpiCard label="% Acerto Geral"    value={global.questoes>0?`${global.pctAcerto}%`:'—'} sub="performance geral" color="#10b981" />
       case 'kpi-ponto':           return <KpiCard label="Horas no Mês"      value={`${ponto.hMes}h${ponto.mMes>0?` ${ponto.mMes}m`:''}`} sub={ponto.emServico?'🟢 Em serviço':'Ponto eletrônico'} color="#f59e0b" />
@@ -1250,6 +1283,18 @@ export default function NexusDashboard({ onNavigate }: Props) {
       {showPanel&&(
         <div style={{ background:'var(--card-bg)',border:'1px solid var(--border)',borderRadius:12,padding:'14px 16px',marginBottom:14 }}>
           <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.62rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8 }}>Mostrar / Ocultar / Duplicar Widgets</div>
+          {editaisCadastrados.length > 0 && (
+            <div style={{ marginBottom:10, padding:'8px 12px', borderRadius:8, background:'rgba(0,229,255,0.06)', border:'1px solid rgba(0,229,255,0.15)' }}>
+              <div style={{ fontSize:'0.6rem', color:'var(--text-accent)', fontFamily:'var(--font-mono)', letterSpacing:'0.08em', marginBottom:6 }}>⚖ EDITAIS CADASTRADOS — use as setas no widget "Progresso Edital" para navegar</div>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                {editaisCadastrados.map((e:any) => (
+                  <span key={e.id} style={{ fontSize:'0.68rem', padding:'2px 10px', borderRadius:20, background:`${e.cor}18`, color:e.cor, border:`1px solid ${e.cor}35`, fontWeight:600 }}>
+                    {e.nome} · {e.orgao}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ display:'flex',flexWrap:'wrap',gap:6 }}>
             {ativo.widgets.map(w=>(
               <div key={w.id} style={{ display:'flex',alignItems:'center',gap:0,borderRadius:20,overflow:'hidden',border:`1px solid ${w.visible?'rgba(0,229,255,0.3)':'var(--border)'}` }}>

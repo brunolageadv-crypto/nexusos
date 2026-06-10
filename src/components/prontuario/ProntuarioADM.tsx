@@ -27,17 +27,17 @@ interface Demanda {
 const CATEGORIAS = ['Contratação','Licitação','Assessoria Jurídica','Parecer','Recurso Administrativo','Auditoria','Pessoal / RH','Convênio / Parceria','Legislação / Regulamentação','Outro']
 
 const PR: Record<Prioridade, { label: string; color: string; bg: string }> = {
-  baixa:   { label: 'Baixa',   color: '#6b9e7a', bg: 'rgba(107,158,122,0.18)' },
-  media:   { label: 'Média',   color: '#b8a96a', bg: 'rgba(184,169,106,0.18)' },
-  alta:    { label: 'Alta',    color: '#c47c2e', bg: 'rgba(196,124,46,0.18)'  },
-  urgente: { label: 'Urgente', color: '#c45a5a', bg: 'rgba(196,90,90,0.18)'  },
+  baixa:   { label: 'Baixa',   color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
+  media:   { label: 'Média',   color: '#fbbf24', bg: 'rgba(251,191,36,0.12)'  },
+  alta:    { label: 'Alta',    color: '#fb923c', bg: 'rgba(251,146,60,0.12)'  },
+  urgente: { label: 'Urgente', color: '#f87171', bg: 'rgba(248,113,113,0.14)' },
 }
 const ST: Record<Status, { label: string; color: string }> = {
-  aberta:       { label: 'Aberta',       color: '#6b9fd4' },
-  em_andamento: { label: 'Em Andamento', color: '#c4a84a' },
-  aguardando:   { label: 'Aguardando',   color: '#9b7cc4' },
-  concluida:    { label: 'Concluída',    color: '#6b9e7a' },
-  cancelada:    { label: 'Cancelada',    color: '#6a6a7a' },
+  aberta:       { label: 'Aberta',       color: '#60a5fa' },
+  em_andamento: { label: 'Em Andamento', color: '#fbbf24' },
+  aguardando:   { label: 'Aguardando',   color: '#c084fc' },
+  concluida:    { label: 'Concluída',    color: '#34d399' },
+  cancelada:    { label: 'Cancelada',    color: '#9ca3af' },
 }
 
 function newId() { return Math.random().toString(36).slice(2, 10) }
@@ -49,16 +49,19 @@ function diasRestantes(prazo: string) {
 }
 
 function cardStyle(dias: number, status: Status): React.CSSProperties {
-  if (status === 'concluida' || status === 'cancelada')
-    return { background: 'rgba(40,40,50,0.5)', border: '1px solid rgba(100,100,120,0.25)' }
-  if (dias <= 0)  return { background: 'rgba(80,18,18,0.35)',  border: '1px solid rgba(196,70,70,0.55)' }
-  if (dias <= 10) return { background: 'rgba(75,22,22,0.28)',  border: '1px solid rgba(196,90,90,0.4)'  }
-  if (dias <= 15) return { background: 'rgba(75,60,10,0.28)',  border: '1px solid rgba(196,160,50,0.4)' }
-  return              { background: 'rgba(12,35,22,0.28)',  border: '1px solid rgba(80,150,100,0.35)' }
+  if (status === 'concluida')
+    return { background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)' }
+  if (status === 'cancelada')
+    return { background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }
+  if (dias <= 0)  return { background: 'rgba(239,68,68,0.06)',  border: '1px solid rgba(239,68,68,0.2)'  }
+  if (dias <= 10) return { background: 'rgba(248,113,113,0.05)', border: '1px solid rgba(248,113,113,0.18)' }
+  if (dias <= 15) return { background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.18)' }
+  return              { background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)' }
 }
 
-function prazoInfo(dias: number): { text: string; color: string } {
-  if (dias <= 0)  return { text: 'Vencido',           color: '#ef4444' }
+function prazoInfo(dias: number, status?: Status): { text: string; color: string } {
+  if (status === 'concluida') return { text: 'Concluída', color: '#10b981' }
+  if (dias <= 0)  return { text: 'Aguardando resolução', color: '#94a3b8' }
   if (dias <= 10) return { text: `${dias}d restantes`, color: '#f87171' }
   if (dias <= 15) return { text: `${dias}d restantes`, color: '#fbbf24' }
   return              { text: `${dias}d restantes`, color: '#6ee7a0' }
@@ -256,7 +259,7 @@ function DetalheModal({ uid, demanda, onClose, onEdit }: { uid: string|null; dem
   const [saving, setSaving] = useState(false)
   const [movs, setMovs] = useState<Movimentacao[]>(demanda.movimentacoes || [])
   const dias = diasRestantes(demanda.prazo)
-  const pz = prazoInfo(dias)
+  const pz = prazoInfo(dias, demanda.status)
   const pr = PR[demanda.prioridade]
   const st = ST[demanda.status]
 
@@ -388,7 +391,7 @@ function Calendario({ demandas, onClickDemanda }: { demandas: Demanda[]; onClick
   const DS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
   const primeiro = new Date(ano,mes,1).getDay()
   const total = new Date(ano,mes+1,0).getDate()
-  const prazoColor = (dias:number) => dias<=0?'#ef4444':dias<=10?'#f87171':dias<=15?'#fbbf24':'#6ee7a0'
+  const prazoColor = (dias:number, status?:Status) => status==='concluida'?'#10b981':dias<=0?'#94a3b8':dias<=10?'#f87171':dias<=15?'#fbbf24':'#6ee7a0'
 
   const evPorDia: Record<number,Demanda[]> = {}
   demandas.forEach(d=>{
@@ -419,12 +422,12 @@ function Calendario({ demandas, onClickDemanda }: { demandas: Demanda[]; onClick
           if(!dia) return <div key={i} />
           const evs = evPorDia[dia]||[]
           const isHoje = dia===hoje.getDate()&&mes===hoje.getMonth()&&ano===hoje.getFullYear()
-          const cor = evs.length>0?prazoColor(diasRestantes(evs[0].prazo)):undefined
+          const cor = evs.length>0?prazoColor(diasRestantes(evs[0].prazo),evs[0].status):undefined
           return (
             <div key={i} style={{ minHeight:56,borderRadius:10,padding:4,background:isHoje?'rgba(91,91,214,0.2)':evs.length?`${cor}12`:'rgba(255,255,255,0.02)',border:`1px solid ${isHoje?'rgba(91,91,214,0.5)':evs.length?`${cor}30`:'rgba(255,255,255,0.05)'}` }}>
               <div style={{ fontSize:'0.72rem',fontWeight:isHoje||evs.length?700:400,color:isHoje?'#a5a3f5':cor??'var(--text-muted)',textAlign:'center',marginBottom:2 }}>{dia}</div>
               {evs.slice(0,2).map(ev=>(
-                <button key={ev.id} onClick={()=>onClickDemanda(ev)} style={{ display:'block',width:'100%',textAlign:'left',fontSize:'0.58rem',padding:'2px 4px',borderRadius:4,background:`${prazoColor(diasRestantes(ev.prazo))}20`,border:`1px solid ${prazoColor(diasRestantes(ev.prazo))}30`,color:prazoColor(diasRestantes(ev.prazo)),marginBottom:1,cursor:'pointer',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{ev.titulo}</button>
+                <button key={ev.id} onClick={()=>onClickDemanda(ev)} style={{ display:'block',width:'100%',textAlign:'left',fontSize:'0.58rem',padding:'2px 4px',borderRadius:4,background:`${prazoColor(diasRestantes(ev.prazo),ev.status)}20`,border:`1px solid ${prazoColor(diasRestantes(ev.prazo),ev.status)}30`,color:prazoColor(diasRestantes(ev.prazo),ev.status),marginBottom:1,cursor:'pointer',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{ev.titulo}</button>
               ))}
               {evs.length>2&&<div style={{ fontSize:'0.55rem',textAlign:'center',color:'var(--text-muted)' }}>+{evs.length-2}</div>}
             </div>
@@ -433,7 +436,7 @@ function Calendario({ demandas, onClickDemanda }: { demandas: Demanda[]; onClick
       </div>
       {/* Legenda */}
       <div style={{ display:'flex',gap:16,justifyContent:'center',marginTop:14,fontSize:'0.65rem',color:'var(--text-muted)' }}>
-        {[['#f87171','≤ 10 dias'],['#fbbf24','11–15 dias'],['#6ee7a0','≥ 16 dias']].map(([c,l])=>(
+        {[['#f87171','≤ 10 dias'],['#fbbf24','11–15 dias'],['#6ee7a0','≥ 16 dias'],['#10b981','Concluída'],['#94a3b8','Ag. resolução']].map(([c,l])=>(
           <span key={l} style={{ display:'flex',alignItems:'center',gap:5 }}><span style={{ width:8,height:8,borderRadius:'50%',background:c,display:'inline-block' }}/>{l}</span>
         ))}
       </div>
@@ -534,7 +537,7 @@ export default function ProntuarioADM() {
             </div>
           )}
           {filtradas.map(d=>{
-            const dias=diasRestantes(d.prazo); const pz=prazoInfo(dias)
+            const dias=diasRestantes(d.prazo); const pz=prazoInfo(dias, d.status)
             const pr=PR[d.prioridade]; const st=ST[d.status]
             const cs=cardStyle(dias,d.status)
             return (
