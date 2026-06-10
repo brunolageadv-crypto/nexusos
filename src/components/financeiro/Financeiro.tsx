@@ -9,7 +9,7 @@ type Tipo = 'receita' | 'despesa'
 interface Transacao {
   id: string; data: string; descricao: string; valor: number
   tipo: Tipo; categoria: string; subcategoria: string
-  positivo: boolean; observacao: string; criadoEm: string
+  positivo: boolean; observacao: string; criadoEm: string; recorrente: boolean
 }
 interface ContaPagar {
   id: string; descricao: string; valor: number; vencimento: string
@@ -120,6 +120,7 @@ function FormTransacao({ initial, onSave, onClose }: { initial?: Partial<Transac
     subcategoria: initial?.subcategoria ?? '',
     positivo: initial?.positivo ?? false,
     observacao: initial?.observacao ?? '',
+    recorrente: (initial as any)?.recorrente ?? false,
   })
 
   const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm(p => ({ ...p, [k]: e.target.value }))
@@ -196,10 +197,21 @@ function FormTransacao({ initial, onSave, onClose }: { initial?: Partial<Transac
               <button type="button" onClick={() => setForm(p => ({ ...p, positivo: false }))} style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${!form.positivo ? 'rgba(239,68,68,0.5)' : 'var(--border)'}`, background: !form.positivo ? 'rgba(239,68,68,0.1)' : 'none', color: !form.positivo ? '#ef4444' : 'var(--text-muted)', fontFamily: 'var(--font-display)', fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}>🔴 Negativo</button>
             </div>
           </FL>
+          <FL label="Recorrência">
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" onClick={() => setForm(p => ({ ...p, recorrente: false }))} style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${!form.recorrente ? 'rgba(100,116,139,0.5)' : 'var(--border)'}`, background: !form.recorrente ? 'rgba(100,116,139,0.1)' : 'none', color: !form.recorrente ? '#94a3b8' : 'var(--text-muted)', fontFamily: 'var(--font-display)', fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}>⟳ Pontual</button>
+              <button type="button" onClick={() => setForm(p => ({ ...p, recorrente: true }))} style={{ flex: 1, padding: '8px', borderRadius: 8, border: `1px solid ${form.recorrente ? 'rgba(245,158,11,0.5)' : 'var(--border)'}`, background: form.recorrente ? 'rgba(245,158,11,0.1)' : 'none', color: form.recorrente ? '#f59e0b' : 'var(--text-muted)', fontFamily: 'var(--font-display)', fontWeight: 700, cursor: 'pointer', fontSize: '0.82rem' }}>🔄 Recorrente Mensal</button>
+            </div>
+          </FL>
+          {form.recorrente && (
+            <div style={{ padding: '8px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '0.72rem', color: '#f59e0b' }}>
+              🔄 Esta transação será projetada nos próximos 12 meses na aba <strong>Projeção Anual</strong>.
+            </div>
+          )}
           <FL label="Observação"><textarea style={{ ...inp, minHeight: 56, resize: 'vertical' } as React.CSSProperties} value={form.observacao} onChange={f('observacao')} /></FL>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
             <button onClick={onClose} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontFamily: 'var(--font-display)', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
-            <button onClick={() => onSave({ id: (initial as any)?.id ?? newId(), criadoEm: (initial as any)?.criadoEm ?? new Date().toISOString(), ...form, valor: parseValor() })} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid rgba(0,229,255,0.4)', background: 'rgba(0,229,255,0.1)', color: 'var(--text-accent)', fontFamily: 'var(--font-display)', fontWeight: 700, cursor: 'pointer' }}>Salvar</button>
+            <button onClick={() => onSave({ id: (initial as any)?.id ?? newId(), criadoEm: (initial as any)?.criadoEm ?? new Date().toISOString(), ...form, valor: parseValor(), recorrente: form.recorrente })} style={{ padding: '9px 18px', borderRadius: 8, border: '1px solid rgba(0,229,255,0.4)', background: 'rgba(0,229,255,0.1)', color: 'var(--text-accent)', fontFamily: 'var(--font-display)', fontWeight: 700, cursor: 'pointer' }}>Salvar</button>
           </div>
         </div>
       </div>

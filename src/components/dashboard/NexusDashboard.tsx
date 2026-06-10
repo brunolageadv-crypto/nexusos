@@ -7,7 +7,7 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore'
 
-interface Props { onNavigate: (id: string) => void }
+interface Props { onNavigate: (id: string) => void; dashView?: 'widgets' | 'visual' }
 
 interface Widget {
   id: string; col: number; row: number; w: number; h: number; visible: boolean
@@ -1126,8 +1126,314 @@ function ModulosCard({ global, ponto, onNavigate }: any) {
   )
 }
 
+
+// ─── VisualDashboard — Modo visual interativo ─────────────────────────────────
+const VIS_MODULOS = [
+  { id: 'editais',    icon: '⚖',  label: 'Editais',     cor: '#00e5ff' },
+  { id: 'concursos',  icon: '🎯', label: 'Concursos',   cor: '#7c3aed' },
+  { id: 'financeiro', icon: '◎',  label: 'Financeiro',  cor: '#10b981' },
+  { id: 'prontuario', icon: '📋', label: 'Prontuário',  cor: '#5b5bd6' },
+  { id: 'ponto',      icon: '⊙',  label: 'Ponto',       cor: '#f59e0b' },
+  { id: 'saude',      icon: '✚',  label: 'Saúde',       cor: '#34d399' },
+  { id: 'wishlist',   icon: '🛒', label: 'Wishlist',    cor: '#f59e0b' },
+  { id: 'journal',    icon: '✦',  label: 'Diário',      cor: '#ec4899' },
+  { id: 'gaming',     icon: '🎮', label: 'Gaming',      cor: '#7c3aed' },
+  { id: 'media',      icon: '▶',  label: 'Media',       cor: '#3b82f6' },
+  { id: 'links',      icon: '🔗', label: 'Links',       cor: '#00e5ff' },
+]
+
+function useLocationInfo() {
+  const [info, setInfo] = useState({ cidade: 'Belo Horizonte', uf: 'MG', lat: -19.92, lng: -43.94 })
+  return info
+}
+
+function BarraInferior() {
+  const loc = useLocationInfo()
+  const [hora, setHora] = useState(new Date())
+  useEffect(() => { const t = setInterval(() => setHora(new Date()), 1000); return () => clearInterval(t) }, [])
+  const DIAS_PT = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado']
+  const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+  const diaSemana = DIAS_PT[hora.getDay()]
+  const diaMes = hora.getDate()
+  const mes = MESES_PT[hora.getMonth()]
+  const ano = hora.getFullYear()
+  const horaStr = hora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const semanaISO = (() => { const d = new Date(hora); d.setHours(0,0,0,0); d.setDate(d.getDate()+3-(d.getDay()+6)%7); const w = new Date(d.getFullYear(),0,4); return 1+Math.round(((d.getTime()-w.getTime())/86400000-3+(w.getDay()+6)%7)/7) })()
+  const diasNoAno = Math.floor((hora.getTime() - new Date(hora.getFullYear(),0,0).getTime())/86400000)
+  const totalDias = (hora.getFullYear()%4===0&&(hora.getFullYear()%100!==0||hora.getFullYear()%400===0))?366:365
+  const pctAno = Math.round((diasNoAno/totalDias)*100)
+
+  const items = [
+    { icon: '📅', label: diaSemana },
+    { icon: '◈', label: `${diaMes} de ${mes} de ${ano}` },
+    { icon: '🕐', label: horaStr },
+    { icon: '📍', label: `${loc.cidade} · ${loc.uf}` },
+    { icon: '🇧🇷', label: 'Brasil' },
+    { icon: '📆', label: `Semana ${semanaISO}` },
+    { icon: '◉', label: `Dia ${diasNoAno} de ${totalDias}` },
+    { icon: '⊗', label: `${pctAno}% do ano` },
+    { icon: '🌐', label: `UTC-3` },
+  ]
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:0, padding:'0 20px', background:'rgba(255,255,255,0.02)', borderTop:'1px solid rgba(255,255,255,0.07)', height:38, flexShrink:0, overflowX:'auto', flexWrap:'nowrap' }}>
+      {items.map((it, i) => (
+        <div key={i} style={{ display:'flex', alignItems:'center', gap:6, padding:'0 14px', borderRight: i < items.length-1 ? '1px solid rgba(255,255,255,0.07)' : 'none', whiteSpace:'nowrap', flexShrink:0 }}>
+          <span style={{ fontSize:'0.75rem' }}>{it.icon}</span>
+          <span style={{ fontFamily:'var(--font-mono)', fontSize:'0.62rem', color:'var(--text-muted)', letterSpacing:'0.04em' }}>{it.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PainelEditais({ onNavigate, global, discStats }: any) {
+  const { editais } = useEditaisCadastrados()
+  const [sel, setSel] = useState(0)
+  const allEditais = [
+    { id: 'agu', nome: 'Edital AGU', orgao: 'AGU · Advogado da União', cor: '#00e5ff', isBuiltin: true },
+    ...editais.map(e => ({ id: e.id, nome: e.nome, orgao: `${e.orgao} · ${e.cargo || ''}`, cor: e.cor, isBuiltin: false }))
+  ]
+  const cur = allEditais[sel % allEditais.length]
+  const hookCur = useEdital(cur.isBuiltin ? 'agu' : cur.id)
+  const { editais: allE } = useEditaisCadastrados()
+  const curEdital = allE.find(e => e.id === cur.id)
+  const curIds = cur.isBuiltin
+    ? AGU_DISCIPLINAS.flatMap(d => d.topicos.flatMap(t => t.subtopicos.map(s => s.id)))
+    : (curEdital ? curEdital.disciplinas.flatMap((d:any) => d.topicos.flatMap((t:any) => t.subtopicos.map((s:any) => s.id))) : [])
+  const curStats = cur.isBuiltin ? global : hookCur.getStats(curIds)
+  const curDiscs = cur.isBuiltin ? discStats : (curEdital ? curEdital.disciplinas.map((d:any) => {
+    const ids = d.topicos.flatMap((t:any) => t.subtopicos.map((s:any) => s.id))
+    return { ...d, ...hookCur.getStats(ids), total: ids.length }
+  }) : [])
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:16, height:'100%' }}>
+      {/* Seletor de edital */}
+      {allEditais.length > 1 && (
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {allEditais.map((e, i) => (
+            <button key={e.id} onClick={() => setSel(i)} style={{ padding:'4px 14px', borderRadius:20, border:`1px solid ${sel===i?`${e.cor}50`:'rgba(255,255,255,0.1)'}`, background: sel===i?`${e.cor}12`:'transparent', color: sel===i?e.cor:'var(--text-muted)', fontSize:'0.72rem', fontWeight:700, cursor:'pointer', fontFamily:'var(--font-display)', transition:'all 0.15s' }}>
+              {e.nome}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+        {[
+          { l:'Progresso', v:`${curStats.pctConcluido}%`, c:cur.cor },
+          { l:'Acerto', v:curStats.questoes>0?`${curStats.pctAcerto}%`:'—', c:'#7c3aed' },
+          { l:'Concluídos', v:`${curStats.concluidos}/${curIds.length}`, c:'#10b981' },
+        ].map(k => (
+          <div key={k.l} style={{ padding:'14px', borderRadius:14, background:'rgba(255,255,255,0.03)', border:`1px solid ${k.c}20`, textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.6rem', color:k.c, lineHeight:1 }}>{k.v}</div>
+            <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', marginTop:4 }}>{k.l}</div>
+          </div>
+        ))}
+      </div>
+      {/* Ring + barra */}
+      <div style={{ display:'flex', alignItems:'center', gap:20 }}>
+        <RingGauge pct={curStats.pctConcluido} color={cur.cor} size={90} />
+        <div style={{ flex:1 }}>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'0.9rem', color:'var(--text-primary)', marginBottom:2 }}>{cur.nome}</div>
+          <div style={{ fontSize:'0.7rem', color:'var(--text-muted)', marginBottom:10 }}>{cur.orgao}</div>
+          <div style={{ height:8, borderRadius:4, background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
+            <div style={{ height:'100%', width:`${curStats.pctConcluido}%`, background:`linear-gradient(90deg,${cur.cor},${cur.cor}80)`, borderRadius:4, transition:'width 0.8s', boxShadow:`0 0 10px ${cur.cor}40` }} />
+          </div>
+        </div>
+      </div>
+      {/* Disciplinas */}
+      <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:5 }}>
+        {curDiscs.map((d: any) => (
+          <div key={d.id||d.nome} style={{ display:'grid', gridTemplateColumns:'1fr 100px 38px', alignItems:'center', gap:8, padding:'5px 0' }}>
+            <div style={{ fontSize:'0.72rem', color:'var(--text-secondary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.nome?.replace('Direito ','')}</div>
+            <div style={{ height:5, borderRadius:3, background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${d.pctConcluido}%`, background:d.cor||cur.cor, borderRadius:3, transition:'width 0.5s' }} />
+            </div>
+            <div style={{ fontFamily:'var(--font-mono)', fontSize:'0.65rem', fontWeight:700, color:d.cor||cur.cor, textAlign:'right' }}>{d.pctConcluido}%</div>
+          </div>
+        ))}
+      </div>
+      <button onClick={()=>onNavigate('editais')} style={{ padding:'9px', borderRadius:10, border:`1px solid ${cur.cor}30`, background:`${cur.cor}08`, color:cur.cor, fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>Abrir Editais →</button>
+    </div>
+  )
+}
+
+function PainelFinanceiro({ onNavigate }: any) {
+  const uid = useUid()
+  const [trans, setTrans] = useState<any[]>([])
+  const [contas, setContas] = useState<any[]>([])
+  useEffect(() => {
+    if (!uid||!db) return
+    const u1 = onSnapshot(query(collection(db,`users/${uid}/transacoes`),orderBy('data','desc')), s => setTrans(s.docs.map(d=>d.data())))
+    const u2 = onSnapshot(query(collection(db,`users/${uid}/contasPagar`),orderBy('vencimento','asc')), s => setContas(s.docs.map(d=>d.data())))
+    return () => { u1(); u2() }
+  }, [uid])
+  const mes = new Date().toISOString().slice(0,7)
+  const tMes = trans.filter(t => t.data?.startsWith(mes))
+  const receita = tMes.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0)
+  const despesa = tMes.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0)
+  const saldo = receita - despesa
+  const fmtBRL = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})
+  const pendentes = contas.filter(c=>!c.pago)
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14, height:'100%' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+        {[{l:'Receitas',v:fmtBRL(receita),c:'#10b981'},{l:'Despesas',v:fmtBRL(despesa),c:'#ef4444'},{l:'Saldo',v:fmtBRL(saldo),c:saldo>=0?'#10b981':'#ef4444'}].map(k=>(
+          <div key={k.l} style={{ padding:'14px', borderRadius:14, background:'rgba(255,255,255,0.03)', border:`1px solid ${k.c}20`, textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.1rem', color:k.c, lineHeight:1 }}>{k.v}</div>
+            <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', marginTop:4 }}>{k.l}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:'0.08em', fontFamily:'var(--font-mono)' }}>Últimas transações</div>
+        {trans.slice(0,6).map((t:any)=>(
+          <div key={t.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 0', borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
+            <div>
+              <div style={{ fontSize:'0.78rem', color:'var(--text-primary)', fontWeight:500 }}>{t.descricao}</div>
+              <div style={{ fontSize:'0.62rem', color:'var(--text-muted)' }}>{t.data} · {t.categoria}</div>
+            </div>
+            <div style={{ fontWeight:800, color:t.tipo==='receita'?'#10b981':'#ef4444', fontSize:'0.82rem', fontFamily:'var(--font-display)' }}>{t.tipo==='receita'?'+':'-'}{fmtBRL(t.valor)}</div>
+          </div>
+        ))}
+      </div>
+      {pendentes.length > 0 && (
+        <div style={{ padding:'10px 14px', borderRadius:10, background:'rgba(245,158,11,0.07)', border:'1px solid rgba(245,158,11,0.2)' }}>
+          <div style={{ fontSize:'0.65rem', color:'#f59e0b', fontWeight:700, marginBottom:4 }}>⚠ {pendentes.length} conta(s) pendente(s)</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:800, color:'#f59e0b' }}>{fmtBRL(pendentes.reduce((a:number,c:any)=>a+c.valor,0))}</div>
+        </div>
+      )}
+      <button onClick={()=>onNavigate('financeiro')} style={{ padding:'9px', borderRadius:10, border:'1px solid rgba(16,185,129,0.3)', background:'rgba(16,185,129,0.07)', color:'#10b981', fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>Abrir Financeiro →</button>
+    </div>
+  )
+}
+
+function PainelProntuario({ onNavigate }: any) {
+  const uid = useUid()
+  const [demandas, setDemandas] = useState<any[]>([])
+  useEffect(() => { if (!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/prontuario`), s => setDemandas(s.docs.map(d=>d.data()))) }, [uid])
+  const ativas = demandas.filter(d=>d.status!=='concluida'&&d.status!=='cancelada')
+  const urgentes = ativas.filter(d=>d.prioridade==='urgente')
+  const vencendo = ativas.filter(d=>{ if(!d.prazo) return false; const dias=Math.ceil((new Date(d.prazo+'T00:00:00').getTime()-Date.now())/86400000); return dias>=0&&dias<=7 })
+  const ST_COR: Record<string,string> = { aberta:'#60a5fa', em_andamento:'#fbbf24', aguardando:'#c084fc', concluida:'#34d399', cancelada:'#9ca3af' }
+  const ST_LBL: Record<string,string> = { aberta:'Aberta', em_andamento:'Em Andamento', aguardando:'Aguardando', concluida:'Concluída', cancelada:'Cancelada' }
+  const byStatus: Record<string,number> = {}
+  demandas.forEach(d => { byStatus[d.status]=(byStatus[d.status]||0)+1 })
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14, height:'100%' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10 }}>
+        {[{l:'Ativas',v:ativas.length,c:'#60a5fa'},{l:'Urgentes',v:urgentes.length,c:'#f87171'},{l:'Vencendo',v:vencendo.length,c:'#fbbf24'},{l:'Total',v:demandas.length,c:'#94a3b8'}].map(k=>(
+          <div key={k.l} style={{ padding:'12px', borderRadius:12, background:'rgba(255,255,255,0.03)', border:`1px solid ${k.c}20`, textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.5rem', color:k.c, lineHeight:1 }}>{k.v}</div>
+            <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', marginTop:3 }}>{k.l}</div>
+          </div>
+        ))}
+      </div>
+      <div>
+        <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:'0.08em', fontFamily:'var(--font-mono)' }}>Por status</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {Object.entries(byStatus).map(([st, n]) => (
+            <div key={st} style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <div style={{ width:8, height:8, borderRadius:'50%', background:ST_COR[st]||'#94a3b8', flexShrink:0 }} />
+              <div style={{ flex:1, fontSize:'0.75rem', color:'var(--text-secondary)' }}>{ST_LBL[st]||st}</div>
+              <div style={{ fontFamily:'var(--font-mono)', fontSize:'0.72rem', fontWeight:700, color:ST_COR[st]||'#94a3b8' }}>{n}</div>
+              <div style={{ width:80, height:4, borderRadius:2, background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${(n/Math.max(1,demandas.length))*100}%`, background:ST_COR[st]||'#94a3b8', borderRadius:2 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ flex:1, overflowY:'auto' }}>
+        <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', marginBottom:8, textTransform:'uppercase', letterSpacing:'0.08em', fontFamily:'var(--font-mono)' }}>Demandas recentes</div>
+        {ativas.slice(0,5).map((d:any)=>{
+          const dias=d.prazo?Math.ceil((new Date(d.prazo+'T00:00:00').getTime()-Date.now())/86400000):null
+          return (
+            <div key={d.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:'0.78rem', fontWeight:600, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{d.titulo}</div>
+                <div style={{ fontSize:'0.62rem', color:'var(--text-muted)' }}>{d.categoria}</div>
+              </div>
+              {dias !== null && <div style={{ fontSize:'0.65rem', fontWeight:700, color:dias<=0?'#94a3b8':dias<=7?'#f87171':dias<=15?'#fbbf24':'#6ee7a0', marginLeft:8, flexShrink:0 }}>{dias<=0?'Ag. resolução':`${dias}d`}</div>}
+            </div>
+          )
+        })}
+      </div>
+      <button onClick={()=>onNavigate('prontuario')} style={{ padding:'9px', borderRadius:10, border:'1px solid rgba(91,91,214,0.3)', background:'rgba(91,91,214,0.07)', color:'#a5a3f5', fontWeight:700, fontSize:'0.78rem', cursor:'pointer' }}>Abrir Prontuário →</button>
+    </div>
+  )
+}
+
+function PainelGenerico({ modulo, onNavigate }: { modulo: typeof VIS_MODULOS[0]; onNavigate:(id:string)=>void }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100%', gap:16 }}>
+      <div style={{ fontSize:'4rem' }}>{modulo.icon}</div>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.3rem', color:modulo.cor }}>{modulo.label}</div>
+      <div style={{ fontSize:'0.8rem', color:'var(--text-muted)', textAlign:'center', maxWidth:300 }}>Clique abaixo para acessar o módulo completo</div>
+      <button onClick={()=>onNavigate(modulo.id)} style={{ padding:'11px 28px', borderRadius:12, border:`1px solid ${modulo.cor}40`, background:`${modulo.cor}12`, color:modulo.cor, fontWeight:800, fontSize:'0.88rem', cursor:'pointer', fontFamily:'var(--font-display)' }}>Abrir {modulo.label} →</button>
+    </div>
+  )
+}
+
+function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:string)=>void; global:any; discStats:any[] }) {
+  const [moduloAtivo, setModuloAtivo] = useState('editais')
+  const mod = VIS_MODULOS.find(m => m.id === moduloAtivo) || VIS_MODULOS[0]
+
+  function renderPainel() {
+    switch(moduloAtivo) {
+      case 'editais':    return <PainelEditais onNavigate={onNavigate} global={global} discStats={discStats} />
+      case 'financeiro': return <PainelFinanceiro onNavigate={onNavigate} />
+      case 'prontuario': return <PainelProntuario onNavigate={onNavigate} />
+      default:           return <PainelGenerico modulo={mod} onNavigate={onNavigate} />
+    }
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'var(--bg-0)' }}>
+      {/* ── BARRA SUPERIOR DE MÓDULOS ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:4, padding:'10px 20px', background:'var(--bg-1)', borderBottom:'1px solid var(--border)', flexShrink:0, overflowX:'auto', flexWrap:'nowrap' }}>
+        {VIS_MODULOS.map(m => {
+          const ativo = m.id === moduloAtivo
+          return (
+            <button key={m.id} onClick={() => setModuloAtivo(m.id)}
+              style={{ display:'flex', alignItems:'center', gap:7, padding:'7px 16px', borderRadius:10, border:`1px solid ${ativo?`${m.cor}50`:'transparent'}`, background:ativo?`${m.cor}12`:'transparent', color:ativo?m.cor:'var(--text-muted)', fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.78rem', cursor:'pointer', transition:'all 0.15s', whiteSpace:'nowrap', flexShrink:0 }}
+              onMouseEnter={e=>{ if(!ativo)(e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.04)' }}
+              onMouseLeave={e=>{ if(!ativo)(e.currentTarget as HTMLElement).style.background='transparent' }}>
+              <span style={{ fontSize:'1rem' }}>{m.icon}</span>
+              {m.label}
+              {ativo && <div style={{ width:4, height:4, borderRadius:'50%', background:m.cor, boxShadow:`0 0 6px ${m.cor}` }} />}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ── PAINEL DE CONTEÚDO ── */}
+      <div style={{ flex:1, overflowY:'auto', padding:'24px 28px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
+          <div style={{ width:42, height:42, borderRadius:12, background:`${mod.cor}15`, border:`1px solid ${mod.cor}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.3rem' }}>{mod.icon}</div>
+          <div>
+            <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.1rem', color:mod.cor }}>{mod.label}</div>
+            <div style={{ fontSize:'0.68rem', color:'var(--text-muted)' }}>Visão geral do módulo</div>
+          </div>
+          <button onClick={()=>onNavigate(moduloAtivo)} style={{ marginLeft:'auto', padding:'7px 16px', borderRadius:9, border:`1px solid ${mod.cor}35`, background:`${mod.cor}08`, color:mod.cor, fontWeight:700, fontSize:'0.75rem', cursor:'pointer' }}>Abrir módulo ↗</button>
+        </div>
+        <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:18, padding:'22px', minHeight:320 }}>
+          {renderPainel()}
+        </div>
+      </div>
+
+      {/* ── BARRA INFERIOR COM INFO DO DIA ── */}
+      <BarraInferior />
+    </div>
+  )
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function NexusDashboard({ onNavigate }: Props) {
+export default function NexusDashboard({ onNavigate, dashView = 'widgets' }: Props) {
   const hooks = useEditaisAGU()
   const ponto = usePontoStats()
   const { layouts, ativo, ativoId, saveWidgets, novoLayout, deletarLayout, trocarLayout, resetar, duplicarWidget } = useLayouts()
@@ -1240,6 +1546,11 @@ export default function NexusDashboard({ onNavigate }: Props) {
         return null
       }
     }
+  }
+
+  return (
+  if (dashView === 'visual') {
+    return <VisualDashboard onNavigate={onNavigate} global={global} discStats={discStats} />
   }
 
   return (

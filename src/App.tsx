@@ -114,6 +114,14 @@ function AppShell() {
   const [sidebarMode, setSidebarMode] = useState<'fixed' | 'auto'>(
     () => (localStorage.getItem('nexusos-sidebar-mode') as 'fixed' | 'auto') ?? 'fixed'
   )
+  const [dashView, setDashView] = useState<'widgets' | 'visual'>(
+    () => (localStorage.getItem('nexusos-dash-view') as 'widgets' | 'visual') ?? 'widgets'
+  )
+  const toggleDashView = () => {
+    const next = dashView === 'widgets' ? 'visual' : 'widgets'
+    setDashView(next)
+    localStorage.setItem('nexusos-dash-view', next)
+  }
   const [sidebarHovered, setSidebarHovered] = useState(false)
   const sidebarVisible = sidebarMode === 'fixed' || sidebarHovered
 
@@ -194,6 +202,14 @@ function AppShell() {
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
             <div className="sync-dot" />
+            {/* Botão troca de visualização do dashboard */}
+            {active === 'dashboard' && (
+              <button onClick={toggleDashView} className="desktop-only"
+                title={dashView === 'widgets' ? 'Visão Visual' : 'Visão Widgets'}
+                style={{ padding:'5px 12px', borderRadius:8, border:'1px solid var(--border-md)', background: dashView==='visual'?'rgba(99,102,241,0.12)':'transparent', color: dashView==='visual'?'#818cf8':'var(--text-muted)', cursor:'pointer', display:'flex', alignItems:'center', gap:5, fontSize:'0.72rem', fontFamily:'var(--font-display)', fontWeight:700, transition:'all 0.15s' }}>
+                {dashView === 'widgets' ? '⬡ Visual' : '▦ Widgets'}
+              </button>
+            )}
             {/* Botão tema — só aparece no mobile */}
             <button onClick={toggle} className="mobile-only"
               style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-md)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>
@@ -203,7 +219,7 @@ function AppShell() {
         </header>
 
         <div className="page-content">
-          {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} />}
+          {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} dashView={dashView} />}
           {active === 'editais'    && <GestorEditais />}
           {active === 'concursos'  && <Concursos />}
           {active === 'financeiro' && <Financeiro />}

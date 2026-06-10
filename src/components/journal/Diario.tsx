@@ -5,7 +5,7 @@ import { useUid } from '../../hooks/useUid'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Task { id: string; texto: string; feito: boolean; prioridade: 'alta' | 'media' | 'baixa' }
-interface Evento { id: string; hora: string; descricao: string; tipo: 'work' | 'study' | 'personal' | 'health' }
+interface Evento { id: string; hora: string; descricao: string; tipo: 'work' | 'study' | 'personal' | 'health' | 'legal' | 'meeting' | 'sport' | 'travel' | 'finance' | 'rest' }
 
 interface JournalDia {
   planejamento: Task[]
@@ -122,14 +122,14 @@ function SecaoTasks({ tasks, onChange }: { tasks: Task[]; onChange: (t: Task[]) 
       {/* Adicionar nova */}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <input
-          style={{ flex: 1, padding: '9px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-primary)', fontSize: '0.84rem', outline: 'none' }}
+          style={{ flex: 2, minWidth: 160, padding: '9px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-primary)', fontSize: '0.84rem', outline: 'none' }}
           value={novoTexto}
           onChange={e => setNovoTexto(e.target.value)}
-          placeholder="Nova task..."
+          placeholder="Descreva a task..."
           onKeyDown={e => e.key === 'Enter' && addTask()}
         />
         <select
-          style={{ padding: '9px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer', outline: 'none' }}
+          style={{ padding: '9px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer', outline: 'none', flexShrink: 0 }}
           value={novaPrioridade}
           onChange={e => setNovaPrioridade(e.target.value as Task['prioridade'])}>
           <option value="alta">🔴 Alta</option>
@@ -162,9 +162,9 @@ function SecaoTimeline({ eventos, onChange }: { eventos: Evento[]; onChange: (e:
     setNovaDesc('')
   }
 
-  const TIPO_COR: Record<Evento['tipo'], string> = { work: '#60a5fa', study: '#a78bfa', personal: '#fbbf24', health: '#34d399' }
-  const TIPO_ICON: Record<Evento['tipo'], string> = { work: '💼', study: '📚', personal: '🏠', health: '✚' }
-  const TIPO_LABEL: Record<Evento['tipo'], string> = { work: 'Trabalho', study: 'Estudo', personal: 'Pessoal', health: 'Saúde' }
+  const TIPO_COR: Record<Evento['tipo'], string> = { work: '#60a5fa', study: '#a78bfa', personal: '#fbbf24', health: '#34d399', legal: '#f87171', meeting: '#c084fc', sport: '#4ade80', travel: '#fb923c', finance: '#6ee7b7', rest: '#94a3b8' }
+  const TIPO_ICON: Record<Evento['tipo'], string> = { work: '💼', study: '📚', personal: '🏠', health: '✚', legal: '⚖', meeting: '🗣', sport: '🏃', travel: '✈', finance: '◎', rest: '😴' }
+  const TIPO_LABEL: Record<Evento['tipo'], string> = { work: 'Trabalho', study: 'Estudo', personal: 'Pessoal', health: 'Saúde', legal: 'Jurídico', meeting: 'Reunião', sport: 'Esporte', travel: 'Viagem', finance: 'Financeiro', rest: 'Descanso' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -198,14 +198,20 @@ function SecaoTimeline({ eventos, onChange }: { eventos: Evento[]; onChange: (e:
       ))}
 
       {/* Adicionar */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <input type="time" style={{ padding: '9px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-primary)', fontSize: '0.84rem', outline: 'none', width: 100 }} value={novaHora} onChange={e => setNovaHora(e.target.value)} />
-        <input style={{ flex: 1, padding: '9px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-primary)', fontSize: '0.84rem', outline: 'none' }} value={novaDesc} onChange={e => setNovaDesc(e.target.value)} placeholder="Descreva o evento..." onKeyDown={e => e.key === 'Enter' && add()} />
-        <select style={{ padding: '9px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer', outline: 'none' }} value={novoTipo} onChange={e => setNovoTipo(e.target.value as Evento['tipo'])}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <input type="time" style={{ padding: '9px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-primary)', fontSize: '0.84rem', outline: 'none', width: 90, flexShrink: 0 }} value={novaHora} onChange={e => setNovaHora(e.target.value)} />
+        <input style={{ flex: 2, minWidth: 160, padding: '9px 12px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-primary)', fontSize: '0.84rem', outline: 'none' }} value={novaDesc} onChange={e => setNovaDesc(e.target.value)} placeholder="Descreva o evento..." onKeyDown={e => e.key === 'Enter' && add()} />
+        <select style={{ padding: '9px 10px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: 'var(--text-secondary)', fontSize: '0.8rem', cursor: 'pointer', outline: 'none', minWidth: 130 }} value={novoTipo} onChange={e => setNovoTipo(e.target.value as Evento['tipo'])}>
           <option value="work">💼 Trabalho</option>
           <option value="study">📚 Estudo</option>
+          <option value="legal">⚖ Jurídico</option>
+          <option value="meeting">🗣 Reunião</option>
           <option value="personal">🏠 Pessoal</option>
           <option value="health">✚ Saúde</option>
+          <option value="sport">🏃 Esporte</option>
+          <option value="travel">✈ Viagem</option>
+          <option value="finance">◎ Financeiro</option>
+          <option value="rest">😴 Descanso</option>
         </select>
         <button onClick={add} style={{ padding: '9px 16px', borderRadius: 10, border: 'none', background: 'rgba(96,165,250,0.15)', color: '#60a5fa', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer' }}>+</button>
       </div>
