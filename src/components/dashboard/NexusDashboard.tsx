@@ -1438,7 +1438,7 @@ function PainelProntuario({ onNavigate }: any) {
 
 
 // ─── PainelVisaoGeral ─────────────────────────────────────────────────────────
-function PainelVisaoGeral({ onNavigate, global, discStats }: any) {
+function PainelVisaoGeral({ onNavigate, global }: any) {
   const uid = useUid()
   const [trans, setTrans] = useState<any[]>([])
   const [contas, setContas] = useState<any[]>([])
@@ -1564,7 +1564,6 @@ function PainelPonto({ onNavigate }: any) {
   const hMes = Math.floor(minMes/60); const mMes = minMes%60
   const diasTrabMes = registros.filter(r=>r.data?.startsWith(mes)&&(r.minutos||0)>0).length
   const emServico = !!(regHoje?.entrada && !regHoje?.saida)
-  const TIPOS = ['Trabalho','Home Office','Viagem','Férias','Folga','Atestado']
   const TIPOS_COR: Record<string,string> = { 'Trabalho':'#60a5fa','Home Office':'#34d399','Viagem':'#fb923c','Férias':'#4ade80','Folga':'#c084fc','Atestado':'#f87171' }
   const byTipo: Record<string,number> = {}
   registros.filter(r=>r.data?.startsWith(mes)).forEach(r=>{ byTipo[r.tipo]=(byTipo[r.tipo]||0)+(r.minutos||0) })
