@@ -1143,8 +1143,7 @@ const VIS_MODULOS = [
 ]
 
 function useLocationInfo() {
-  const [info, setInfo] = useState({ cidade: 'Belo Horizonte', uf: 'MG', lat: -19.92, lng: -43.94 })
-  return info
+  return { cidade: 'Belo Horizonte', uf: 'MG', lat: -19.92, lng: -43.94 }
 }
 
 function BarraInferior() {
