@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore'
+import { doc, setDoc, getDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 
