@@ -1843,7 +1843,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
   )
 }
 
-function PainelVisaoGeralSaude({ onNavigate, dragging, dragOver, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+function PainelVisaoGeralSaude({ onNavigate, dragging, dragOver: _dOsaude, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [registros, setRegistros] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/saude`), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
@@ -1871,7 +1871,7 @@ function PainelVisaoGeralSaude({ onNavigate, dragging, dragOver, onDragStart, on
   )
 }
 
-function PainelVisaoGeralWishlist({ onNavigate, dragging, dragOver, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+function PainelVisaoGeralWishlist({ onNavigate, dragging, dragOver: _dOwishlist, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [itens, setItens] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/wishlist`), s=>setItens(s.docs.map(d=>d.data()))) }, [uid])
@@ -1904,7 +1904,7 @@ function PainelVisaoGeralWishlist({ onNavigate, dragging, dragOver, onDragStart,
   )
 }
 
-function PainelVisaoGeralDiario({ onNavigate, dragging, dragOver, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+function PainelVisaoGeralDiario({ onNavigate, dragging, dragOver: _dOdiario, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [dados, setDados] = useState<any>(null)
   const hoje = new Date().toISOString().slice(0,10)
@@ -1941,7 +1941,7 @@ function PainelVisaoGeralDiario({ onNavigate, dragging, dragOver, onDragStart, o
   )
 }
 
-function PainelVisaoGeralGaming({ onNavigate, dragging, dragOver, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+function PainelVisaoGeralGaming({ onNavigate, dragging, dragOver: _dOgaming, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [games, setGames] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/games`), s=>setGames(s.docs.map(d=>d.data()))) }, [uid])
@@ -1973,7 +1973,7 @@ function PainelVisaoGeralGaming({ onNavigate, dragging, dragOver, onDragStart, o
   )
 }
 
-function PainelVisaoGeralMedia({ onNavigate, dragging, dragOver, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+function PainelVisaoGeralMedia({ onNavigate, dragging, dragOver: _dOmedia, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [itens, setItens] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/media`), s=>setItens(s.docs.map(d=>d.data()))) }, [uid])
