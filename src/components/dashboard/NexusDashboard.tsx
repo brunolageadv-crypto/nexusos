@@ -1770,7 +1770,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
   ]
 
   // Drag and drop state
-  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media'])
+  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo'])
   const [dragging, setDragging] = useState<string|null>(null)
   const [dragOver, setDragOver] = useState<string|null>(null)
 
@@ -1827,6 +1827,10 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
       case 'diario':   return <PainelVisaoGeralDiario   key="diario"   {...props} />
       case 'gaming':   return <PainelVisaoGeralGaming   key="gaming"   {...props} />
       case 'media':    return <PainelVisaoGeralMedia    key="media"    {...props} />
+      case 'agua':         return <PainelVisaoGeralAgua       key="agua"         {...props} />
+      case 'calendario':   return <PainelVisaoGeralCalendario key="calendario"   {...props} />
+      case 'contas-pagar-mini': return <PainelVisaoGeralContasPagar key="contas-pagar-mini" {...props} />
+      case 'ponto-saldo':  return <PainelVisaoGeralPontoSaldo key="ponto-saldo"  {...props} />
       default: return null
     }
   }
@@ -1840,6 +1844,151 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
         {ordem.map(id => renderCard(id))}
       </div>
     </div>
+  )
+}
+
+
+// ─── Mini Cards extras Visão Geral ──────────────────────────────────────────
+function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const uid = useUid()
+  const [ml, setMl] = useState(0)
+  const meta = 2000
+  const hoje = new Date().toISOString().slice(0,10)
+  useEffect(() => {
+    if(!uid||!db) return
+    import('firebase/firestore').then(({getDoc}) => {
+      getDoc(doc(db,'users',uid,'agua',hoje)).then(s => { if(s.exists()) setMl(s.data().ml||0) })
+    })
+  }, [uid])
+  const pct = Math.min(100, Math.round((ml/meta)*100))
+  const cor = pct >= 80 ? '#1A73E8' : pct >= 50 ? '#8AB4F8' : '#DADCE0'
+  return (
+    <button onClick={()=>onNavigate('saude')} draggable
+      onDragStart={()=>onDragStart?.('agua')} onDragEnd={()=>onDragEnd?.()}
+      onDragOver={e=>onDragOver?.(e,'agua')} onDrop={e=>onDrop?.(e,'agua')}
+      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}30`, background:`linear-gradient(135deg,${cor}08,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity:dragging==='agua'?0.45:1 }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}18`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>💧 Água hoje</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{ml}ml</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>Meta: {meta}ml · {pct}%</div>
+        </div>
+        <div style={{ width:38, height:38, borderRadius:'50%', border:`3px solid ${cor}40`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem', position:'relative', overflow:'hidden', background:`${cor}10` }}>
+          💧
+        </div>
+      </div>
+      <div style={{ height:6, borderRadius:3, background:'var(--bg-4)', overflow:'hidden' }}>
+        <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${cor},${cor}bb)`, borderRadius:3, transition:'width 0.8s' }} />
+      </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralCalendario({ dragging, dragOver: _dOcal, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const hoje = new Date()
+  const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+  const ano = hoje.getFullYear(), mes = hoje.getMonth()
+  const primeiroDia = new Date(ano, mes, 1).getDay()
+  const totalDias = new Date(ano, mes+1, 0).getDate()
+  const dias = Array.from({length: primeiroDia}, () => 0).concat(Array.from({length: totalDias}, (_, i) => i+1))
+  const cor = '#1A73E8'
+  return (
+    <div draggable onDragStart={()=>onDragStart?.('calendario')} onDragEnd={()=>onDragEnd?.()}
+      onDragOver={e=>onDragOver?.(e,'calendario')} onDrop={e=>onDrop?.(e,'calendario')}
+      style={{ padding:'16px 18px', borderRadius:16, border:`1px solid ${cor}20`, background:`linear-gradient(135deg,${cor}06,transparent)`, cursor:'grab', opacity:dragging==='calendario'?0.45:1, transition:'all 0.2s' }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:600, fontSize:'0.82rem', color:'var(--text-primary)' }}>
+          {MESES[mes]} {ano}
+        </div>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.3rem', color:cor, lineHeight:1 }}>{hoje.getDate()}</div>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:6 }}>
+        {DIAS.map(d => <div key={d} style={{ textAlign:'center', fontSize:'0.52rem', fontWeight:600, color:'var(--text-muted)', padding:'2px 0' }}>{d}</div>)}
+        {dias.map((d, i) => (
+          <div key={i} style={{ textAlign:'center', fontSize:'0.62rem', padding:'3px 2px', borderRadius:6,
+            background: d===hoje.getDate()?cor:'transparent',
+            color: d===0?'transparent': d===hoje.getDate()?'#fff': d===hoje.getDay()?cor:'var(--text-secondary)',
+            fontWeight: d===hoje.getDate()?700:400,
+          }}>{d||''}</div>
+        ))}
+      </div>
+      <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>
+        {DIAS[hoje.getDay()]} · Semana {Math.ceil(hoje.getDate()/7)}
+      </div>
+    </div>
+  )
+}
+
+function PainelVisaoGeralContasPagar({ onNavigate, dragging, dragOver: _dOcp, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const uid = useUid()
+  const [contas, setContas] = useState<any[]>([])
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/contasPagar`),orderBy('vencimento','asc')), s=>setContas(s.docs.map(d=>d.data()))) }, [uid])
+  const pendentes = contas.filter(c=>!c.pago)
+  const total = pendentes.reduce((a:number,c:any)=>a+c.valor,0)
+  const fmtBRL = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
+  const hoje = new Date().toISOString().slice(0,10)
+  const urgentes = pendentes.filter(c=>{const d=Math.ceil((new Date(c.vencimento+'T00:00:00').getTime()-Date.now())/86400000);return d<=7&&d>=0})
+  const vencidas = pendentes.filter(c=>c.vencimento<hoje)
+  const cor = vencidas.length>0?'#D93025':urgentes.length>0?'#F29900':'#1A73E8'
+  return (
+    <button onClick={()=>onNavigate('financeiro')} draggable
+      onDragStart={()=>onDragStart?.('contas-pagar-mini')} onDragEnd={()=>onDragEnd?.()}
+      onDragOver={e=>onDragOver?.(e,'contas-pagar-mini')} onDrop={e=>onDrop?.(e,'contas-pagar-mini')}
+      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}07,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity:dragging==='contas-pagar-mini'?0.45:1 }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}18`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>⚠ Contas a Pagar</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{fmtBRL(total)}</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{pendentes.length} pendente{pendentes.length!==1?'s':''}</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>💳</span>
+      </div>
+      {vencidas.length > 0 && <div style={{ fontSize:'0.65rem', color:'#D93025', fontWeight:600, marginBottom:4 }}>⚠ {vencidas.length} vencida{vencidas.length!==1?'s':''}</div>}
+      {urgentes.length > 0 && <div style={{ fontSize:'0.65rem', color:'#F29900', fontWeight:600, marginBottom:4 }}>⏰ {urgentes.length} vence em breve</div>}
+      <div style={{ height:4, borderRadius:2, background:'var(--bg-4)', overflow:'hidden' }}>
+        <div style={{ height:'100%', width:`${contas.length>0?(contas.filter(c=>c.pago).length/contas.length)*100:0}%`, background:cor, borderRadius:2, transition:'width 0.6s' }} />
+      </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralPontoSaldo({ onNavigate, dragging, dragOver: _dOps, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const uid = useUid()
+  const [registros, setRegistros] = useState<any[]>([])
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/ponto`),orderBy('data','desc')), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
+  const mes = new Date().toISOString().slice(0,7)
+  const META_DIA = 480
+  const regMes = registros.filter(r=>r.data?.startsWith(mes)&&(r.tipo==='trabalho'||r.tipo==='homeoffice')&&r.minutos>0)
+  const saldo = regMes.reduce((a,r)=>a+(r.minutos-META_DIA),0)
+  const hS = Math.floor(Math.abs(saldo)/60), mS = Math.abs(saldo)%60
+  const saldoStr = `${saldo>=0?'+':'-'}${hS}h${mS>0?` ${mS}m`:''}`
+  const cor = saldo>=0?'#0F9D58':'#D93025'
+  const fmtHM = (m:number)=>`${Math.floor(m/60)}h${m%60>0?` ${m%60}m`:''}`
+  const totalMes = regMes.reduce((a,r)=>a+r.minutos,0)
+  return (
+    <button onClick={()=>onNavigate('ponto')} draggable
+      onDragStart={()=>onDragStart?.('ponto-saldo')} onDragEnd={()=>onDragEnd?.()}
+      onDragOver={e=>onDragOver?.(e,'ponto-saldo')} onDrop={e=>onDrop?.(e,'ponto-saldo')}
+      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}07,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity:dragging==='ponto-saldo'?0.45:1 }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}18`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>⊙ Saldo Ponto</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{saldo===0?'0h':saldoStr}</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{fmtHM(totalMes)} trabalhados este mês</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>{saldo>=0?'✅':'⚡'}</span>
+      </div>
+      <div style={{ height:4, borderRadius:2, background:'var(--bg-4)', overflow:'hidden' }}>
+        <div style={{ height:'100%', width:`${Math.min(100,Math.round((totalMes/(regMes.length||1)/META_DIA)*100))}%`, background:cor, borderRadius:2 }} />
+      </div>
+    </button>
   )
 }
 

@@ -204,12 +204,18 @@ function AppShell() {
             <div className="sync-dot" />
             {/* Botão troca de visualização do dashboard */}
             {active === 'dashboard' && (
-              <button onClick={toggleDashView} className="desktop-only"
-                title={dashView === 'widgets' ? 'Visão Visual' : 'Visão Widgets'}
-                style={{ padding:'5px 12px', borderRadius:8, border:'1px solid var(--border-md)', background: dashView==='visual'?'rgba(99,102,241,0.12)':'transparent', color: dashView==='visual'?'#818cf8':'var(--text-muted)', cursor:'pointer', display:'flex', alignItems:'center', gap:5, fontSize:'0.72rem', fontFamily:'var(--font-display)', fontWeight:700, transition:'all 0.15s' }}>
-                {dashView === 'widgets' ? '⬡ Visual' : '▦ Widgets'}
+              <button onClick={toggleDashView}
+                className={`desktop-only topbar-btn${dashView==='visual'?' active':''}`}
+                title={dashView === 'widgets' ? 'Modo visual' : 'Modo widgets'}>
+                {dashView === 'widgets' ? '◧ Visual' : '▦ Widgets'}
               </button>
             )}
+              <button
+                className="desktop-only topbar-btn"
+                title="Ir para Visão Geral"
+                onClick={() => { setActive('dashboard'); localStorage.setItem('nexusos-dash-view','visual'); setDashView('visual'); }}>
+                ◈ Visão Geral
+              </button>
             {/* Botão tema — só aparece no mobile */}
             <button onClick={toggle} className="mobile-only"
               style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-md)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>
