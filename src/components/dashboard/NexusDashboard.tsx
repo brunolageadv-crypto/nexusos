@@ -2502,7 +2502,165 @@ function PainelGenerico({ modulo, onNavigate }: { modulo: typeof VIS_MODULOS[0];
   )
 }
 
+
+// ─── BarraSaudacaoBusca ───────────────────────────────────────────────────────
+function BarraSaudacaoBusca({ uid, onNavigate }: { uid: string|null; onNavigate:(id:string)=>void }) {
+  const [hora, setHora] = useState(new Date())
+  const [busca, setBusca] = useState('')
+  const [demandas, setDemandas] = useState<any[]>([])
+  const [contas, setContas] = useState<any[]>([])
+
+  useEffect(() => { const t = setInterval(() => setHora(new Date()), 60000); return () => clearInterval(t) }, [])
+
+  useEffect(() => {
+    if (!uid || !db) return
+    const u1 = onSnapshot(collection(db, `users/${uid}/prontuario`), s => setDemandas(s.docs.map(d => d.data())))
+    const u2 = onSnapshot(collection(db, `users/${uid}/contasPagar`), s => setContas(s.docs.map(d => d.data())))
+    return () => { u1(); u2() }
+  }, [uid])
+
+  const h = hora.getHours()
+  const saudacao = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
+  const nome = 'Bruno'
+
+  // Build smart subtitle
+  const hoje = new Date().toISOString().slice(0, 10)
+  const prazosHoje = demandas.filter(d => d.prazo === hoje && d.status !== 'concluida' && d.status !== 'cancelada').length
+  const contasVencendo = contas.filter(c => {
+    if (c.pago) return false
+    const dias = Math.ceil((new Date(c.vencimento + 'T00:00:00').getTime() - Date.now()) / 86400000)
+    return dias >= 0 && dias <= 3
+  }).length
+
+  let subtitulo = 'Tudo tranquilo por aqui.'
+  if (prazosHoje > 0 && contasVencendo > 0)
+    subtitulo = `${prazosHoje} prazo${prazosHoje > 1 ? 's' : ''} e ${contasVencendo} conta${contasVencendo > 1 ? 's' : ''} vencem hoje.`
+  else if (prazosHoje > 0)
+    subtitulo = `Você tem ${prazosHoje} prazo${prazosHoje > 1 ? 's' : ''} para hoje.`
+  else if (contasVencendo > 0)
+    subtitulo = `${contasVencendo} conta${contasVencendo > 1 ? 's vencem' : ' vence'} nos próximos 3 dias.`
+
+  const handleBusca = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || !busca.trim()) return
+    const q = busca.toLowerCase()
+    if (q.includes('edital') || q.includes('agu') || q.includes('concurso')) onNavigate('editais')
+    else if (q.includes('financ') || q.includes('receita') || q.includes('despesa')) onNavigate('financeiro')
+    else if (q.includes('pront') || q.includes('demanda') || q.includes('prazo')) onNavigate('prontuario')
+    else if (q.includes('ponto') || q.includes('hora')) onNavigate('ponto')
+    else if (q.includes('saúde') || q.includes('saude') || q.includes('água')) onNavigate('saude')
+    else if (q.includes('diário') || q.includes('diario') || q.includes('task')) onNavigate('journal')
+    else if (q.includes('gaming') || q.includes('jogo')) onNavigate('gaming')
+    else if (q.includes('link')) onNavigate('links')
+    setBusca('')
+  }
+
+  // Ctrl+K / Cmd+K focus
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        document.getElementById('nexus-search')?.focus()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: 20,
+      padding: '14px 24px',
+      background: 'var(--card-bg)',
+      borderBottom: '1px solid var(--border)',
+      flexShrink: 0,
+      flexWrap: 'wrap',
+    }}>
+      {/* Saudação */}
+      <div style={{ flexShrink: 0 }}>
+        <div style={{
+          fontFamily: 'var(--font-display)',
+          fontWeight: 600,
+          fontSize: '1rem',
+          color: 'var(--text-primary)',
+          lineHeight: 1.2,
+          letterSpacing: '-0.01em',
+        }}>
+          {saudacao}, {nome}.
+        </div>
+        <div style={{
+          fontSize: '0.72rem',
+          color: prazosHoje > 0 || contasVencendo > 0 ? 'var(--warn)' : 'var(--text-muted)',
+          marginTop: 3,
+          fontWeight: prazosHoje > 0 || contasVencendo > 0 ? 500 : 400,
+        }}>
+          {prazosHoje > 0 || contasVencendo > 0 ? '⚠ ' : '✓ '}{subtitulo}
+        </div>
+      </div>
+
+      {/* Barra de busca */}
+      <div style={{ flex: 1, maxWidth: 480, minWidth: 220, position: 'relative' }}>
+        {/* Lupa */}
+        <span style={{
+          position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+          fontSize: '0.85rem', color: 'var(--text-muted)', pointerEvents: 'none',
+          lineHeight: 1,
+        }}>
+          🔍
+        </span>
+        <input
+          id="nexus-search"
+          type="text"
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+          onKeyDown={handleBusca}
+          placeholder="Buscar em editais, finanças ou tarefas..."
+          style={{
+            width: '100%',
+            padding: '9px 80px 9px 36px',
+            borderRadius: 24,
+            border: '1.5px solid var(--border-md)',
+            background: 'var(--bg-1)',
+            color: 'var(--text-primary)',
+            fontSize: '0.84rem',
+            fontFamily: 'var(--font-body)',
+            outline: 'none',
+            transition: 'all 0.18s',
+            boxShadow: 'none',
+          }}
+          onFocus={e => {
+            e.currentTarget.style.borderColor = 'var(--accent)'
+            e.currentTarget.style.boxShadow = 'var(--shadow-focus)'
+            e.currentTarget.style.background = 'var(--card-bg)'
+          }}
+          onBlur={e => {
+            e.currentTarget.style.borderColor = 'var(--border-md)'
+            e.currentTarget.style.boxShadow = 'none'
+            e.currentTarget.style.background = 'var(--bg-1)'
+          }}
+        />
+        {/* Atalho teclado */}
+        <span style={{
+          position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+          fontSize: '0.62rem', fontFamily: 'var(--font-mono)',
+          color: 'var(--text-subtle)',
+          background: 'var(--bg-3)',
+          border: '1px solid var(--border-md)',
+          borderRadius: 5,
+          padding: '2px 6px',
+          letterSpacing: '0.02em',
+          pointerEvents: 'none',
+        }}>
+          Ctrl K
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:string)=>void; global:any; discStats:any[] }) {
+  const uid = useUid()
   const [moduloAtivo, setModuloAtivo] = useState('visao-geral')
   const mod = VIS_MODULOS.find(m => m.id === moduloAtivo) || VIS_MODULOS[0]
 
@@ -2526,41 +2684,12 @@ function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:str
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'var(--bg-0)' }}>
-      {/* ── BARRA SUPERIOR DE MÓDULOS ── */}
-      <div style={{ display:'flex', alignItems:'center', gap:2, padding:'8px 16px', background:'var(--bg-1)', borderBottom:'1px solid var(--border)', flexShrink:0, overflowX:'auto', flexWrap:'nowrap' }}>
-        {VIS_MODULOS.map(m => {
-          const ativo = m.id === moduloAtivo
-          return (
-            <button key={m.id} onClick={() => setModuloAtivo(m.id)}
-              style={{ position:'relative', display:'flex', alignItems:'center', gap:7, padding:'8px 16px', borderRadius:10, border:`1px solid ${ativo?`${m.cor}50`:'transparent'}`, background:ativo?`${m.cor}14`:'transparent', color:ativo?m.cor:'var(--text-muted)', fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.78rem', cursor:'pointer', transition:'all 0.18s cubic-bezier(0.4,0,0.2,1)', whiteSpace:'nowrap', flexShrink:0, boxShadow:ativo?`0 2px 12px ${m.cor}20`:'none' }}
-              onMouseEnter={e=>{ if(!ativo){ const el=e.currentTarget as HTMLElement; el.style.background=`${m.cor}0a`; el.style.color=m.cor; el.style.border=`1px solid ${m.cor}30`; el.style.transform='translateY(-1px)' }}}
-              onMouseLeave={e=>{ if(!ativo){ const el=e.currentTarget as HTMLElement; el.style.background='transparent'; el.style.color='var(--text-muted)'; el.style.border='1px solid transparent'; el.style.transform='translateY(0)' }}}>
-              <span style={{ display:'flex', alignItems:'center', fontSize: m.svgIcon?'inherit':'1rem', color:ativo?m.cor:'inherit' }}>
-                {m.svgIcon === 'editais' ? <IconEditaisVis size={15} color={ativo?m.cor:'currentColor'} /> : m.icon}
-              </span>
-              {m.label}
-              {ativo && (
-                <>
-                  <div style={{ width:5, height:5, borderRadius:'50%', background:m.cor, boxShadow:`0 0 8px ${m.cor}` }} />
-                  <div style={{ position:'absolute', bottom:-1, left:'10%', right:'10%', height:2, borderRadius:2, background:`linear-gradient(90deg,transparent,${m.cor},transparent)` }} />
-                </>
-              )}
-            </button>
-          )
-        })}
-      </div>
+      {/* ── BARRA DE SAUDAÇÃO + BUSCA ── */}
+      <BarraSaudacaoBusca uid={uid} onNavigate={onNavigate} />
 
       {/* ── PAINEL DE CONTEÚDO ── */}
-      <div style={{ flex:1, overflowY:'auto', padding:'24px 28px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-          <div style={{ width:42, height:42, borderRadius:12, background:`${mod.cor}15`, border:`1px solid ${mod.cor}30`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.3rem' }}>{mod.icon}</div>
-          <div>
-            <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'1.1rem', color:mod.cor }}>{mod.label}</div>
-            <div style={{ fontSize:'0.68rem', color:'var(--text-muted)' }}>Visão geral do módulo</div>
-          </div>
-          <button onClick={()=>onNavigate(moduloAtivo)} style={{ marginLeft:'auto', padding:'7px 16px', borderRadius:9, border:`1px solid ${mod.cor}35`, background:`${mod.cor}08`, color:mod.cor, fontWeight:700, fontSize:'0.75rem', cursor:'pointer' }}>Abrir módulo ↗</button>
-        </div>
-        <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:18, padding:'22px', minHeight:320 }}>
+      <div style={{ flex:1, overflowY:'auto', padding:'16px 24px' }}>
+        <div style={{ background:'var(--card-bg)', border:'1px solid var(--border)', borderRadius:16, padding:'20px', boxShadow:'var(--shadow-card)', minHeight:280 }}>
           {renderPainel()}
         </div>
       </div>
