@@ -1128,21 +1128,6 @@ function ModulosCard({ global, ponto, onNavigate }: any) {
 
 
 // ─── VisualDashboard — Modo visual interativo ─────────────────────────────────
-function IconEditaisVis({ size=16, color='currentColor' }: { size?:number; color?:string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" style={{color}}>
-      <rect x="2" y="1" width="11" height="14" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3"/>
-      <path d="M10 1 L13 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-      <path d="M10 1 L10 4 L13 4" fill="none" stroke="currentColor" strokeWidth="1.1"/>
-      <line x1="4.5" y1="6.5"  x2="10.5" y2="6.5"  stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-      <line x1="4.5" y1="8.5"  x2="10.5" y2="8.5"  stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-      <line x1="4.5" y1="10.5" x2="8.5"  y2="10.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-      <circle cx="14" cy="13" r="3.5" fill="none" stroke="currentColor" strokeWidth="1.2"/>
-      <path d="M12.3 13 L13.5 14.2 L15.7 11.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  )
-}
-
 const VIS_MODULOS = [
   { id: 'visao-geral', icon: '◈',  label: 'Visão Geral', cor: '#6366f1', svgIcon: null },
   { id: 'editais',    icon: '',    label: 'Editais',     cor: '#00e5ff', svgIcon: 'editais' },
@@ -2661,7 +2646,7 @@ function BarraSaudacaoBusca({ uid, onNavigate }: { uid: string|null; onNavigate:
 
 function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:string)=>void; global:any; discStats:any[] }) {
   const uid = useUid()
-  const [moduloAtivo, setModuloAtivo] = useState('visao-geral')
+  const [moduloAtivo] = useState('visao-geral')
   const mod = VIS_MODULOS.find(m => m.id === moduloAtivo) || VIS_MODULOS[0]
 
   function renderPainel() {
