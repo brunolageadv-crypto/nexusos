@@ -1912,27 +1912,29 @@ function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragS
   const [adding, setAdding] = useState(false)
   const [inputVal, setInputVal] = useState('')
   const meta = 2000
-  const hoje = new Date().toISOString().slice(0,10)
+  const hoje = useMemo(() => new Date().toISOString().slice(0,10), [])
 
   useEffect(() => {
     if(!uid||!db) return
-    import('firebase/firestore').then(({getDoc}) => {
-      getDoc(doc(db,'users',uid,'agua',hoje)).then(s => { if(s.exists()) setMl(s.data().ml||0) })
+    // Usa onSnapshot para reagir em tempo real (inclusive ao salvar do SaudeWidget)
+    return onSnapshot(doc(db,'users',uid,'agua',hoje), s => {
+      if(s.exists()) setMl(s.data().ml||0)
+      else setMl(0)
     })
-  }, [uid])
+  }, [uid, hoje])
 
-  const addAgua = async (delta: number) => {
-    const novoMl = Math.max(0, ml + delta)
-    setMl(novoMl)
+  const addAgua = useCallback(async (delta: number) => {
     if(!uid||!db) return
-    import('firebase/firestore').then(({setDoc}) => {
+    setMl(prev => {
+      const novoMl = Math.max(0, prev + delta)
       setDoc(doc(db,'users',uid,'agua',hoje), { ml: novoMl, data: hoje, meta })
+      return novoMl
     })
-  }
+  }, [uid, hoje])
 
   const addCustom = async () => {
     const v = parseInt(inputVal)
-    if(!isNaN(v)&&v>0) { await addAgua(v); setInputVal(''); setAdding(false) }
+    if(!isNaN(v)&&v>0) { addAgua(v); setInputVal(''); setAdding(false) }
   }
 
   const pct = Math.min(100, Math.round((ml/meta)*100))
@@ -2769,12 +2771,12 @@ const NEWS_SOURCES = [
     desc: 'Jornalismo público de qualidade',
   },
   {
-    id: 'uol',
-    label: 'UOL',
-    icon: '📰',
-    url: 'https://www.uol.com.br/',
-    color: '#D32F2F',
-    desc: 'Portal de notícias',
+    id: 'stf',
+    label: 'STF Notícias',
+    icon: '⚖',
+    url: 'https://noticias.stf.jus.br/',
+    color: '#1B5E20',
+    desc: 'Notícias do Supremo Tribunal Federal',
   },
   {
     id: 'pci-concursos',
