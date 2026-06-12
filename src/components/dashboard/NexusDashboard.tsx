@@ -7,7 +7,7 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore'
 
-interface Props { onNavigate: (id: string) => void; dashView?: 'widgets' | 'visual' }
+interface Props { onNavigate: (id: string) => void; dashView?: 'noticias' | 'visual' }
 
 interface Widget {
   id: string; col: number; row: number; w: number; h: number; visible: boolean
@@ -69,7 +69,7 @@ const WIDGET_LABELS: Record<string, string> = {
   'modulos':             '▦ Módulos',
   'gaming-widget':     '🎮 Gaming Hub',
   'media-widget':      '▶ Media Tracker',
-  'diario-widget':     '✦ Diário',
+  'diario-widget':     '✦ Notas',
   'links-widget':      '🔗 Links',
   'financeiro-widget': '◎ Financeiro',
   'concursos-widget':  '🎯 Concursos',
@@ -976,65 +976,43 @@ function MediaWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
 // ─── DiarioWidget ──────────────────────────────────────────────────────────────
 function DiarioWidget({ onNavigate }: { onNavigate:(id:string)=>void }) {
   const uid = useUid()
-  const [hoje, setHoje] = useState<any>(null)
+  const [notas, setNotas] = useState<any[]>([])
   useEffect(() => {
     if (!uid) return
-    const data = new Date().toISOString().slice(0,10)
-    return onSnapshot(doc(db, 'users', uid, 'journal', data), snap => {
-      setHoje(snap.exists() ? snap.data() : null)
+    return onSnapshot(collection(db, 'users', uid, 'notas'), snap => {
+      const list = snap.docs.map(d=>({id:d.id,...d.data()})).sort((a:any,b:any)=>b.criadoEm-a.criadoEm)
+      setNotas(list)
     })
   }, [uid])
-  const HUMOR_EMOJI = ['😢','😕','😐','😊','😄']
-  const HUMOR_COR = ['#ef4444','#f87171','#fbbf24','#a3e635','#6ee7a0']
-  const HUMOR_LABEL = ['Péssimo','Ruim','Neutro','Bom','Ótimo']
-  const tasks = hoje?.planejamento || []
-  const feitas = tasks.filter((t:any) => t.feito).length
-  const dataHoje = new Date().toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'})
+  const recentes = notas.slice(0,3)
+  const COR_MAP: Record<string,string> = { azul:'#1A73E8',verde:'#10b981',roxo:'#8B5CF6',amarelo:'#f59e0b',vermelho:'#ef4444',default:'var(--text-accent)' }
   return (
     <div className="card" style={{ padding:0,overflow:'hidden',height:'100%',boxSizing:'border-box',display:'flex',flexDirection:'column' }}>
-      <div style={{ padding:'10px 14px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(236,72,153,0.07)0%,transparent 100%)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
-        <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em' }}>✦ Diário</div>
-        <div style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>{dataHoje}</div>
+      <div style={{ padding:'10px 14px',borderBottom:'1px solid var(--border-md)',background:'linear-gradient(90deg,rgba(138,180,248,0.07)0%,transparent 100%)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+        <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.6rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em' }}>✦ Notas</div>
+        <div style={{ fontSize:'0.65rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)' }}>{notas.length} nota(s)</div>
       </div>
-      <div style={{ flex:1,padding:'12px 14px',display:'flex',flexDirection:'column',gap:10 }}>
-        {!hoje
+      <div style={{ flex:1,padding:'10px 14px',display:'flex',flexDirection:'column',gap:7,overflowY:'auto' }}>
+        {recentes.length===0
           ? <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8 }}>
               <span style={{ fontSize:'2rem' }}>✦</span>
-              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Sem registro hoje</p>
+              <p style={{ margin:0,fontSize:'0.72rem',color:'var(--text-muted)',textAlign:'center' }}>Nenhuma nota ainda</p>
             </div>
-          : <>
-            <div style={{ display:'flex',alignItems:'center',gap:12 }}>
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:'2rem' }}>{HUMOR_EMOJI[(hoje.humor||3)-1]}</div>
-                <div style={{ fontSize:'0.58rem',color:HUMOR_COR[(hoje.humor||3)-1],fontWeight:700 }}>{HUMOR_LABEL[(hoje.humor||3)-1]}</div>
-              </div>
-              <div style={{ flex:1 }}>
-                {tasks.length > 0 && <>
-                  <div style={{ display:'flex',justifyContent:'space-between',fontSize:'0.65rem',color:'var(--text-muted)',marginBottom:4 }}>
-                    <span>Tasks</span>
-                    <span style={{ fontWeight:700,color:feitas===tasks.length?'#6ee7a0':'var(--text-muted)' }}>{feitas}/{tasks.length}</span>
-                  </div>
-                  <div style={{ height:5,borderRadius:3,background:'var(--bg-4)',overflow:'hidden' }}>
-                    <div style={{ height:'100%',width:`${tasks.length?Math.round((feitas/tasks.length)*100):0}%`,background:'linear-gradient(90deg,#ec4899,#f472b6)',borderRadius:3 }}/>
-                  </div>
-                </>}
-                {hoje.fraseDoDia && <p style={{ margin:'8px 0 0',fontSize:'0.7rem',color:'var(--text-secondary)',fontStyle:'italic',lineHeight:1.4,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden' }}>"{hoje.fraseDoDia}"</p>}
-              </div>
-            </div>
-            <div style={{ display:'flex',gap:6 }}>
-              {[{v:hoje.ideias?.length||0,l:'Ideias',c:'#a78bfa'},{v:hoje.estudos?.length||0,l:'Notas',c:'#60a5fa'},{v:hoje.timeline?.length||0,l:'Eventos',c:'#f59e0b'}].map(k=>(
-                <div key={k.l} style={{ flex:1,padding:'6px',borderRadius:8,background:'var(--surface)',border:'1px solid var(--border)',textAlign:'center' }}>
-                  <div style={{ fontSize:'0.9rem',fontWeight:700,color:k.c }}>{k.v}</div>
-                  <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:1 }}>{k.l}</div>
+          : recentes.map((n:any) => {
+              const c = COR_MAP[n.cor||'default']||'var(--text-accent)'
+              return (
+                <div key={n.id} style={{ padding:'8px 10px',borderRadius:9,background:`${c}08`,border:`1px solid ${c}20` }}>
+                  {n.titulo && <div style={{ fontSize:'0.72rem',fontWeight:700,color:'var(--text-primary)',marginBottom:2 }}>{n.titulo}</div>}
+                  <div style={{ fontSize:'0.7rem',color:'var(--text-secondary)',lineHeight:1.45,display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden' }}>{n.conteudo}</div>
+                  <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:3,fontFamily:'var(--font-mono)' }}>{new Date(n.data+'T12:00:00').toLocaleDateString('pt-BR')}</div>
                 </div>
-              ))}
-            </div>
-          </>
+              )
+            })
         }
       </div>
       <div style={{ padding:'6px 14px',borderTop:'1px solid var(--border-md)',flexShrink:0 }}>
-        <button onClick={()=>onNavigate('journal')} style={{ width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(236,72,153,0.3)',background:'rgba(236,72,153,0.06)',color:'#f472b6',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer' }}>
-          Abrir Diário →
+        <button onClick={()=>onNavigate('journal')} style={{ width:'100%',padding:'6px',borderRadius:7,border:'1px solid rgba(138,180,248,0.3)',background:'rgba(138,180,248,0.06)',color:'var(--text-accent)',fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.7rem',cursor:'pointer' }}>
+          Ver Notas →
         </button>
       </div>
     </div>
@@ -1100,7 +1078,7 @@ function ModulosCard({ global, ponto, onNavigate }: any) {
     { id:'financeiro', label:'Financeiro',       icon:'◎', desc:'Receitas e despesas',                                 color:'#10b981' },
     { id:'saude',      label:'Saúde',            icon:'✚', desc:'Bem-estar diário',                                    color:'#34d399' },
     { id:'wishlist',   label:'Wishlist',         icon:'🛒', desc:'Lista de desejos & compras',                         color:'#f59e0b' },
-    { id:'journal',    label:'Diário',           icon:'✦', desc:'Registros e reflexões',                              color:'#ec4899' },
+    { id:'journal',    label:'Notas',             icon:'✦', desc:'Suas notas e apontamentos',                          color:'#8ab4f8' },
     { id:'media',      label:'Media Tracker',    icon:'▶', desc:'Filmes, séries e livros',                            color:'#3b82f6' },
     { id:'gaming',     label:'Gaming Hub',       icon:'🎮', desc:'Progresso e backlog',                               color:'#7c3aed' },
     { id:'links',      label:'Links',            icon:'🔗', desc:'Links de interesse',                                color:'#00e5ff' },
@@ -1137,7 +1115,7 @@ const VIS_MODULOS = [
   { id: 'ponto',      icon: '⊙',  label: 'Ponto',       cor: '#f59e0b', svgIcon: null },
   { id: 'saude',      icon: '✚',  label: 'Saúde',       cor: '#34d399', svgIcon: null },
   { id: 'wishlist',   icon: '🛒', label: 'Wishlist',    cor: '#f59e0b', svgIcon: null },
-  { id: 'journal',    icon: '✦',  label: 'Diário',      cor: '#ec4899', svgIcon: null },
+  { id: 'journal',    icon: '✦',  label: 'Notas',       cor: '#8ab4f8', svgIcon: null },
   { id: 'gaming',     icon: '🎮', label: 'Gaming',      cor: '#7c3aed', svgIcon: null },
   { id: 'media',      icon: '▶',  label: 'Media',       cor: '#3b82f6', svgIcon: null },
   { id: 'links',      icon: '🔗', label: 'Links',       cor: '#00e5ff', svgIcon: null },
@@ -1931,37 +1909,82 @@ function PainelVisaoGeralAgendaSemana({ onNavigate, dragging, dragOver: _dOas, o
 function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [ml, setMl] = useState(0)
+  const [adding, setAdding] = useState(false)
+  const [inputVal, setInputVal] = useState('')
   const meta = 2000
   const hoje = new Date().toISOString().slice(0,10)
+
   useEffect(() => {
     if(!uid||!db) return
     import('firebase/firestore').then(({getDoc}) => {
       getDoc(doc(db,'users',uid,'agua',hoje)).then(s => { if(s.exists()) setMl(s.data().ml||0) })
     })
   }, [uid])
+
+  const addAgua = async (delta: number) => {
+    const novoMl = Math.max(0, ml + delta)
+    setMl(novoMl)
+    if(!uid||!db) return
+    import('firebase/firestore').then(({setDoc}) => {
+      setDoc(doc(db,'users',uid,'agua',hoje), { ml: novoMl, data: hoje, meta })
+    })
+  }
+
+  const addCustom = async () => {
+    const v = parseInt(inputVal)
+    if(!isNaN(v)&&v>0) { await addAgua(v); setInputVal(''); setAdding(false) }
+  }
+
   const pct = Math.min(100, Math.round((ml/meta)*100))
   const cor = pct >= 80 ? '#1A73E8' : pct >= 50 ? '#8AB4F8' : '#DADCE0'
+
   return (
-    <button onClick={()=>onNavigate('saude')} draggable
+    <div draggable
       onDragStart={()=>onDragStart?.('agua')} onDragEnd={()=>onDragEnd?.()}
       onDragOver={e=>onDragOver?.(e,'agua')} onDrop={e=>onDrop?.(e,'agua')}
-      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}30`, background:`linear-gradient(135deg,${cor}08,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity:dragging==='agua'?0.45:1 }}
-      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}18`}}
-      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}30`, background:`linear-gradient(135deg,${cor}08,transparent)`, transition:'all 0.2s', opacity:dragging==='agua'?0.45:1, cursor:'grab', display:'flex', flexDirection:'column', gap:10 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
         <div>
           <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>💧 Água hoje</div>
           <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{ml}ml</div>
           <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>Meta: {meta}ml · {pct}%</div>
         </div>
-        <div style={{ width:38, height:38, borderRadius:'50%', border:`3px solid ${cor}40`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem', position:'relative', overflow:'hidden', background:`${cor}10` }}>
+        <div style={{ width:38, height:38, borderRadius:'50%', border:`3px solid ${cor}40`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem', background:`${cor}10` }}>
           💧
         </div>
       </div>
       <div style={{ height:6, borderRadius:3, background:'var(--bg-4)', overflow:'hidden' }}>
         <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${cor},${cor}bb)`, borderRadius:3, transition:'width 0.8s' }} />
       </div>
-    </button>
+      {/* Botões rápidos */}
+      <div style={{ display:'flex', gap:5, flexWrap:'wrap' }}>
+        {[150,200,300].map(v=>(
+          <button key={v} onClick={e=>{e.stopPropagation();addAgua(v)}}
+            style={{ flex:1, padding:'5px 4px', borderRadius:7, border:`1px solid ${cor}30`, background:`${cor}10`, color:cor, fontSize:'0.68rem', fontWeight:700, cursor:'pointer', fontFamily:'var(--font-mono)' }}>
+            +{v}ml
+          </button>
+        ))}
+        <button onClick={e=>{e.stopPropagation();setAdding(p=>!p)}}
+          style={{ padding:'5px 8px', borderRadius:7, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.05)', color:'var(--text-muted)', fontSize:'0.68rem', cursor:'pointer' }}>
+          ✏
+        </button>
+      </div>
+      {/* Input custom */}
+      {adding && (
+        <div style={{ display:'flex', gap:6 }} onClick={e=>e.stopPropagation()}>
+          <input type="number" value={inputVal} onChange={e=>setInputVal(e.target.value)}
+            onKeyDown={e=>{if(e.key==='Enter')addCustom()}}
+            placeholder="ml personalizado"
+            style={{ flex:1, padding:'5px 10px', borderRadius:7, border:`1px solid ${cor}30`, background:'rgba(255,255,255,0.05)', color:'var(--text-primary)', fontSize:'0.78rem', outline:'none' }} />
+          <button onClick={addCustom}
+            style={{ padding:'5px 12px', borderRadius:7, border:`1px solid ${cor}40`, background:`${cor}18`, color:cor, fontWeight:700, fontSize:'0.75rem', cursor:'pointer' }}>OK</button>
+        </div>
+      )}
+      <button onClick={e=>{e.stopPropagation();onNavigate('saude')}}
+        style={{ width:'100%', padding:'5px', borderRadius:7, border:`1px solid ${cor}25`, background:'none', color:cor, fontFamily:'var(--font-display)', fontWeight:600, fontSize:'0.68rem', cursor:'pointer', opacity:0.7 }}>
+        Saúde & Bem-Estar →
+      </button>
+    </div>
   )
 }
 
@@ -2134,37 +2157,34 @@ function PainelVisaoGeralWishlist({ onNavigate, dragging, dragOver: _dOwishlist,
 
 function PainelVisaoGeralDiario({ onNavigate, dragging, dragOver: _dOdiario, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
-  const [dados, setDados] = useState<any>(null)
-  const hoje = new Date().toISOString().slice(0,10)
+  const [notas, setNotas] = useState<any[]>([])
   useEffect(() => {
     if(!uid||!db) return
-    import('firebase/firestore').then(({getDoc})=>{
-      getDoc(doc(db,'users',uid,'journal',hoje)).then(s=>{ if(s.exists()) setDados(s.data()) })
+    return onSnapshot(collection(db, `users/${uid}/notas`), s => {
+      const list = s.docs.map(d=>({id:d.id,...d.data()})).sort((a:any,b:any)=>b.criadoEm-a.criadoEm)
+      setNotas(list)
     })
   }, [uid])
-  const tasks = dados?.planejamento||[]; const feitas=tasks.filter((t:any)=>t.feito).length
-  const pct = tasks.length>0?Math.round((feitas/tasks.length)*100):0
-  const cor='#ec4899'
+  const recente = notas[0]
+  const cor = '#8ab4f8'
   return (
     <button onClick={()=>onNavigate('journal')} draggable onDragStart={()=>onDragStart?.('diario')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'diario')} onDrop={e=>onDrop?.(e,'diario')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='diario'?0.45:1 }}
       onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
         <div>
-          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Diário · Hoje</div>
-          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{tasks.length} tasks</div>
-          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{feitas} concluídas · {dados?.timeline?.length||0} eventos</div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>✦ Notas</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{notas.length}</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{notas.filter((n:any)=>n.fixada).length} fixadas</div>
         </div>
         <span style={{ fontSize:'1.5rem', opacity:0.6 }}>✦</span>
       </div>
-      <div style={{ marginTop:8 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.6rem', color:'var(--text-muted)', marginBottom:4 }}>
-          <span>Progresso</span><span style={{ fontWeight:700, color:cor }}>{pct}%</span>
+      {recente && (
+        <div style={{ padding:'7px 10px', borderRadius:9, background:`${cor}08`, border:`1px solid ${cor}18` }}>
+          {recente.titulo && <div style={{ fontSize:'0.7rem', fontWeight:700, color:'var(--text-primary)', marginBottom:2 }}>{recente.titulo}</div>}
+          <div style={{ fontSize:'0.68rem', color:'var(--text-secondary)', lineHeight:1.4, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{recente.conteudo}</div>
         </div>
-        <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
-          <div style={{ height:'100%', width:`${pct}%`, background:`linear-gradient(90deg,${cor},${cor}99)`, borderRadius:3 }} />
-        </div>
-      </div>
+      )}
     </button>
   )
 }
@@ -2738,6 +2758,178 @@ function BarraSaudacaoBusca({ uid, onNavigate }: { uid: string|null; onNavigate:
   )
 }
 
+// ─── Modo Notícias ────────────────────────────────────────────────────────────
+const NEWS_SOURCES = [
+  {
+    id: 'agencia-brasil',
+    label: 'Agência Brasil',
+    icon: '🇧🇷',
+    url: 'https://agenciabrasil.ebc.com.br/',
+    color: '#1565C0',
+    desc: 'Jornalismo público de qualidade',
+  },
+  {
+    id: 'uol',
+    label: 'UOL',
+    icon: '📰',
+    url: 'https://www.uol.com.br/',
+    color: '#D32F2F',
+    desc: 'Portal de notícias',
+  },
+  {
+    id: 'pci-concursos',
+    label: 'PCI Concursos',
+    icon: '📋',
+    url: 'https://www.pciconcursos.com.br/noticias/',
+    color: '#1976D2',
+    desc: 'Concursos públicos em destaque',
+  },
+  {
+    id: 'migalhas',
+    label: 'Migalhas',
+    icon: '⚖',
+    url: 'https://www.migalhas.com.br/',
+    color: '#6A1B9A',
+    desc: 'Notícias jurídicas',
+  },
+  {
+    id: 'icl-noticias',
+    label: 'ICL Notícias',
+    icon: '📡',
+    url: 'https://iclnoticias.com.br/',
+    color: '#00838F',
+    desc: 'Notícias e informação',
+  },
+  {
+    id: 'g1-concursos',
+    label: 'G1 Concursos',
+    icon: '🎯',
+    url: 'https://g1.globo.com/trabalho-e-carreira/concursos/',
+    color: '#E65100',
+    desc: 'Concursos — G1 Globo',
+  },
+]
+
+function NoticiaFrame({ source, expanded }: { source: typeof NEWS_SOURCES[0]; expanded: boolean }) {
+  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState(false)
+
+  return (
+    <div style={{
+      background: 'var(--card-bg, #2C2C2E)',
+      border: `1px solid ${source.color}30`,
+      borderRadius: 16,
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      height: expanded ? 640 : 420,
+      transition: 'height 0.3s ease',
+    }}>
+      {/* Header do frame */}
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: `1px solid ${source.color}20`,
+        background: `linear-gradient(90deg,${source.color}12,transparent)`,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        flexShrink: 0,
+      }}>
+        <span style={{ fontSize: '1.1rem' }}>{source.icon}</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)' }}>{source.label}</div>
+          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{source.desc}</div>
+        </div>
+        <a href={source.url} target="_blank" rel="noopener noreferrer"
+          style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${source.color}40`, background: `${source.color}10`, color: source.color, fontSize: '0.68rem', fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+          Abrir ↗
+        </a>
+      </div>
+      {/* iFrame */}
+      <div style={{ flex: 1, position: 'relative', background: 'var(--bg-1)' }}>
+        {!loaded && !error && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-muted)' }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', border: '2px solid transparent', borderTopColor: source.color, animation: 'spin 0.8s linear infinite' }} />
+            <div style={{ fontSize: '0.72rem' }}>Carregando {source.label}…</div>
+          </div>
+        )}
+        {error && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 }}>
+            <div style={{ fontSize: '2.5rem' }}>{source.icon}</div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', textAlign: 'center' }}>{source.label}</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6 }}>
+              Este site não permite incorporação direta (X-Frame-Options).<br/>
+              Clique em <strong style={{ color: source.color }}>Abrir ↗</strong> para acessar.
+            </div>
+            <a href={source.url} target="_blank" rel="noopener noreferrer"
+              style={{ padding: '8px 22px', borderRadius: 9, border: 'none', background: source.color, color: '#fff', fontWeight: 700, fontSize: '0.82rem', textDecoration: 'none', marginTop: 4 }}>
+              Acessar {source.label}
+            </a>
+          </div>
+        )}
+        {!error && (
+          <iframe
+            src={source.url}
+            title={source.label}
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation"
+            onLoad={() => setLoaded(true)}
+            onError={() => { setLoaded(true); setError(true) }}
+            style={{
+              width: '100%',
+              height: '100%',
+              border: 'none',
+              display: loaded ? 'block' : 'none',
+              background: 'white',
+            }}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NoticiasMode() {
+  const [expandido, setExpandido] = useState<string|null>(null)
+  const [layout, setLayout] = useState<'grid'|'lista'>('grid')
+
+  return (
+    <div style={{ padding: '16px 20px', minHeight: '100%', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '0.1em', textTransform: 'uppercase', flex: 1 }}>
+          📰 Modo Notícias — {NEWS_SOURCES.length} fontes
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {(['grid','lista'] as const).map(l => (
+            <button key={l} onClick={() => setLayout(l)}
+              style={{ padding: '5px 12px', borderRadius: 7, border: `1px solid ${layout===l?'var(--border-bright)':'var(--border)'}`, background: layout===l?'var(--accent-bg)':'none', color: layout===l?'var(--text-accent)':'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>
+              {l === 'grid' ? '⊞ Grade' : '≡ Lista'}
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Sources */}
+      <div style={{
+        display: layout === 'grid' ? 'grid' : 'flex',
+        gridTemplateColumns: layout === 'grid' ? 'repeat(auto-fill, minmax(480px, 1fr))' : undefined,
+        flexDirection: layout === 'lista' ? 'column' : undefined,
+        gap: 16,
+      }}>
+        {NEWS_SOURCES.map(src => (
+          <div key={src.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <NoticiaFrame source={src} expanded={expandido===src.id} />
+            <button onClick={() => setExpandido(p => p===src.id ? null : src.id)}
+              style={{ padding: '5px', borderRadius: 7, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: '0.68rem', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}>
+              {expandido===src.id ? '▲ Recolher' : '▼ Expandir'}
+            </button>
+          </div>
+        ))}
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+}
+
 function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:string)=>void; global:any; discStats:any[] }) {
   const uid = useUid()
   const [moduloAtivo] = useState('visao-geral')
@@ -2780,7 +2972,7 @@ function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:str
 }
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
-export default function NexusDashboard({ onNavigate, dashView = 'widgets' }: Props) {
+export default function NexusDashboard({ onNavigate, dashView = 'visual' }: Props) {
   const hooks = useEditaisAGU()
   const ponto = usePontoStats()
   const { layouts, ativo, ativoId, saveWidgets, novoLayout, deletarLayout, trocarLayout, resetar, duplicarWidget } = useLayouts()
@@ -2897,6 +3089,9 @@ export default function NexusDashboard({ onNavigate, dashView = 'widgets' }: Pro
 
   if (dashView === 'visual') {
     return <VisualDashboard onNavigate={onNavigate} global={global} discStats={discStats} />
+  }
+  if (dashView === 'noticias') {
+    return <NoticiasMode />
   }
 
   return (

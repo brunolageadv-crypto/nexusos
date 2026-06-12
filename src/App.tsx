@@ -96,7 +96,7 @@ const NAV = [
     { id: 'wishlist',   label: 'Wishlist',           icon: '🛒', svgIcon: null },
   ]},
   { section: 'ENTRETENIMENTO', items: [
-    { id: 'journal',    label: 'Diário',             icon: '✦',  svgIcon: null },
+    { id: 'journal',    label: 'Notas',              icon: '✦',  svgIcon: null },
     { id: 'media',      label: 'Media',              icon: '▶',  svgIcon: null },
     { id: 'gaming',     label: 'Gaming',             icon: '🎮', svgIcon: null },
   ]},
@@ -116,11 +116,11 @@ function AppShell() {
   const [sidebarMode, setSidebarMode] = useState<'fixed' | 'auto'>(
     () => (localStorage.getItem('nexusos-sidebar-mode') as 'fixed' | 'auto') ?? 'fixed'
   )
-  const [dashView, setDashView] = useState<'widgets' | 'visual'>(
-    () => (localStorage.getItem('nexusos-dash-view') as 'widgets' | 'visual') ?? 'widgets'
+  const [dashView, setDashView] = useState<'noticias' | 'visual'>(
+    () => (localStorage.getItem('nexusos-dash-view') as 'noticias' | 'visual') ?? 'visual'
   )
   const toggleDashView = () => {
-    const next = dashView === 'widgets' ? 'visual' : 'widgets'
+    const next = dashView === 'noticias' ? 'visual' : 'noticias'
     setDashView(next)
     localStorage.setItem('nexusos-dash-view', next)
   }
@@ -208,8 +208,8 @@ function AppShell() {
             {active === 'dashboard' && (
               <button onClick={toggleDashView}
                 className={`desktop-only topbar-btn${dashView==='visual'?' active':''}`}
-                title={dashView === 'widgets' ? 'Modo visual' : 'Modo widgets'}>
-                {dashView === 'widgets' ? '◧ Visual' : '▦ Widgets'}
+                title={dashView === 'noticias' ? 'Modo visual' : 'Modo notícias'}>
+                {dashView === 'noticias' ? '◧ Visual' : '📰 Notícias'}
               </button>
             )}
               <button

@@ -380,8 +380,149 @@ function ProjecaoAnual({ contas, transacoes }: { contas: ContaPagar[]; transacoe
   )
 }
 
+/* ═══ CardsMeses — visão tipo app de banco ══════════════════ */
+interface MesResumo {
+  label: string; labelLong: string; ano: number; mes: number; isMesAtual: boolean
+  despesas: number; receitas: number; saldo: number
+  itens: Array<{ desc: string; valor: number; tipo: 'despesa'|'receita'|'recorrente'; cat: string }>
+}
+
+function buildMeses(transacoes: Transacao[], contas: ContaPagar[]): MesResumo[] {
+  const hoje = new Date()
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1)
+    const ano = d.getFullYear(); const mes = d.getMonth()
+    const mesStr = `${ano}-${String(mes+1).padStart(2,'0')}`
+    const isMesAtual = ano === hoje.getFullYear() && mes === hoje.getMonth()
+    const trans = transacoes.filter(t => t.data.startsWith(mesStr))
+    const despesasTrans = trans.filter(t => t.tipo === 'despesa')
+    const receitasTrans = trans.filter(t => t.tipo === 'receita')
+    // contas a pagar do mês
+    const contasMes = contas.filter(c => {
+      if (c.pago && !c.recorrente) return false
+      if (c.recorrente) return true
+      return c.vencimento && c.vencimento.startsWith(mesStr)
+    })
+    const despesas = despesasTrans.reduce((a,t) => a+t.valor, 0) + contasMes.filter(c=>!c.pago||c.recorrente).reduce((a,c)=>a+c.valor,0)
+    const receitas = receitasTrans.reduce((a,t) => a+t.valor, 0)
+    const saldo = receitas - despesas
+    const itens: MesResumo['itens'] = [
+      ...despesasTrans.map(t => ({ desc: t.descricao, valor: t.valor, tipo: 'despesa' as const, cat: t.categoria||'Outros' })),
+      ...receitasTrans.map(t => ({ desc: t.descricao, valor: t.valor, tipo: 'receita' as const, cat: t.categoria||'Outros' })),
+      ...contasMes.map(c => ({ desc: c.descricao + (c.recorrente?' 🔄':''), valor: c.valor, tipo: 'recorrente' as const, cat: c.categoria||'Contas' })),
+    ]
+    return {
+      label: MESES[mes] + '/' + String(ano).slice(2),
+      labelLong: MESES[mes] + ' ' + ano,
+      ano, mes, isMesAtual, despesas, receitas, saldo, itens
+    }
+  })
+}
+
+function ModalMes({ mes, onClose }: { mes: MesResumo; onClose: ()=>void }) {
+  const [filtroTipo, setFiltroTipo] = useState<'todos'|'despesa'|'receita'|'recorrente'>('todos')
+  const itens = mes.itens.filter(i => filtroTipo === 'todos' || i.tipo === filtroTipo)
+  return (
+    <div onClick={e=>{if(e.target===e.currentTarget)onClose()}}
+      style={{ position:'fixed',inset:0,zIndex:9999,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(6px)',display:'flex',alignItems:'center',justifyContent:'center',padding:16 }}>
+      <div style={{ background:'var(--bg-2)',border:'1px solid var(--border-md)',borderRadius:20,width:'100%',maxWidth:580,maxHeight:'90vh',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 32px 80px rgba(0,0,0,0.6)' }}>
+        {/* Header */}
+        <div style={{ padding:'18px 22px',borderBottom:'1px solid var(--border)',flexShrink:0 }}>
+          <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+            <div>
+              <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.1rem',color:'var(--text-primary)' }}>{mes.labelLong}</div>
+              <div style={{ fontSize:'0.72rem',color:'var(--text-muted)',marginTop:2 }}>{mes.itens.length} lançamento(s)</div>
+            </div>
+            <button onClick={onClose} style={{ background:'none',border:'none',color:'var(--text-muted)',fontSize:'1.3rem',cursor:'pointer' }}>×</button>
+          </div>
+          {/* KPIs do mês */}
+          <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginTop:14 }}>
+            {[{l:'Receitas',v:mes.receitas,c:'#10b981'},{l:'Despesas',v:mes.despesas,c:'#ef4444'},{l:'Saldo',v:mes.saldo,c:mes.saldo>=0?'#10b981':'#ef4444'}].map(k=>(
+              <div key={k.l} style={{ padding:'10px 12px',borderRadius:10,background:'var(--bg-3)',textAlign:'center' }}>
+                <div style={{ fontSize:'0.6rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4 }}>{k.l}</div>
+                <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'0.95rem',color:k.c }}>{fmtMoeda(k.v)}</div>
+              </div>
+            ))}
+          </div>
+          {/* Filtro tipo */}
+          <div style={{ display:'flex',gap:6,marginTop:12 }}>
+            {([['todos','Todos'],['despesa','Despesas'],['receita','Receitas'],['recorrente','Recorrentes 🔄']] as const).map(([t,l])=>(
+              <button key={t} onClick={()=>setFiltroTipo(t as any)}
+                style={{ padding:'4px 10px',borderRadius:6,border:`1px solid ${filtroTipo===t?'var(--border-bright)':'var(--border)'}`,background:filtroTipo===t?'var(--accent-bg)':'none',color:filtroTipo===t?'var(--text-accent)':'var(--text-muted)',fontSize:'0.7rem',fontWeight:700,cursor:'pointer' }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        {/* Lista */}
+        <div style={{ flex:1,overflowY:'auto',padding:'14px 22px',display:'flex',flexDirection:'column',gap:6 }}>
+          {itens.length===0 && <div style={{ textAlign:'center',padding:'40px 0',color:'var(--text-muted)',fontSize:'0.82rem' }}>Nenhum lançamento neste período</div>}
+          {itens.map((it,i)=>{
+            const cor = it.tipo==='receita'?'#10b981':it.tipo==='recorrente'?'#f59e0b':'#ef4444'
+            const icon = it.tipo==='receita'?'↑':it.tipo==='recorrente'?'🔄':'↓'
+            return (
+              <div key={i} style={{ display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:10,background:'var(--bg-3)',border:'1px solid var(--border)' }}>
+                <div style={{ width:32,height:32,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:`${cor}15`,fontSize:'0.9rem',flexShrink:0 }}>{icon}</div>
+                <div style={{ flex:1,minWidth:0 }}>
+                  <div style={{ fontSize:'0.82rem',fontWeight:600,color:'var(--text-primary)',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis' }}>{it.desc}</div>
+                  <div style={{ fontSize:'0.65rem',color:'var(--text-muted)',marginTop:1 }}>{it.cat}{it.tipo==='recorrente'?' · Natureza Continuada':''}</div>
+                </div>
+                <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'0.88rem',color:cor,flexShrink:0 }}>
+                  {it.tipo==='receita'?'+':'-'}{fmtMoeda(it.valor)}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SessaoCardsMeses({ transacoes, contas }: { transacoes: Transacao[]; contas: ContaPagar[] }) {
+  const meses = useMemo(() => buildMeses(transacoes, contas), [transacoes, contas])
+  const [mesSelecionado, setMesSelecionado] = useState<MesResumo|null>(null)
+  return (
+    <div>
+      <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.12em',marginBottom:12 }}>
+        📅 Extrato Mensal — Próximos 6 Meses
+      </div>
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12 }}>
+        {meses.map(m => {
+          const saldoColor = m.saldo >= 0 ? '#10b981' : '#ef4444'
+          return (
+            <button key={m.label} onClick={() => setMesSelecionado(m)}
+              style={{ padding:'16px',borderRadius:14,border:`1px solid ${m.isMesAtual?'rgba(26,115,232,0.5)':'var(--border)'}`,background:m.isMesAtual?'rgba(26,115,232,0.07)':'var(--bg-2)',textAlign:'left',cursor:'pointer',transition:'all 0.18s',position:'relative' }}
+              onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.transform='translateY(-3px)';(e.currentTarget as HTMLElement).style.boxShadow='0 8px 24px rgba(0,0,0,0.15)'}}
+              onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.transform='translateY(0)';(e.currentTarget as HTMLElement).style.boxShadow='none'}}>
+              {m.isMesAtual && <div style={{ position:'absolute',top:8,right:10,fontSize:'0.5rem',fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--text-accent)',letterSpacing:'0.08em',background:'rgba(26,115,232,0.15)',padding:'2px 6px',borderRadius:4 }}>ATUAL</div>}
+              <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'0.88rem',color:m.isMesAtual?'var(--text-accent)':'var(--text-primary)',marginBottom:10 }}>{m.label}</div>
+              <div style={{ display:'flex',flexDirection:'column',gap:5 }}>
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                  <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>Despesas</span>
+                  <span style={{ fontSize:'0.75rem',fontWeight:700,color:'#ef4444',fontFamily:'var(--font-mono)' }}>{fmtMoeda(m.despesas)}</span>
+                </div>
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                  <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>Receitas</span>
+                  <span style={{ fontSize:'0.75rem',fontWeight:700,color:'#10b981',fontFamily:'var(--font-mono)' }}>{fmtMoeda(m.receitas)}</span>
+                </div>
+                <div style={{ height:1,background:'var(--border)',margin:'3px 0' }}/>
+                <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+                  <span style={{ fontSize:'0.62rem',fontWeight:700,color:'var(--text-muted)' }}>Saldo</span>
+                  <span style={{ fontSize:'0.8rem',fontWeight:800,color:saldoColor,fontFamily:'var(--font-mono)' }}>{fmtMoeda(m.saldo)}</span>
+                </div>
+              </div>
+              <div style={{ marginTop:10,fontSize:'0.62rem',color:'var(--text-muted)',borderTop:'1px solid var(--border)',paddingTop:8 }}>{m.itens.length} lançamento(s) · clique para ver</div>
+            </button>
+          )
+        })}
+      </div>
+      {mesSelecionado && <ModalMes mes={mesSelecionado} onClose={()=>setMesSelecionado(null)} />}
+    </div>
+  )
+}
+
 /* ═══ Main ═══════════════════════════════════════════════════ */
 type FinTab = 'visao' | 'transacoes' | 'contas' | 'projecao' | 'relatorios'
+
 
 export default function Financeiro() {
   const { transacoes, contas, cats, loading, saveT, delT, saveC, delC } = useFinanceiro()
@@ -484,6 +625,8 @@ export default function Financeiro() {
                 </div>
               ))}
             </div>
+            {/* ── Extrato mensal próximos 6 meses ── */}
+            <SessaoCardsMeses transacoes={transacoes} contas={contas} />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div className="card">
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 14 }}>Despesas por Categoria — {MESES[parseInt(filtroMes.slice(5, 7)) - 1]}</div>

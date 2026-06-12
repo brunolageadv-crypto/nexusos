@@ -457,6 +457,12 @@ export default function ProntuarioADM() {
   const [editando, setEditando] = useState<Demanda|null>(null)
   const [detalhe, setDetalhe] = useState<Demanda|null>(null)
 
+  // ── Filtros de data por abertura ──────────────────────────────────────────
+  const [filtroDataTipo, setFiltroDataTipo] = useState<'dia'|'mes'|'ano'|'todas'>('todas')
+  const [filtroDataDia, setFiltroDataDia] = useState('')
+  const [filtroDataMes, setFiltroDataMes] = useState('')
+  const [filtroDataAno, setFiltroDataAno] = useState('')
+
   useEffect(()=>{
     if(!uid) return
     return onSnapshot(collection(db,'users',uid,'prontuario'), snap=>{
@@ -469,6 +475,16 @@ export default function ProntuarioADM() {
     if(filtroStatus!=='todas'&&d.status!==filtroStatus) return false
     if(filtroPrioridade!=='todas'&&d.prioridade!==filtroPrioridade) return false
     if(busca&&!d.titulo.toLowerCase().includes(busca.toLowerCase())&&!(d.numeroDemanda||'').includes(busca)) return false
+    // Filtro por data de abertura
+    if(filtroDataTipo==='dia'&&filtroDataDia) {
+      if(!d.dataAbertura||d.dataAbertura!==filtroDataDia) return false
+    }
+    if(filtroDataTipo==='mes'&&filtroDataMes) {
+      if(!d.dataAbertura||!d.dataAbertura.startsWith(filtroDataMes)) return false
+    }
+    if(filtroDataTipo==='ano'&&filtroDataAno) {
+      if(!d.dataAbertura||!d.dataAbertura.startsWith(filtroDataAno)) return false
+    }
     return true
   })
 
@@ -515,16 +531,41 @@ export default function ProntuarioADM() {
       </div>
 
       {/* Filtros */}
-      <div style={{ display:'flex',flexWrap:'wrap',gap:8,alignItems:'center' }}>
-        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar por título ou nº demanda..." style={{ ...IS, flex:1, minWidth:200 }} />
-        <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as any)} style={{ ...IS, width:'auto' }}>
-          <option value="todas">Todos os status</option>
-          {Object.entries(ST).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-        </select>
-        <select value={filtroPrioridade} onChange={e=>setFiltroPrioridade(e.target.value as any)} style={{ ...IS, width:'auto' }}>
-          <option value="todas">Todas prioridades</option>
-          {Object.entries(PR).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-        </select>
+      <div style={{ display:'flex',flexDirection:'column',gap:8 }}>
+        <div style={{ display:'flex',flexWrap:'wrap',gap:8,alignItems:'center' }}>
+          <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar por título ou nº demanda..." style={{ ...IS, flex:1, minWidth:200 }} />
+          <select value={filtroStatus} onChange={e=>setFiltroStatus(e.target.value as any)} style={{ ...IS, width:'auto' }}>
+            <option value="todas">Todos os status</option>
+            {Object.entries(ST).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <select value={filtroPrioridade} onChange={e=>setFiltroPrioridade(e.target.value as any)} style={{ ...IS, width:'auto' }}>
+            <option value="todas">Todas prioridades</option>
+            {Object.entries(PR).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </div>
+        <div style={{ display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',padding:'10px 14px',background:'rgba(91,91,214,0.06)',border:'1px solid rgba(91,91,214,0.18)',borderRadius:10 }}>
+          <span style={{ fontSize:'0.65rem',fontWeight:800,color:'#a5a3f5',textTransform:'uppercase',letterSpacing:'0.1em',fontFamily:'var(--font-mono)',whiteSpace:'nowrap' }}>📅 Filtrar por abertura:</span>
+          {(['todas','dia','mes','ano'] as const).map(t=>(
+            <button key={t} onClick={()=>setFiltroDataTipo(t)}
+              style={{ padding:'5px 12px',borderRadius:7,border:`1px solid ${filtroDataTipo===t?'rgba(91,91,214,0.5)':'rgba(255,255,255,0.1)'}`,background:filtroDataTipo===t?'rgba(91,91,214,0.18)':'rgba(255,255,255,0.03)',color:filtroDataTipo===t?'#a5a3f5':'var(--text-muted)',fontSize:'0.72rem',fontWeight:700,cursor:'pointer' }}>
+              {t==='todas'?'Todas':t==='dia'?'Dia':t==='mes'?'Mês':'Ano'}
+            </button>
+          ))}
+          {filtroDataTipo==='dia' && (
+            <input type="date" value={filtroDataDia} onChange={e=>setFiltroDataDia(e.target.value)} style={{ ...IS, width:'auto', padding:'5px 10px' }} />
+          )}
+          {filtroDataTipo==='mes' && (
+            <input type="month" value={filtroDataMes} onChange={e=>setFiltroDataMes(e.target.value)} style={{ ...IS, width:'auto', padding:'5px 10px' }} />
+          )}
+          {filtroDataTipo==='ano' && (
+            <input type="number" min="2020" max="2040" placeholder="Ex: 2025" value={filtroDataAno} onChange={e=>setFiltroDataAno(e.target.value)} style={{ ...IS, width:100, padding:'5px 10px' }} />
+          )}
+          {filtroDataTipo!=='todas' && (
+            <button onClick={()=>{setFiltroDataTipo('todas');setFiltroDataDia('');setFiltroDataMes('');setFiltroDataAno('')}}
+              style={{ padding:'4px 8px',borderRadius:6,border:'1px solid rgba(239,68,68,0.3)',background:'rgba(239,68,68,0.07)',color:'#f87171',fontSize:'0.68rem',cursor:'pointer',fontWeight:700 }}>✕ Limpar</button>
+          )}
+          <span style={{ marginLeft:'auto',fontSize:'0.68rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)' }}>{filtradas.length} resultado(s)</span>
+        </div>
       </div>
 
       {/* Cards */}
@@ -551,6 +592,13 @@ export default function ProntuarioADM() {
                   <span style={{ fontSize:'0.65rem',padding:'2px 9px',borderRadius:12,background:pr.bg,color:pr.color,fontWeight:700 }}>{pr.label}</span>
                   <span style={{ fontSize:'0.65rem',padding:'2px 9px',borderRadius:12,background:`${st.color}20`,color:st.color,fontWeight:700 }}>{st.label}</span>
                 </div>
+                {/* Data de Abertura em destaque */}
+                {d.dataAbertura&&(
+                  <div style={{ display:'inline-flex',alignItems:'center',gap:5,padding:'3px 10px',borderRadius:20,background:'rgba(91,91,214,0.13)',border:'1px solid rgba(91,91,214,0.3)',width:'fit-content' }}>
+                    <span style={{ fontSize:'0.62rem',fontWeight:800,color:'#a5a3f5',fontFamily:'var(--font-mono)' }}>📅 Aberta em</span>
+                    <span style={{ fontSize:'0.7rem',fontWeight:700,color:'#c4c2f5',fontFamily:'var(--font-mono)' }}>{new Date(d.dataAbertura+'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                  </div>
+                )}
                 {/* Título */}
                 <div style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.92rem',color:'var(--text-primary)',lineHeight:1.3 }}>{d.titulo}</div>
                 {/* Descrição */}
