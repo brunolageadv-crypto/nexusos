@@ -13,6 +13,7 @@ import Diario from './components/journal/Diario'
 import MediaTracker from './components/media/MediaTracker'
 import GamingHub from './components/gaming/GamingHub'
 import LinksInteresse from './components/links/LinksInteresse'
+import Agenda from './components/agenda/Agenda'
 
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
@@ -100,6 +101,7 @@ const NAV = [
     { id: 'gaming',     label: 'Gaming',             icon: '🎮', svgIcon: null },
   ]},
   { section: 'UTILIDADES', items: [
+    { id: 'agenda',     label: 'Agenda',             icon: '📅', svgIcon: null },
     { id: 'links',      label: 'Links',              icon: '🔗', svgIcon: null },
   ]},
 ]
@@ -237,6 +239,7 @@ function AppShell() {
           {active === 'media'      && <MediaTracker />}
           {active === 'gaming'     && <GamingHub />}
           {active === 'links'      && <LinksInteresse />}
+          {active === 'agenda'     && <Agenda />}
         </div>
       </div>
 

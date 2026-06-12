@@ -1755,7 +1755,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
   ]
 
   // Drag and drop state
-  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo'])
+  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo','agenda-hoje','agenda-semana'])
   const [dragging, setDragging] = useState<string|null>(null)
   const [dragOver, setDragOver] = useState<string|null>(null)
 
@@ -1816,6 +1816,8 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
       case 'calendario':   return <PainelVisaoGeralCalendario key="calendario"   {...props} />
       case 'contas-pagar-mini': return <PainelVisaoGeralContasPagar key="contas-pagar-mini" {...props} />
       case 'ponto-saldo':  return <PainelVisaoGeralPontoSaldo key="ponto-saldo"  {...props} />
+      case 'agenda-hoje':  return <PainelVisaoGeralAgendaHoje  key="agenda-hoje"  {...props} />
+      case 'agenda-semana': return <PainelVisaoGeralAgendaSemana key="agenda-semana" {...props} />
       default: return null
     }
   }
@@ -1834,6 +1836,98 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
 
 
 // ─── Mini Cards extras Visão Geral ──────────────────────────────────────────
+
+// ─── Cards de Agenda na Visão Geral ──────────────────────────────────────────
+function PainelVisaoGeralAgendaHoje({ onNavigate, dragging, dragOver: _dOah, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const uid = useUid()
+  const [eventos, setEventos] = useState<any[]>([])
+  const hoje = new Date().toISOString().slice(0,10)
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/agenda`),orderBy('data','asc')), s=>setEventos(s.docs.map(d=>d.data()))) }, [uid])
+  const evHoje = eventos.filter(e=>e.data===hoje)
+  const pendentes = evHoje.filter(e=>!e.concluido)
+  const concluidos = evHoje.filter(e=>e.concluido)
+  const cor = pendentes.length > 0 ? '#1A73E8' : '#0F9D58'
+  const TIPO_COR: Record<string,string> = { reuniao:'#1A73E8',prazo:'#D93025',pessoal:'#F29900',juridico:'#7B1FA2',saude:'#0F9D58',financeiro:'#00897B',estudo:'#3949AB',viagem:'#039BE5',aniversario:'#E91E63',outro:'#78909C' }
+  const TIPO_ICO: Record<string,string> = { reuniao:'🗣',prazo:'⏰',pessoal:'🏠',juridico:'⚖',saude:'✚',financeiro:'◎',estudo:'📚',viagem:'✈',aniversario:'🎂',outro:'◈' }
+  return (
+    <button onClick={()=>onNavigate('agenda')} draggable
+      onDragStart={()=>onDragStart?.('agenda-hoje')} onDragEnd={()=>onDragEnd?.()}
+      onDragOver={e=>onDragOver?.(e,'agenda-hoje')} onDrop={e=>onDrop?.(e,'agenda-hoje')}
+      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}08,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity:dragging==='agenda-hoje'?0.45:1 }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}18`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>📅 Agenda · Hoje</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{evHoje.length} evento{evHoje.length!==1?'s':''}</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{concluidos.length} concluído{concluidos.length!==1?'s':''} · {pendentes.length} pendente{pendentes.length!==1?'s':''}</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>📅</span>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:4, marginTop:4 }}>
+        {evHoje.slice(0,3).map((e:any)=>(
+          <div key={e.id} style={{ display:'flex', alignItems:'center', gap:7, padding:'5px 8px', borderRadius:8, background:`${TIPO_COR[e.tipo]||'#1A73E8'}10`, border:`1px solid ${TIPO_COR[e.tipo]||'#1A73E8'}20` }}>
+            <span style={{ fontSize:'0.8rem' }}>{TIPO_ICO[e.tipo]||'◈'}</span>
+            <span style={{ fontSize:'0.72rem', fontWeight:600, color:'var(--text-primary)', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', textDecoration:e.concluido?'line-through':'none' }}>{e.horaInicio&&`${e.horaInicio} `}{e.titulo}</span>
+          </div>
+        ))}
+        {evHoje.length===0 && <div style={{ fontSize:'0.72rem', color:'var(--text-muted)', fontStyle:'italic' }}>Nenhum evento hoje</div>}
+      </div>
+      <div style={{ marginTop:10, height:4, borderRadius:2, background:'var(--bg-4)', overflow:'hidden' }}>
+        <div style={{ height:'100%', width:`${evHoje.length>0?(concluidos.length/evHoje.length)*100:0}%`, background:cor, borderRadius:2, transition:'width 0.6s' }} />
+      </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralAgendaSemana({ onNavigate, dragging, dragOver: _dOas, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const uid = useUid()
+  const [eventos, setEventos] = useState<any[]>([])
+  useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/agenda`),orderBy('data','asc')), s=>setEventos(s.docs.map(d=>d.data()))) }, [uid])
+  const hoje = new Date()
+  const ini = new Date(hoje); ini.setDate(hoje.getDate()-hoje.getDay())
+  const fim = new Date(ini); fim.setDate(ini.getDate()+6)
+  const iniStr = ini.toISOString().slice(0,10)
+  const fimStr = fim.toISOString().slice(0,10)
+  const evSemana = eventos.filter(e=>e.data>=iniStr&&e.data<=fimStr)
+  const proxPrazo = eventos.filter(e=>e.tipo==='prazo'&&e.data>=new Date().toISOString().slice(0,10)&&!e.concluido).sort((a:any,b:any)=>a.data.localeCompare(b.data))[0]
+  const cor = '#7B1FA2'
+  const DIAS_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+  const diasSemana = Array.from({length:7},(_,i)=>{ const d=new Date(ini); d.setDate(ini.getDate()+i); return d })
+  const evPorDia = diasSemana.map(d=>eventos.filter(e=>e.data===d.toISOString().slice(0,10)).length)
+  const maxEv = Math.max(...evPorDia, 1)
+  return (
+    <button onClick={()=>onNavigate('agenda')} draggable
+      onDragStart={()=>onDragStart?.('agenda-semana')} onDragEnd={()=>onDragEnd?.()}
+      onDragOver={e=>onDragOver?.(e,'agenda-semana')} onDrop={e=>onDrop?.(e,'agenda-semana')}
+      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}08,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity:dragging==='agenda-semana'?0.45:1 }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}18`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>📆 Agenda · Semana</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{evSemana.length} evento{evSemana.length!==1?'s':''}</div>
+          {proxPrazo && <div style={{ fontSize:'0.68rem', color:'#D93025', marginTop:3, fontWeight:600 }}>⏰ Prazo: {proxPrazo.titulo}</div>}
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>📆</span>
+      </div>
+      {/* Mini bar chart da semana */}
+      <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:32 }}>
+        {diasSemana.map((d,i)=>{
+          const isToday = d.toISOString().slice(0,10)===new Date().toISOString().slice(0,10)
+          const h = evPorDia[i]>0 ? Math.max(8,(evPorDia[i]/maxEv)*28) : 4
+          return (
+            <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+              <div style={{ width:'100%', height:h, borderRadius:3, background:isToday?cor:`${cor}40`, transition:'height 0.4s' }} />
+              <div style={{ fontSize:'0.52rem', color:isToday?cor:'var(--text-muted)', fontWeight:isToday?700:400 }}>{DIAS_SHORT[i]}</div>
+            </div>
+          )
+        })}
+      </div>
+    </button>
+  )
+}
+
 function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [ml, setMl] = useState(0)
