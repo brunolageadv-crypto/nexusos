@@ -1908,37 +1908,49 @@ function PainelVisaoGeralAgendaSemana({ onNavigate, dragging, dragOver: _dOas, o
 
 function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
+  // Lê/grava em users/{uid}/saude/{data} — mesma coleção do módulo Saúde
   const [ml, setMl] = useState(0)
+  const [metaAgua, setMetaAgua] = useState(2000)
+  const [registroBase, setRegistroBase] = useState<any>(null)
   const [adding, setAdding] = useState(false)
   const [inputVal, setInputVal] = useState('')
-  const meta = 2000
   const hoje = useMemo(() => new Date().toISOString().slice(0,10), [])
 
   useEffect(() => {
     if(!uid||!db) return
-    // Usa onSnapshot para reagir em tempo real (inclusive ao salvar do SaudeWidget)
-    return onSnapshot(doc(db,'users',uid,'agua',hoje), s => {
-      if(s.exists()) setMl(s.data().ml||0)
-      else setMl(0)
+    // onSnapshot na coleção saude — sincroniza em tempo real com o módulo Saúde
+    return onSnapshot(doc(db,'users',uid,'saude',hoje), s => {
+      if(s.exists()) {
+        const data = s.data()
+        setMl(data.agua || 0)
+        setMetaAgua(data.metaAgua || 2000)
+        setRegistroBase(data)
+      } else {
+        setMl(0)
+        setMetaAgua(2000)
+        setRegistroBase(null)
+      }
     })
   }, [uid, hoje])
 
-  const addAgua = useCallback(async (delta: number) => {
+  const addAgua = useCallback((delta: number) => {
     if(!uid||!db) return
     setMl(prev => {
-      const novoMl = Math.max(0, prev + delta)
-      setDoc(doc(db,'users',uid,'agua',hoje), { ml: novoMl, data: hoje, meta })
+      const novoMl = Math.min(Math.max(0, prev + delta), 5000)
+      // Merge com o registro existente para não sobrescrever sono/humor/etc
+      const base = registroBase || { id: hoje, data: hoje, metaAgua: 2000, sono: { inicio:'', fim:'', qualidade:3 }, humor:3, energia:3, treino:{ realizado:false, tipo:'', duracao:0 }, peso:0, sintomas:[], notas:'' }
+      setDoc(doc(db,'users',uid,'saude',hoje), { ...base, agua: novoMl })
       return novoMl
     })
-  }, [uid, hoje])
+  }, [uid, hoje, registroBase])
 
-  const addCustom = async () => {
+  const addCustom = () => {
     const v = parseInt(inputVal)
     if(!isNaN(v)&&v>0) { addAgua(v); setInputVal(''); setAdding(false) }
   }
 
-  const pct = Math.min(100, Math.round((ml/meta)*100))
-  const cor = pct >= 80 ? '#1A73E8' : pct >= 50 ? '#8AB4F8' : '#DADCE0'
+  const pct = Math.min(100, Math.round((ml/metaAgua)*100))
+  const cor = pct >= 80 ? '#1A73E8' : pct >= 50 ? '#60a5fa' : '#94a3b8'
 
   return (
     <div draggable
