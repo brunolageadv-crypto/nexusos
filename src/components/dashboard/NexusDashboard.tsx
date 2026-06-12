@@ -1961,7 +1961,7 @@ function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragS
         <div>
           <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>💧 Água hoje</div>
           <div style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{ml}ml</div>
-          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>Meta: {meta}ml · {pct}%</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>Meta: {metaAgua}ml · {pct}%</div>
         </div>
         <div style={{ width:38, height:38, borderRadius:'50%', border:`3px solid ${cor}40`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem', background:`${cor}10` }}>
           💧
