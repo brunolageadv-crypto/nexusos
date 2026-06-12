@@ -45,7 +45,6 @@ const PRIO: Record<Prioridade, { label: string; cor: string }> = {
 }
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-const MESES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 const DIAS_SEMANA_FULL = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado']
 
@@ -489,7 +488,7 @@ export default function Agenda() {
   const openEdit = (e: Evento) => { setEditEvento(e); setModalOpen(true) }
   const handleSave = async (e: Evento) => { await save(e); setModalOpen(false); setEditEvento(null) }
 
-  const tabBtn = (v: AgendaView, label: string) => ({
+  const tabBtn = (v: AgendaView, _label?: string) => ({
     padding: '7px 16px', borderRadius: 20, border: 'none',
     background: view === v ? 'var(--accent)' : 'var(--bg-3)',
     color: view === v ? '#fff' : 'var(--text-secondary)',

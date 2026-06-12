@@ -13,7 +13,7 @@ import Diario from './components/journal/Diario'
 import MediaTracker from './components/media/MediaTracker'
 import GamingHub from './components/gaming/GamingHub'
 import LinksInteresse from './components/links/LinksInteresse'
-import Agenda from './components/agenda/Agenda'
+import Agenda from './components/Agenda/Agenda'
 
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
