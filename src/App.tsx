@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useMemo, useCallback, type ReactNode } from 'react'
 import { useAuth } from './hooks/useAuth'
 import LoginPage from './auth/LoginPage'
 import GestorEditais from './components/editais/GestorEditais'
@@ -17,7 +17,7 @@ import Agenda from './components/Agenda/Agenda'
 // Viagens module embedded below
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
 import { db } from './lib/firebase'
-import { useUid } from './hooks/useUid'
+
 
 type Theme = 'dark' | 'light'
 const ThemeCtx = createContext<{ theme: Theme; toggle: () => void }>({ theme: 'dark', toggle: () => {} })
@@ -950,7 +950,7 @@ function CardViagem({ viagem, hospedagens, onOpen, onDelete }: { viagem: Viagem;
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
-export default function Viagens() {
+function Viagens()
   const uid = useUid()
   const [viagens, setViagens] = useState<Viagem[]>([])
   const [hospedagens, setHospedagens] = useState<Hospedagem[]>([])
