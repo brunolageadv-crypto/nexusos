@@ -1491,6 +1491,28 @@ function BarraInferior() {
           <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{diasRestMes} dias restantes</div>
         </div>
 
+        {/* Progresso do Dia */}
+        {(()=>{
+          const totalMinsDia = 24*60
+          const minsPassados = hora.getHours()*60 + hora.getMinutes()
+          const pctDia = Math.round((minsPassados/totalMinsDia)*100)
+          const hRestantes = Math.floor((totalMinsDia-minsPassados)/60)
+          const mRestantes = (totalMinsDia-minsPassados)%60
+          const diaCor = pctDia < 40 ? '#34d399' : pctDia < 70 ? '#60a5fa' : '#f59e0b'
+          return (
+            <div style={{ ...cardSty(diaCor), minWidth:185 } as React.CSSProperties}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div style={labelSty}>🌅 Hoje</div>
+                <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:diaCor }}>{pctDia}%</span>
+              </div>
+              <div style={{ height:8, borderRadius:4, background:'rgba(0,0,0,0.08)', overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${pctDia}%`, background:`linear-gradient(90deg,${diaCor}bb,${diaCor})`, borderRadius:4, boxShadow:`0 0 8px ${diaCor}50` }} />
+              </div>
+              <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{hRestantes}h {mRestantes}min restantes</div>
+            </div>
+          )
+        })()}
+
         {/* Frase motivacional */}
         <div style={{ ...cardSty('#8b5cf6'), flex:1, minWidth:300 } as React.CSSProperties}>
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>

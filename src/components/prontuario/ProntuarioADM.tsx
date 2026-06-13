@@ -543,11 +543,11 @@ export default function ProntuarioADM() {
             {Object.entries(PR).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
           </select>
         </div>
-        <div style={{ display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',padding:'10px 14px',background:'rgba(30,41,59,0.5)',border:'1px solid rgba(148,163,184,0.18)',borderRadius:10 }}>
-          <span style={{ fontSize:'0.65rem',fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.1em',fontFamily:'var(--font-mono)',whiteSpace:'nowrap' }}>📅 Filtrar por abertura:</span>
+        <div style={{ display:'flex',flexWrap:'wrap',gap:8,alignItems:'center',padding:'10px 14px',background:'rgba(248,250,252,0.05)',border:'1px solid rgba(226,232,240,0.15)',borderRadius:10 }}>
+          <span style={{ fontSize:'0.62rem',fontWeight:700,color:'#94a3b8',textTransform:'uppercase',letterSpacing:'0.1em',fontFamily:'var(--font-mono)',whiteSpace:'nowrap' }}>📅 Filtrar por abertura:</span>
           {(['todas','dia','mes','ano'] as const).map(t=>(
             <button key={t} onClick={()=>setFiltroDataTipo(t)}
-              style={{ padding:'5px 12px',borderRadius:7,border:`1px solid ${filtroDataTipo===t?'rgba(99,179,237,0.45)':'rgba(148,163,184,0.15)'}`,background:filtroDataTipo===t?'rgba(99,179,237,0.12)':'rgba(255,255,255,0.02)',color:filtroDataTipo===t?'#93c5fd':'var(--text-muted)',fontSize:'0.72rem',fontWeight:700,cursor:'pointer' }}>
+              style={{ padding:'5px 12px',borderRadius:7,border:`1px solid ${filtroDataTipo===t?'rgba(148,163,184,0.45)':'rgba(148,163,184,0.12)'}`,background:filtroDataTipo===t?'rgba(148,163,184,0.12)':'rgba(255,255,255,0.02)',color:filtroDataTipo===t?'#e2e8f0':'var(--text-muted)',fontSize:'0.72rem',fontWeight:filtroDataTipo===t?700:400,cursor:'pointer' }}>
               {t==='todas'?'Todas':t==='dia'?'Dia':t==='mes'?'Mês':'Ano'}
             </button>
           ))}
@@ -594,9 +594,9 @@ export default function ProntuarioADM() {
                 </div>
                 {/* Data de Abertura em destaque */}
                 {d.dataAbertura&&(
-                  <div style={{ display:'inline-flex',alignItems:'center',gap:6,padding:'4px 11px',borderRadius:20,background:'rgba(100,116,139,0.12)',border:'1px solid rgba(148,163,184,0.25)',width:'fit-content' }}>
-                    <span style={{ fontSize:'0.6rem',color:'#94a3b8',fontFamily:'var(--font-mono)',letterSpacing:'0.04em' }}>📅 Abertura</span>
-                    <span style={{ fontSize:'0.72rem',fontWeight:700,color:'#cbd5e1',fontFamily:'var(--font-mono)',letterSpacing:'0.03em' }}>{new Date(d.dataAbertura+'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                  <div style={{ display:'inline-flex',alignItems:'center',gap:6,padding:'4px 12px',borderRadius:20,background:'rgba(241,245,249,0.12)',border:'1px solid rgba(226,232,240,0.22)',width:'fit-content' }}>
+                    <span style={{ fontSize:'0.58rem',fontWeight:600,color:'#94a3b8',fontFamily:'var(--font-mono)',letterSpacing:'0.05em',textTransform:'uppercase' }}>📅</span>
+                    <span style={{ fontSize:'0.72rem',fontWeight:800,color:'#f1f5f9',fontFamily:'var(--font-mono)',letterSpacing:'0.04em' }}>{new Date(d.dataAbertura+'T12:00:00').toLocaleDateString('pt-BR')}</span>
                   </div>
                 )}
                 {/* Título */}
