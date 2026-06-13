@@ -640,7 +640,6 @@ function BentoPeso({ r, historico }: { r:RegistroSaude; historico:RegistroSaude[
   const pesoMin = comPeso.length>0 ? Math.min(...comPeso.map(x=>x.peso)) : null
   const pesoMax = comPeso.length>0 ? Math.max(...comPeso.map(x=>x.peso)) : null
   const tendencia = comPeso.length>=3 ? (() => {
-    const n = comPeso.length
     const ultimo3 = comPeso.slice(-3).map(x=>x.peso)
     const media3 = ultimo3.reduce((a,b)=>a+b,0)/3
     const pesoAtual = r.peso || ultimo3[ultimo3.length-1]
