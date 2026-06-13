@@ -7,17 +7,50 @@ import { useUid } from '../../hooks/useUid'
 function clean<T extends object>(obj: T): T {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T
 }
+interface RegistroAlergia {
+  intensidade: 0|1|2|3          // 0=nenhuma,1=leve,2=moderada,3=intensa
+  // Sintomas nasais
+  espirros: boolean; coriza: boolean; obstrucao: boolean; coceiraNasal: boolean
+  // Sintomas oculares
+  coceiraOlhos: boolean; olhosVermelhos: boolean; lacrimejamento: boolean
+  // Pele
+  coceiraPele: boolean; urticaria: boolean; erupcao: boolean
+  // Respiratório
+  tosse: boolean; faltaAr: boolean; chiado: boolean
+  // Antialérgico
+  tomouRemedio: boolean; remedio: string; horarioRemedio: string
+  // Gatilhos
+  gatilhos: string[]   // poeira, polem, pelo, mofo, alimento, ar-condicionado, perfume, outro
+  // Exposição ambiental
+  ambienteExterno: boolean; chuva: boolean; ventoso: boolean
+  // Qualidade do sono afetada
+  afetouSono: boolean
+  observacoes: string
+}
+
 interface RegistroSaude {
   id: string; data: string; agua: number; metaAgua: number
   sono: { inicio: string; fim: string; qualidade: number }
   humor: number; energia: number
   treino: { realizado: boolean; tipo: string; duracao: number }
   peso: number; sintomas: string[]; notas: string; criadoEm: number
+  alergia?: RegistroAlergia
 }
 const TIPOS_TREINO = ['Musculação','Corrida','Ciclismo','Natação','Yoga','Pilates','Caminhada','Funcional','Crossfit','Artes Marciais','Outro']
 const SINTOMAS_COMUNS = ['Dor de cabeça','Cansaço','Ansiedade','Dor nas costas','Insônia','Stress','Gripe/Resfriado','Dor muscular','Azia','Tontura','Náusea','Palpitação']
 function today() { return new Date().toISOString().slice(0,10) }
 function newId() { return Math.random().toString(36).slice(2,10) }
+function defaultAlergia(): RegistroAlergia {
+  return {
+    intensidade: 0, espirros:false, coriza:false, obstrucao:false, coceiraNasal:false,
+    coceiraOlhos:false, olhosVermelhos:false, lacrimejamento:false,
+    coceiraPele:false, urticaria:false, erupcao:false,
+    tosse:false, faltaAr:false, chiado:false,
+    tomouRemedio:false, remedio:'', horarioRemedio:'',
+    gatilhos:[], ambienteExterno:false, chuva:false, ventoso:false,
+    afetouSono:false, observacoes:''
+  }
+}
 function defaultRegistro(data: string): RegistroSaude {
   return { id: newId(), data, agua: 0, metaAgua: 2000, sono: { inicio:'', fim:'', qualidade:3 }, humor:3, energia:3, treino:{ realizado:false, tipo:'', duracao:0 }, peso:0, sintomas:[], notas:'', criadoEm: Date.now() }
 }
@@ -334,6 +367,121 @@ function Drawer({ open, onClose, uid, registro, onSave }: {
 
           <div style={{ height:1, background:'rgba(255,255,255,0.07)' }} />
 
+          {/* Alergia */}
+          <section>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+              <span style={{ fontSize:'1.1rem' }}>🤧</span>
+              <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.9rem', color:'var(--text-primary)' }}>Controle de Alergia</span>
+            </div>
+            {/* Intensidade */}
+            <Lbl>Intensidade hoje</Lbl>
+            <div style={{ display:'flex', gap:8, marginBottom:14 }}>
+              {([{v:0,l:'Nenhuma',c:'#94a3b8',e:'✅'},{v:1,l:'Leve',c:'#34d399',e:'😌'},{v:2,l:'Moderada',c:'#fbbf24',e:'😤'},{v:3,l:'Intensa',c:'#f87171',e:'😫'}] as const).map(opt=>{
+                const al = r.alergia || defaultAlergia()
+                const sel = al.intensidade === opt.v
+                return (
+                  <button key={opt.v} onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),intensidade:opt.v as 0|1|2|3}})}
+                    style={{ flex:1,padding:'8px 4px',borderRadius:10,border:`2px solid ${sel?opt.c+'80':'rgba(255,255,255,0.1)'}`,background:sel?`${opt.c}18`:'rgba(255,255,255,0.03)',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:3,transition:'all 0.15s' }}>
+                    <span style={{ fontSize:'1.2rem' }}>{opt.e}</span>
+                    <span style={{ fontSize:'0.62rem',fontWeight:sel?700:400,color:sel?opt.c:'var(--text-muted)' }}>{opt.l}</span>
+                  </button>
+                )
+              })}
+            </div>
+            {/* Sintomas por categoria */}
+            {(r.alergia?.intensidade||0) > 0 && (
+              <>
+                {/* Nasal */}
+                <Lbl>🫁 Sintomas nasais</Lbl>
+                <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:12 }}>
+                  {([['espirros','Espirros'],['coriza','Coriza'],['obstrucao','Obstrução'],['coceiraNasal','Coceira nasal']] as const).map(([k,l])=>{
+                    const al = r.alergia||defaultAlergia(); const ativo = al[k]
+                    return <button key={k} onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),[k]:!(r.alergia as any)?.[k]}})}
+                      style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${ativo?'rgba(96,165,250,0.6)':'rgba(255,255,255,0.1)'}`,background:ativo?'rgba(96,165,250,0.15)':'rgba(255,255,255,0.03)',color:ativo?'#93c5fd':'var(--text-muted)',fontSize:'0.72rem',fontWeight:ativo?700:400,cursor:'pointer' }}>{l}</button>
+                  })}
+                </div>
+                {/* Ocular */}
+                <Lbl>👁 Sintomas oculares</Lbl>
+                <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:12 }}>
+                  {([['coceiraOlhos','Coceira nos olhos'],['olhosVermelhos','Olhos vermelhos'],['lacrimejamento','Lacrimejamento']] as const).map(([k,l])=>{
+                    const al = r.alergia||defaultAlergia(); const ativo = al[k]
+                    return <button key={k} onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),[k]:!(r.alergia as any)?.[k]}})}
+                      style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${ativo?'rgba(167,139,250,0.6)':'rgba(255,255,255,0.1)'}`,background:ativo?'rgba(167,139,250,0.15)':'rgba(255,255,255,0.03)',color:ativo?'#c4b5fd':'var(--text-muted)',fontSize:'0.72rem',fontWeight:ativo?700:400,cursor:'pointer' }}>{l}</button>
+                  })}
+                </div>
+                {/* Pele */}
+                <Lbl>🖐 Pele</Lbl>
+                <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:12 }}>
+                  {([['coceiraPele','Coceira na pele'],['urticaria','Urticária'],['erupcao','Erupção/Manchas']] as const).map(([k,l])=>{
+                    const al = r.alergia||defaultAlergia(); const ativo = al[k]
+                    return <button key={k} onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),[k]:!(r.alergia as any)?.[k]}})}
+                      style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${ativo?'rgba(251,191,36,0.6)':'rgba(255,255,255,0.1)'}`,background:ativo?'rgba(251,191,36,0.12)':'rgba(255,255,255,0.03)',color:ativo?'#fcd34d':'var(--text-muted)',fontSize:'0.72rem',fontWeight:ativo?700:400,cursor:'pointer' }}>{l}</button>
+                  })}
+                </div>
+                {/* Respiratório */}
+                <Lbl>💨 Respiratório</Lbl>
+                <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:14 }}>
+                  {([['tosse','Tosse'],['faltaAr','Falta de ar'],['chiado','Chiado no peito']] as const).map(([k,l])=>{
+                    const al = r.alergia||defaultAlergia(); const ativo = al[k]
+                    return <button key={k} onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),[k]:!(r.alergia as any)?.[k]}})}
+                      style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${ativo?'rgba(248,113,113,0.6)':'rgba(255,255,255,0.1)'}`,background:ativo?'rgba(248,113,113,0.12)':'rgba(255,255,255,0.03)',color:ativo?'#fca5a5':'var(--text-muted)',fontSize:'0.72rem',fontWeight:ativo?700:400,cursor:'pointer' }}>{l}</button>
+                  })}
+                </div>
+                {/* Gatilhos */}
+                <Lbl>🌪 Possíveis gatilhos</Lbl>
+                <div style={{ display:'flex',flexWrap:'wrap',gap:6,marginBottom:14 }}>
+                  {(['Poeira','Pólen','Pelo de animal','Mofo/Fungo','Alimento','Ar-condicionado','Perfume/Spray','Fumaça','Mudança de temperatura','Outro']).map(g=>{
+                    const al = r.alergia||defaultAlergia(); const ativo = al.gatilhos.includes(g)
+                    return <button key={g} onClick={()=>upd({alergia:{...al,gatilhos:ativo?al.gatilhos.filter(x=>x!==g):[...al.gatilhos,g]}})}
+                      style={{ padding:'5px 12px',borderRadius:20,border:`1px solid ${ativo?'rgba(52,211,153,0.5)':'rgba(255,255,255,0.1)'}`,background:ativo?'rgba(52,211,153,0.1)':'rgba(255,255,255,0.03)',color:ativo?'#6ee7b7':'var(--text-muted)',fontSize:'0.72rem',fontWeight:ativo?700:400,cursor:'pointer' }}>{g}</button>
+                  })}
+                </div>
+                {/* Ambiente */}
+                <Lbl>🌤 Condições ambientais</Lbl>
+                <div style={{ display:'flex',gap:8,marginBottom:14 }}>
+                  {([['ambienteExterno','🌳 Fui ao exterior'],['chuva','🌧 Chuva/Umidade'],['ventoso','💨 Dia ventoso']] as const).map(([k,l])=>{
+                    const al = r.alergia||defaultAlergia(); const ativo = al[k]
+                    return <button key={k} onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),[k]:!(r.alergia as any)?.[k]}})}
+                      style={{ flex:1,padding:'7px 4px',borderRadius:9,border:`1px solid ${ativo?'rgba(45,212,191,0.5)':'rgba(255,255,255,0.1)'}`,background:ativo?'rgba(45,212,191,0.1)':'rgba(255,255,255,0.03)',color:ativo?'#5eead4':'var(--text-muted)',fontSize:'0.68rem',fontWeight:ativo?700:400,cursor:'pointer',textAlign:'center' }}>{l}</button>
+                  })}
+                </div>
+                {/* Antihistamínico */}
+                <div style={{ padding:'10px 14px',borderRadius:10,background:'rgba(248,113,113,0.06)',border:'1px solid rgba(248,113,113,0.2)',marginBottom:14 }}>
+                  <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
+                    <span style={{ fontSize:'0.78rem',fontWeight:700,color:'var(--text-primary)' }}>💊 Antialérgico</span>
+                    <button onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),tomouRemedio:!(r.alergia?.tomouRemedio)}})}
+                      style={{ padding:'4px 14px',borderRadius:8,border:`1px solid ${r.alergia?.tomouRemedio?'rgba(248,113,113,0.5)':'rgba(255,255,255,0.15)'}`,background:r.alergia?.tomouRemedio?'rgba(248,113,113,0.15)':'rgba(255,255,255,0.04)',color:r.alergia?.tomouRemedio?'#fca5a5':'var(--text-muted)',fontSize:'0.72rem',fontWeight:700,cursor:'pointer' }}>
+                      {r.alergia?.tomouRemedio?'✅ Tomou':'○ Não tomou'}
+                    </button>
+                  </div>
+                  {r.alergia?.tomouRemedio && (
+                    <div style={{ display:'grid',gridTemplateColumns:'1fr auto',gap:8 }}>
+                      <div>
+                        <Lbl>Medicamento</Lbl>
+                        <input style={IS} value={r.alergia.remedio} onChange={e=>upd({alergia:{...r.alergia!,remedio:e.target.value}})} placeholder="Ex: Loratadina 10mg…" />
+                      </div>
+                      <div>
+                        <Lbl>Horário</Lbl>
+                        <input type="time" style={{...IS,width:90}} value={r.alergia.horarioRemedio} onChange={e=>upd({alergia:{...r.alergia!,horarioRemedio:e.target.value}})} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {/* Afetou sono / Observações */}
+                <div style={{ display:'flex',alignItems:'center',gap:10,marginBottom:12 }}>
+                  <button onClick={()=>upd({alergia:{...(r.alergia||defaultAlergia()),afetouSono:!(r.alergia?.afetouSono)}})}
+                    style={{ padding:'6px 14px',borderRadius:8,border:`1px solid ${r.alergia?.afetouSono?'rgba(167,139,250,0.5)':'rgba(255,255,255,0.12)'}`,background:r.alergia?.afetouSono?'rgba(167,139,250,0.12)':'rgba(255,255,255,0.04)',color:r.alergia?.afetouSono?'#c4b5fd':'var(--text-muted)',fontSize:'0.72rem',fontWeight:700,cursor:'pointer' }}>
+                    😴 Afetou meu sono
+                  </button>
+                </div>
+                <Lbl>📝 Observações da alergia</Lbl>
+                <textarea style={{...IS,minHeight:60,resize:'vertical',lineHeight:1.5}} value={r.alergia?.observacoes||''} onChange={e=>upd({alergia:{...(r.alergia||defaultAlergia()),observacoes:e.target.value}})} placeholder="Como você se sentiu? Algo incomum hoje?…" />
+              </>
+            )}
+          </section>
+
+          <div style={{ height:1, background:'rgba(255,255,255,0.07)' }} />
+
           {/* Notas */}
           <section>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
@@ -432,31 +580,130 @@ function BentoHumorEnergia({ r, historico }: { r:RegistroSaude; historico:Regist
   )
 }
 
-function BentoPeso({ r, historico }: { r:RegistroSaude; historico:RegistroSaude[] }) {
-  const comPeso = historico.filter(x=>x.peso>0).sort((a,b)=>a.data.localeCompare(b.data))
-  const anterior = comPeso.length>1 ? comPeso[comPeso.length-2] : null
-  const diff = r.peso>0 && anterior ? Math.round((r.peso-anterior.peso)*10)/10 : null
-  const valores = comPeso.slice(-10).map(x=>x.peso)
+function PesoLineChart({ dados, color, height=80 }: { dados:{data:string;peso:number}[]; color:string; height?:number }) {
+  if (dados.length < 2) return null
+  const W = 280, H = height, PAD = 4
+  const pesos = dados.map(d=>d.peso)
+  const minP = Math.min(...pesos), maxP = Math.max(...pesos)
+  const range = maxP - minP || 1
+  const pts = dados.map((d,i) => {
+    const x = PAD + (i/(dados.length-1))*(W-PAD*2)
+    const y = H - PAD - ((d.peso-minP)/range)*(H-PAD*2)
+    return { x, y, ...d }
+  })
+  const polyline = pts.map(p=>`${p.x},${p.y}`).join(' ')
+  const area = `${PAD},${H} ${polyline} ${W-PAD},${H}`
+  const last = pts[pts.length-1]
   return (
-    <Card pastel="teal" style={{ display:'flex',flexDirection:'column',gap:12 }}>
-      <div style={{ display:'flex',alignItems:'center',gap:8 }}>
-        <span style={{ fontSize:'1.2rem' }}>⚖️</span>
-        <span style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.88rem',color:'var(--text-primary)' }}>Peso Corporal</span>
-      </div>
-      <div style={{ display:'flex',alignItems:'flex-end',gap:14 }}>
-        <div>
-          <div style={{ fontFamily:'var(--font-display)',fontWeight:900,fontSize:'1.9rem',color:PASTEL.teal.text,lineHeight:1 }}>
-            {r.peso>0?r.peso:'—'}<span style={{ fontSize:'0.8rem',fontWeight:500,marginLeft:3 }}>{r.peso>0?'kg':''}</span>
-          </div>
-          {diff!==null && (
-            <div style={{ fontSize:'0.72rem',fontWeight:700,color:diff<=0?'#34d399':'#f87171',marginTop:4 }}>
-              {diff<=0?'▼':'▲'} {Math.abs(diff)}kg vs anterior
-            </div>
-          )}
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow:'visible', display:'block' }}>
+      {/* Grid lines */}
+      {[0,0.25,0.5,0.75,1].map(f=>{
+        const y = PAD + (1-f)*(H-PAD*2)
+        const val = minP + f*range
+        return (
+          <g key={f}>
+            <line x1={PAD} y1={y} x2={W-PAD} y2={y} stroke="rgba(255,255,255,0.06)" strokeWidth={1} strokeDasharray="3,4" />
+            <text x={PAD} y={y-2} fontSize={7} fill="rgba(255,255,255,0.25)" fontFamily="monospace">{val.toFixed(1)}</text>
+          </g>
+        )
+      })}
+      {/* Area fill */}
+      <polygon points={area} fill={`${color}12`} />
+      {/* Line */}
+      <polyline points={polyline} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      {/* Dots for fewer data points */}
+      {dados.length <= 30 && pts.map((p,i)=>(
+        <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={color} opacity={0.8} />
+      ))}
+      {/* Last point highlighted */}
+      <circle cx={last.x} cy={last.y} r={4} fill={color} filter={`drop-shadow(0 0 4px ${color})`} />
+      <text x={last.x+6} y={last.y+4} fontSize={9} fill={color} fontWeight="bold" fontFamily="monospace">{last.peso}kg</text>
+      {/* First point label */}
+      {dados.length > 1 && (
+        <text x={pts[0].x-2} y={pts[0].y+4} fontSize={8} fill="rgba(255,255,255,0.35)" fontFamily="monospace">{pts[0].peso}kg</text>
+      )}
+    </svg>
+  )
+}
+
+function BentoPeso({ r, historico }: { r:RegistroSaude; historico:RegistroSaude[] }) {
+  const [periodo, setPeriodo] = useState<30|60|90>(90)
+  // Últimos N dias com peso registrado
+  const corte = new Date(); corte.setDate(corte.getDate() - periodo)
+  const cutoff = corte.toISOString().slice(0,10)
+  const comPeso = historico.filter(x=>x.peso>0&&x.data>=cutoff).sort((a,b)=>a.data.localeCompare(b.data))
+  const todosComPeso = historico.filter(x=>x.peso>0).sort((a,b)=>a.data.localeCompare(b.data))
+  const anterior = todosComPeso.length>1 ? todosComPeso[todosComPeso.length-2] : null
+  const diff = r.peso>0 && anterior ? Math.round((r.peso-anterior.peso)*10)/10 : null
+  const pesoInicio = comPeso.length>0 ? comPeso[0].peso : null
+  const deltaTotal = r.peso>0 && pesoInicio ? Math.round((r.peso-pesoInicio)*10)/10 : null
+  const pesoMin = comPeso.length>0 ? Math.min(...comPeso.map(x=>x.peso)) : null
+  const pesoMax = comPeso.length>0 ? Math.max(...comPeso.map(x=>x.peso)) : null
+  const tendencia = comPeso.length>=3 ? (() => {
+    const n = comPeso.length
+    const ultimo3 = comPeso.slice(-3).map(x=>x.peso)
+    const media3 = ultimo3.reduce((a,b)=>a+b,0)/3
+    const pesoAtual = r.peso || ultimo3[ultimo3.length-1]
+    return pesoAtual < media3 ? 'descendo' : pesoAtual > media3 ? 'subindo' : 'estável'
+  })() : null
+
+  return (
+    <Card pastel="teal" style={{ display:'flex',flexDirection:'column',gap:14, gridColumn:'span 2' }}>
+      {/* Header */}
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8 }}>
+        <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+          <span style={{ fontSize:'1.2rem' }}>⚖️</span>
+          <span style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.88rem',color:'var(--text-primary)' }}>Controle de Peso</span>
         </div>
-        {valores.length >= 2 && <Sparkline values={valores} color={PASTEL.teal.text} height={36} width={80} />}
+        {/* Seletor período */}
+        <div style={{ display:'flex',gap:4 }}>
+          {([30,60,90] as const).map(p=>(
+            <button key={p} onClick={()=>setPeriodo(p)}
+              style={{ padding:'3px 10px',borderRadius:6,border:`1px solid ${periodo===p?PASTEL.teal.border:'rgba(255,255,255,0.1)'}`,background:periodo===p?PASTEL.teal.bg:'transparent',color:periodo===p?PASTEL.teal.text:'var(--text-muted)',fontSize:'0.68rem',fontWeight:700,cursor:'pointer' }}>
+              {p}d
+            </button>
+          ))}
+        </div>
       </div>
-      {comPeso.length === 0 && <div style={{ fontSize:'0.72rem',color:'var(--text-muted)' }}>Registre seu peso na gaveta →</div>}
+
+      {/* KPIs linha */}
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8 }}>
+        {[
+          { l:'Atual', v:r.peso>0?`${r.peso}kg`:'—', c:PASTEL.teal.text },
+          { l:'Vs anterior', v:diff!==null?`${diff>0?'+':''} ${diff}kg`:'—', c:diff===null?'var(--text-muted)':diff<=0?'#34d399':'#f87171' },
+          { l:`Δ ${periodo}d`, v:deltaTotal!==null?`${deltaTotal>0?'+':''} ${deltaTotal}kg`:'—', c:deltaTotal===null?'var(--text-muted)':deltaTotal<=0?'#34d399':'#f87171' },
+          { l:'Tendência', v:tendencia==='descendo'?'↘ Descendo':tendencia==='subindo'?'↗ Subindo':tendencia==='estável'?'→ Estável':'—', c:tendencia==='descendo'?'#34d399':tendencia==='subindo'?'#f87171':'#fbbf24' },
+        ].map(k=>(
+          <div key={k.l} style={{ padding:'8px 10px',borderRadius:10,background:'rgba(0,0,0,0.1)',textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'0.88rem',color:k.c,lineHeight:1,marginBottom:3 }}>{k.v}</div>
+            <div style={{ fontSize:'0.55rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.06em' }}>{k.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Gráfico */}
+      {comPeso.length >= 2 ? (
+        <div style={{ padding:'8px 4px 0' }}>
+          <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:8,display:'flex',justifyContent:'space-between' }}>
+            <span>Evolução do peso — últimos {periodo} dias</span>
+            <span>{comPeso.length} medições · Mín {pesoMin}kg · Máx {pesoMax}kg</span>
+          </div>
+          <PesoLineChart dados={comPeso.map(x=>({data:x.data,peso:x.peso}))} color={PASTEL.teal.text} height={90} />
+          {/* Eixo X — datas */}
+          <div style={{ display:'flex',justifyContent:'space-between',marginTop:4 }}>
+            <span style={{ fontSize:'0.55rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)' }}>
+              {new Date(comPeso[0].data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}
+            </span>
+            <span style={{ fontSize:'0.55rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)' }}>
+              {new Date(comPeso[comPeso.length-1].data+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'short'})}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div style={{ textAlign:'center',padding:'20px 0',color:'var(--text-muted)',fontSize:'0.78rem' }}>
+          {comPeso.length===0?'Registre seu peso na gaveta para ver o gráfico':'Precisamos de ao menos 2 medições para exibir o gráfico'}
+        </div>
+      )}
     </Card>
   )
 }
@@ -520,6 +767,117 @@ function BentoSono({ r, historico }: { r:RegistroSaude; historico:RegistroSaude[
         <div style={{ padding:'6px 10px',borderRadius:8,background:'rgba(0,0,0,0.15)',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
           <span style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>Média 7d</span>
           <span style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.82rem',color:PASTEL.purple.text }}>{mediaSono}h</span>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+function BentoAlergia({ r, historico }: { r:RegistroSaude; historico:RegistroSaude[] }) {
+  const al = r.alergia
+  const INTENS = [{v:0,l:'Sem alergia',c:'#94a3b8',e:'✅'},{v:1,l:'Leve',c:'#34d399',e:'😌'},{v:2,l:'Moderada',c:'#fbbf24',e:'😤'},{v:3,l:'Intensa',c:'#f87171',e:'😫'}]
+  const conf = INTENS[al?.intensidade||0]
+  // histórico: últimos 30 dias com alergia
+  const mes = r.data.slice(0,7)
+  const doMes = historico.filter(x=>x.data.startsWith(mes)&&x.alergia&&(x.alergia.intensidade||0)>0)
+  const diasComAlergia = doMes.length
+  const diasIntensa = doMes.filter(x=>(x.alergia?.intensidade||0)===3).length
+  const diasComRemedio = historico.filter(x=>x.alergia?.tomouRemedio).length
+  // sintomas mais frequentes do mês
+  const contSintomas: Record<string,number> = {}
+  const CAMPOS_SINTOMA = ['espirros','coriza','obstrucao','coceiraNasal','coceiraOlhos','olhosVermelhos','lacrimejamento','coceiraPele','urticaria','tosse','faltaAr'] as const
+  const LABELS_SINTOMA: Record<string,string> = { espirros:'Espirros',coriza:'Coriza',obstrucao:'Obstrução nasal',coceiraNasal:'Coceira nasal',coceiraOlhos:'Coceira olhos',olhosVermelhos:'Olhos vermelhos',lacrimejamento:'Lacrimejamento',coceiraPele:'Coceira pele',urticaria:'Urticária',tosse:'Tosse',faltaAr:'Falta de ar' }
+  doMes.forEach(reg=>{
+    if(!reg.alergia) return
+    CAMPOS_SINTOMA.forEach(c=>{ if((reg.alergia as any)?.[c]) contSintomas[c]=(contSintomas[c]||0)+1 })
+  })
+  const topSintomas = Object.entries(contSintomas).sort((a,b)=>b[1]-a[1]).slice(0,4)
+  // gatilhos do mês
+  const contGatilhos: Record<string,number> = {}
+  doMes.forEach(reg=>reg.alergia?.gatilhos.forEach(g=>{contGatilhos[g]=(contGatilhos[g]||0)+1}))
+  const topGatilho = Object.entries(contGatilhos).sort((a,b)=>b[1]-a[1])[0]
+  // Últimos 7 dias — mini sparkline de intensidade
+  const ultimos7 = historico.slice(-7).map(x=>x.alergia?.intensidade||0)
+
+  return (
+    <Card pastel="red" style={{ display:'flex',flexDirection:'column',gap:12 }}>
+      {/* Header */}
+      <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+        <div style={{ display:'flex',alignItems:'center',gap:8 }}>
+          <span style={{ fontSize:'1.2rem' }}>🤧</span>
+          <span style={{ fontFamily:'var(--font-display)',fontWeight:700,fontSize:'0.88rem',color:'var(--text-primary)' }}>Alergias</span>
+        </div>
+        <span style={{ fontFamily:'var(--font-mono)',fontSize:'0.62rem',color:'var(--text-muted)' }}>este mês</span>
+      </div>
+
+      {/* Status de hoje */}
+      <div style={{ display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:12,background:`${conf.c}10`,border:`1px solid ${conf.c}30` }}>
+        <span style={{ fontSize:'1.8rem' }}>{conf.e}</span>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:700,fontSize:'0.88rem',color:conf.c }}>{conf.l}</div>
+          <div style={{ fontSize:'0.65rem',color:'var(--text-muted)',marginTop:2 }}>
+            {!al||al.intensidade===0?'Sem sintomas hoje':''}
+            {al&&al.intensidade>0&&[al.espirros&&'espirros',al.coriza&&'coriza',al.coceiraNasal&&'coceira nasal',al.coceiraOlhos&&'coceira olhos',al.coceiraPele&&'coceira pele',al.tosse&&'tosse'].filter(Boolean).slice(0,3).join(' · ')}
+          </div>
+        </div>
+        {al?.tomouRemedio && (
+          <div style={{ fontSize:'0.7rem',color:'#fca5a5',fontWeight:700,display:'flex',flexDirection:'column',alignItems:'center',gap:1 }}>
+            <span style={{ fontSize:'1rem' }}>💊</span>
+            <span>remédio</span>
+          </div>
+        )}
+      </div>
+
+      {/* Mini sparkline 7d */}
+      {ultimos7.some(v=>v>0) && (
+        <div>
+          <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5 }}>Intensidade últimos 7 dias</div>
+          <div style={{ display:'flex',gap:3,alignItems:'flex-end',height:28 }}>
+            {ultimos7.map((v,i)=>{
+              const c = v===0?'rgba(255,255,255,0.07)':v===1?'#34d399':v===2?'#fbbf24':'#f87171'
+              return <div key={i} style={{ flex:1,height:Math.max((v/3)*24,3),borderRadius:'3px 3px 0 0',background:c,transition:'height 0.4s' }} title={['Nenhuma','Leve','Moderada','Intensa'][v]} />
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Stats do mês */}
+      <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8 }}>
+        {[
+          {l:'Dias c/ alergia',v:diasComAlergia,c:'#fbbf24'},
+          {l:'Dias intensos',v:diasIntensa,c:'#f87171'},
+          {l:'Remédio',v:diasComRemedio,c:'#c4b5fd'},
+        ].map(k=>(
+          <div key={k.l} style={{ padding:'8px',borderRadius:8,background:'rgba(0,0,0,0.1)',textAlign:'center' }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.1rem',color:k.c,lineHeight:1 }}>{k.v}</div>
+            <div style={{ fontSize:'0.55rem',color:'var(--text-muted)',marginTop:3,lineHeight:1.3 }}>{k.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Top sintomas */}
+      {topSintomas.length > 0 && (
+        <div>
+          <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6 }}>Sintomas mais frequentes</div>
+          <div style={{ display:'flex',flexDirection:'column',gap:4 }}>
+            {topSintomas.map(([k,n])=>(
+              <div key={k} style={{ display:'flex',alignItems:'center',gap:8 }}>
+                <div style={{ fontSize:'0.7rem',color:'var(--text-secondary)',flex:1 }}>{LABELS_SINTOMA[k]||k}</div>
+                <div style={{ width:60,height:4,borderRadius:2,background:'rgba(248,113,113,0.12)',overflow:'hidden' }}>
+                  <div style={{ height:'100%',width:`${(n/doMes.length)*100}%`,background:PASTEL.red.text,borderRadius:2 }} />
+                </div>
+                <div style={{ fontFamily:'var(--font-mono)',fontSize:'0.65rem',color:PASTEL.red.text,width:22,textAlign:'right' }}>{n}x</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Gatilho principal */}
+      {topGatilho && (
+        <div style={{ padding:'6px 12px',borderRadius:8,background:'rgba(0,0,0,0.1)',display:'flex',justifyContent:'space-between',alignItems:'center' }}>
+          <span style={{ fontSize:'0.65rem',color:'var(--text-muted)' }}>🌪 Gatilho principal</span>
+          <span style={{ fontWeight:700,fontSize:'0.72rem',color:'#6ee7b7' }}>{topGatilho[0]} ({topGatilho[1]}x)</span>
         </div>
       )}
     </Card>
@@ -863,6 +1221,7 @@ export default function SaudeBemEstar() {
             <BentoPeso r={registroAtual} historico={historico} />
             <BentoTreino r={registroAtual} historico={historico} />
             <BentoSono r={registroAtual} historico={historico} />
+            <BentoAlergia r={registroAtual} historico={historico} />
             <BentoSintomas r={registroAtual} historico={historico} />
           </div>
         )}

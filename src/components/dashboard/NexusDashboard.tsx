@@ -2130,31 +2130,88 @@ function PainelVisaoGeralPontoSaldo({ onNavigate, dragging, dragOver: _dOps, onD
   )
 }
 
+function DashPesoMiniChart({ dados, color }: { dados:{peso:number}[]; color:string }) {
+  if (dados.length < 2) return null
+  const W = 200, H = 44, PAD = 3
+  const pesos = dados.map(d=>d.peso)
+  const minP = Math.min(...pesos), maxP = Math.max(...pesos), range = maxP-minP||1
+  const pts = dados.map((d,i)=>`${PAD+(i/(dados.length-1))*(W-PAD*2)},${H-PAD-((d.peso-minP)/range)*(H-PAD*2)}`).join(' ')
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:'block', overflow:'visible' }}>
+      <polygon points={`${PAD},${H} ${pts} ${W-PAD},${H}`} fill={`${color}12`} />
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      {dados.length <= 20 && dados.map((_,i)=>{
+        const x=PAD+(i/(dados.length-1))*(W-PAD*2)
+        const y=H-PAD-((dados[i].peso-minP)/range)*(H-PAD*2)
+        return <circle key={i} cx={x} cy={y} r={2} fill={color} opacity={0.7} />
+      })}
+    </svg>
+  )
+}
+
 function PainelVisaoGeralSaude({ onNavigate, dragging, dragOver: _dOsaude, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [registros, setRegistros] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/saude`), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
   const mes = new Date().toISOString().slice(0,7)
-  const regMes = registros.filter(r=>r.data?.startsWith(mes))
+  const regMes = registros.filter((r:any)=>r.data?.startsWith(mes))
   let streak=0; const dCheck=new Date()
   while(true){ const ds=dCheck.toISOString().slice(0,10); if(!registros.find((r:any)=>r.data===ds)) break; streak++; dCheck.setDate(dCheck.getDate()-1) }
+  // Peso — últimos 90 dias
+  const corte90 = new Date(); corte90.setDate(corte90.getDate()-90)
+  const cutoff = corte90.toISOString().slice(0,10)
+  const comPeso = [...registros].filter((r:any)=>r.peso>0&&r.data>=cutoff).sort((a:any,b:any)=>a.data.localeCompare(b.data))
+  const pesoAtual = comPeso.length>0 ? comPeso[comPeso.length-1].peso : null
+  const pesoInicio = comPeso.length>1 ? comPeso[0].peso : null
+  const deltaPeso = pesoAtual && pesoInicio ? Math.round((pesoAtual-pesoInicio)*10)/10 : null
   const cor='#34d399'
   return (
-    <button onClick={()=>onNavigate('saude')} draggable onDragStart={()=>onDragStart?.('saude')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'saude')} onDrop={e=>onDrop?.(e,'saude')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='saude'?0.45:1 }}
+    <div draggable onDragStart={()=>onDragStart?.('saude')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'saude')} onDrop={e=>onDrop?.(e,'saude')}
+      style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, transition:'all 0.2s', opacity:dragging==='saude'?0.45:1, cursor:'grab', display:'flex', flexDirection:'column', gap:12 }}
       onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
       onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
         <div>
-          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Saúde</div>
-          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{streak}d</div>
-          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>{regMes.length} registros este mês</div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>🏥 Saúde</div>
+          <div style={{ display:'flex',alignItems:'baseline',gap:8 }}>
+            <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{streak}d</div>
+            <div style={{ fontSize:'0.68rem', color:'var(--text-muted)' }}>streak</div>
+          </div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', marginTop:2 }}>{regMes.length} registros em {mes.slice(5)}</div>
         </div>
-        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>✚</span>
+        {/* Peso atual */}
+        {pesoAtual && (
+          <div style={{ textAlign:'right' }}>
+            <div style={{ fontFamily:'var(--font-display)',fontWeight:800,fontSize:'1.1rem',color:'#5eead4' }}>{pesoAtual}<span style={{ fontSize:'0.65rem',marginLeft:2 }}>kg</span></div>
+            {deltaPeso!==null && (
+              <div style={{ fontSize:'0.65rem',fontWeight:700,color:deltaPeso<=0?'#34d399':'#f87171',marginTop:1 }}>
+                {deltaPeso<=0?'▼':'▲'} {Math.abs(deltaPeso)}kg/90d
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      <div style={{ height:6, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
+      {/* Mini gráfico de peso */}
+      {comPeso.length >= 2 && (
+        <div>
+          <div style={{ fontSize:'0.55rem',color:'var(--text-muted)',marginBottom:4,fontFamily:'var(--font-mono)' }}>⚖️ Evolução do peso — 90 dias</div>
+          <DashPesoMiniChart dados={comPeso} color="#5eead4" />
+          <div style={{ display:'flex',justifyContent:'space-between',marginTop:2 }}>
+            <span style={{ fontSize:'0.5rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)' }}>{comPeso[0].peso}kg</span>
+            <span style={{ fontSize:'0.5rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)' }}>{comPeso[comPeso.length-1].peso}kg</span>
+          </div>
+        </div>
+      )}
+      {/* Barra streak */}
+      <div style={{ height:5, borderRadius:3, background:'rgba(255,255,255,0.07)', overflow:'hidden' }}>
         <div style={{ height:'100%', width:`${Math.min(100,streak*10)}%`, background:`linear-gradient(90deg,${cor},${cor}99)`, borderRadius:3, boxShadow:`0 0 8px ${cor}40` }} />
       </div>
-    </button>
+      <button onClick={()=>onNavigate('saude')}
+        style={{ padding:'5px',borderRadius:7,border:`1px solid ${cor}25`,background:'none',color:cor,fontFamily:'var(--font-display)',fontWeight:600,fontSize:'0.68rem',cursor:'pointer',opacity:0.7 }}>
+        Saúde & Bem-Estar →
+      </button>
+    </div>
   )
 }
 
