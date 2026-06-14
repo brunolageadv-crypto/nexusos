@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import AtlasGlobal from './AtlasGlobal'
 
 // ─── Pure math — no external deps ────────────────────────────────────────────
 
@@ -374,7 +375,7 @@ function FloatingParticle({ emoji, delay, duration, x }: { emoji: string; delay:
 export default function Geosfera() {
   const [now, setNow] = useState(new Date())
   const [curiosity] = useState(() => CURIOSITIES[Math.floor(Math.random() * CURIOSITIES.length)])
-  const [activeTab, setActiveTab] = useState<'overview' | 'clocks' | 'earth' | 'calendar'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'clocks' | 'earth' | 'calendar' | 'atlas'>('overview')
 
   useEffect(() => {
     const i = setInterval(() => setNow(new Date()), 1000)
@@ -417,6 +418,7 @@ export default function Geosfera() {
     { id: 'clocks',   label: 'Relógios',    icon: '🕐' },
     { id: 'earth',    label: 'Terra & Sol',  icon: '☀️' },
     { id: 'calendar', label: 'Calendário',   icon: '📅' },
+    { id: 'atlas',    label: 'Atlas Global', icon: '🗺️' },
   ] as const
 
   // CSS vars
@@ -694,6 +696,10 @@ export default function Geosfera() {
         )}
 
         {/* ── CALENDAR TAB ── */}
+        {activeTab === 'atlas' && (
+          <AtlasGlobal />
+        )}
+
         {activeTab === 'calendar' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16 }}>
             {[
