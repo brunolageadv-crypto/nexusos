@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { GameSudoku, GameConnect4, GameDamas, GameMastermind, GameMaze, GameHanoi, GamePuzzleSlide, GameLogicSeq, GamePatience, GameWordSearch } from './ArcadeGamesB'
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const SK = {
@@ -710,12 +711,24 @@ export const GAMES: GameDef[] = [
   { id:'reaction',name:'Teste de Reação',cat:'Reflexo',icon:'⚡',desc:'Clique o mais rápido possível',xpWin:40,xpPlay:8,xpRecord:15,component:(p)=><GameReaction {...p}/> },
   { id:'mathquiz',name:'Quiz Matemático',cat:'Matemática',icon:'🧮',desc:'Resolva 10 cálculos rápidos',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameMathQuiz {...p}/> },
   { id:'pong',name:'Pong',cat:'Arcade',icon:'🏓',desc:'Pingue-pongue clássico contra a IA',xpWin:50,xpPlay:10,xpRecord:20,component:(p)=><GamePong {...p}/> },
+  // Lote A + B — Fully playable
+  { id:'sudoku',name:'Sudoku',cat:'Puzzle',icon:'🔢',desc:'Preencha a grade com números 1-9',xpWin:100,xpPlay:20,xpRecord:40,component:(p)=><GameSudoku {...p}/> },
+  { id:'connect4',name:'Connect Four',cat:'Estratégia',icon:'🔴',desc:'Conecte quatro peças seguidas',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameConnect4 {...p}/> },
+  { id:'damas',name:'Damas',cat:'Estratégia',icon:'♟',desc:'Jogue damas contra a IA',xpWin:80,xpPlay:15,xpRecord:30,component:(p)=><GameDamas {...p}/> },
+  { id:'mastermind',name:'Mastermind',cat:'Lógica',icon:'🎯',desc:'Descubra o código secreto de cores',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameMastermind {...p}/> },
+  { id:'maze',name:'Labirinto',cat:'Lógica',icon:'🌀',desc:'Encontre a saída do labirinto',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameMaze {...p}/> },
+  { id:'hanoi',name:'Torres de Hanói',cat:'Puzzle',icon:'🗼',desc:'Mova todos os discos para outro pino',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameHanoi {...p}/> },
+  { id:'puzzle_slide',name:'Quebra-cabeça Deslizante',cat:'Puzzle',icon:'🎴',desc:'Deslize as peças para ordenar 1-15',xpWin:90,xpPlay:18,xpRecord:38,component:(p)=><GamePuzzleSlide {...p}/> },
+  { id:'logic_seq',name:'Sequências Lógicas',cat:'Lógica',icon:'🔣',desc:'Descubra o padrão da sequência',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameLogicSeq {...p}/> },
+  { id:'patience',name:'Paciência',cat:'Cartas',icon:'🃏',desc:'Klondike Solitaire clássico',xpWin:100,xpPlay:20,xpRecord:40,component:(p)=><GamePatience {...p}/> },
+  { id:'word_search',name:'Caça-Palavras',cat:'Palavras',icon:'🔍',desc:'Encontre as palavras jurídicas',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameWordSearch {...p}/> },
   // Stubs — development
   ...([
-    ['puzzle_slide','Quebra-cabeça Deslizante','Puzzle','🎴','Deslize as peças para completar a imagem'],
-    ['sudoku','Sudoku','Puzzle','🔢','Preencha a grade com números 1-9'],
+
+    // puzzle_slide — replaced below
+    // sudoku — replaced below
     ['nonogram','Nonogram','Puzzle','📋','Pinte as células baseado nas pistas'],
-    ['hanoi','Torres de Hanói','Puzzle','🗼','Mova todos os discos para outro pino'],
+    // hanoi — replaced below
     ['pipes','Pipe Puzzle','Puzzle','🔧','Conecte os canos para passar a água'],
     ['tangram','Tangram','Puzzle','⬟','Monte as formas com as peças'],
     ['jigsaw','Jigsaw Puzzle','Puzzle','🧩','Monte o quebra-cabeça de imagens'],
@@ -724,21 +737,21 @@ export const GAMES: GameDef[] = [
     ['num_memory','Memória Numérica','Memória','🔟','Memorize a sequência numérica'],
     ['visual_memory','Memória Visual','Memória','👁','Memorize a posição dos objetos'],
     ['color_memory','Memória de Cores','Memória','🎨','Memorize a sequência de cores'],
-    ['damas','Damas','Estratégia','♟','Jogue damas contra a IA'],
+    // damas — replaced below
     ['chess','Xadrez Simplificado','Estratégia','♚','Versão simplificada do xadrez'],
     ['othello','Othello','Estratégia','⚫','Domine o tabuleiro com suas peças'],
-    ['connect4','Connect Four','Estratégia','🔴','Conecte quatro peças seguidas'],
+    // connect4 — replaced below
     ['gomoku','Gomoku','Estratégia','⬤','Faça 5 em linha no tabuleiro'],
     ['hex','Hex','Estratégia','🔷','Conecte os dois lados do tabuleiro'],
     ['nim','Nim','Estratégia','🪨','Remova pedras estrategicamente'],
     ['mancala','Mancala','Estratégia','🫙','Colete mais pedras que o adversário'],
-    ['mastermind','Mastermind','Lógica','🎯','Descubra o código secreto'],
+    // mastermind — replaced below
     ['secret_code','Código Secreto','Lógica','🔐','Quebre o código numérico'],
-    ['maze','Labirinto','Lógica','🌀','Encontre a saída do labirinto'],
+    // maze — replaced below
     ['switches','Desafio de Interruptores','Lógica','💡','Ligue todas as lâmpadas'],
     ['num_cubes','Cubos Numéricos','Lógica','🎲','Complete as sequências de cubos'],
-    ['logic_seq','Sequências Lógicas','Lógica','🔣','Descubra o padrão da sequência'],
-    ['patience','Paciência','Cartas','🃏','Clássico paciência solitário'],
+    // logic_seq — replaced below
+    // patience — replaced below
     ['freecell','FreeCell','Cartas','🗂','Organize as cartas nas células livres'],
     ['spider','Spider Solitaire','Cartas','🕷','Solitário Spider com 2 naipes'],
     ['pyramid','Pyramid','Cartas','🔺','Some 13 com pares de cartas'],
@@ -750,7 +763,7 @@ export const GAMES: GameDef[] = [
     ['quick_click','Clique Rápido','Reflexo','🖱','Clique nos alvos o mais rápido possível'],
     ['aim','Mira Alvo','Reflexo','🎯','Acerte os alvos em movimento'],
     ['visual_reflex','Reflexo Visual','Reflexo','👀','Reaja às mudanças visuais'],
-    ['word_search','Caça-Palavras','Palavras','🔍','Encontre as palavras escondidas'],
+    // word_search — replaced below
     ['anagram','Anagrama','Palavras','🔀','Forme palavras com as letras embaralhadas'],
     ['hidden_word','Palavra Oculta','Palavras','🔑','Descubra a palavra oculta pelas dicas'],
     ['crossword','Palavra Cruzada','Palavras','📰','Complete a palavra cruzada'],
