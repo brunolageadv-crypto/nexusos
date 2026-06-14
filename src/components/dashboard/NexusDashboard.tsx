@@ -1,4 +1,5 @@
 import React from 'react'
+import PainelChecklistDia from './ChecklistDia'
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEditaisCadastrados, useEdital } from '../../hooks/useEdital'
@@ -1774,7 +1775,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
   ]
 
   // Drag and drop state
-  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo','agenda-hoje','agenda-semana','viagens-confirmadas','logs-hoje'])
+  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo','agenda-hoje','agenda-semana','viagens-confirmadas','logs-hoje','checklist-dia'])
   const [dragging, setDragging] = useState<string|null>(null)
   const [dragOver, setDragOver] = useState<string|null>(null)
 
@@ -1839,6 +1840,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
       case 'agenda-semana': return <PainelVisaoGeralAgendaSemana key="agenda-semana" {...props} />
       case 'viagens-confirmadas': return <PainelVisaoGeralViagensConfirmadas key="viagens-confirmadas" {...props} />
       case 'logs-hoje': return <PainelVisaoGeralLogs key="logs-hoje" {...props} />
+      case 'checklist-dia': return <PainelChecklistDia key="checklist-dia" {...props} />
       default: return null
     }
   }
