@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState, useMemo, useCallback, type ReactNode } from 'react'
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
+import { db } from './lib/firebase'
 import { useAuth } from './hooks/useAuth'
 import LoginPage from './auth/LoginPage'
 import GestorEditais from './components/editais/GestorEditais'
@@ -14,9 +16,6 @@ import MediaTracker from './components/media/MediaTracker'
 import GamingHub from './components/gaming/GamingHub'
 import LinksInteresse from './components/links/LinksInteresse'
 import Agenda from './components/Agenda/Agenda'
-// Viagens module embedded below
-import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
-import { db } from './lib/firebase'
 
 
 type Theme = 'dark' | 'light'
@@ -287,7 +286,8 @@ export default function App() {
   return <ThemeProvider><Root /></ThemeProvider>
 }
 
-// ═══ VIAGENS MODULE ═══════════════════════════
+// ═══ VIAGENS MODULE ═══
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type StatusViagem = 'Expectativa' | 'Em Planejamento' | 'Confirmada' | 'Realizada'
 type FinalidadeViagem = 'Passeio' | 'Férias' | 'Profissional' | 'Concurso' | 'Lua de Mel' | 'Aventura' | 'Cultural' | 'Outros'
@@ -950,7 +950,7 @@ function CardViagem({ viagem, hospedagens, onOpen, onDelete }: { viagem: Viagem;
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
-function Viagens()
+function Viagens() {
   const uid = useUid()
   const [viagens, setViagens] = useState<Viagem[]>([])
   const [hospedagens, setHospedagens] = useState<Hospedagem[]>([])
@@ -1163,6 +1163,5 @@ function Viagens()
         />
       )}
     </div>
-  </div>
- )
+  )
 }
