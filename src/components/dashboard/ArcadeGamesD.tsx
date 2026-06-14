@@ -435,7 +435,7 @@ export function GameOthello({ onEnd, bestScore: _bs }: GameProps) {
   const [status, setStatus] = useState<'playing'|'win'|'loss'|'draw'>('playing')
   const [hover, setHover] = useState<[number,number]|null>(null)
 
-  const validMoves = getValid(board, turn)
+  // validMoves used implicitly via getFlips in render
   const pCount = board.flat().filter(c => c === 'P').length
   const aiCount = board.flat().filter(c => c === 'AI').length
 
