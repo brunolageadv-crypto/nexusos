@@ -893,7 +893,8 @@ export function GameConnectDots({ onEnd, bestScore }: GameProps) {
 export function GameStackBlocks({ onEnd, bestScore }: GameProps) {
   const W = 360, H = 480
   const cv = useRef<HTMLCanvasElement>(null)
-  const S = useRef({ blocks: [] as { x: number; w: number; y: number }[], moving: { x: number; w: number; dir: 1 | -1; spd: number }, score: 0, over: false, started: false })
+  type SBState = { blocks: { x: number; w: number; y: number }[]; moving: { x: number; w: number; dir: number; spd: number }; score: number; over: boolean; started: boolean }
+  const S = useRef<SBState>({ blocks: [], moving: { x: 0, w: 0, dir: 1, spd: 3 }, score: 0, over: false, started: false })
   const animRef = useRef<number>()
   const [ui, setUi] = useState({ score: 0, over: false, started: false })
   const BLOCK_H = 24, COLORS_S = ['#f87171', '#fb923c', '#fbbf24', '#34d399', '#60a5fa', '#a78bfa', '#f472b6']
