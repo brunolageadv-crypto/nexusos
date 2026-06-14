@@ -1,93 +1,175 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── World base paths (Natural Earth 110m, public domain, simplified) ─────────
+const WORLD_PATHS: {n:string;d:string}[] = [
+  {n:'Afghanistan',d:'M670,151L709,147L678,168L669,167L670,151Z'},
+  {n:'Angola',d:'M545,266L566,280L564,299L533,298L534,267L545,266Z'},
+  {n:'Albania',d:'M557,134L556,140L557,134Z'},
+  {n:'United Arab Emirates',d:'M643,183L656,179L653,188L643,183Z'},
+  {n:'Argentina',d:'M318,403L309,396L318,403Z M320,311L340,320L337,325L351,325L340,334L342,353L319,364L311,395L300,394L304,337L320,311Z'},
+  {n:'Armenia',d:'M621,136L629,142L621,136Z'},
+  {n:'Antarctica',d:'M335,472L316,473L335,472Z M58,471L45,468L58,471Z M375,467L380,472L350,474L375,467Z M163,454L170,454L163,454Z M225,450L216,450L225,450Z M310,447L292,449L305,441L310,447Z M337,428L318,439L331,455L285,463L295,466L283,470L338,481L421,473L402,467L481,447L607,444L651,433L691,439L694,451L744,434L875,431L976,449L954,462L964,469L944,475L1000,485L0,485L102,486L73,482L64,475L93,473L60,464L97,459L309,453L313,436L337,428Z'},
+  {n:'Australia',d:'M904,363L911,370L904,363Z M899,288L925,322L917,354L891,356L880,348L883,341L878,347L865,337L820,345L817,310L868,281L879,283L876,292L889,299L895,281L899,288Z'},
+  {n:'Austria',d:'M547,116L526,119L547,116Z'},
+  {n:'Azerbaijan',d:'M632,136L640,138L636,144L627,139L632,136Z'},
+  {n:'Burundi',d:'M581,262L585,257L581,262Z'},
+  {n:'Belgium',d:'M509,107L517,111L509,107Z'},
+  {n:'Benin',d:'M507,233L502,221L508,216L507,233Z'},
+  {n:'Burkina Faso',d:'M492,223L485,217L501,209L506,217L492,223Z'},
+  {n:'Bangladesh',d:'M757,189L747,189L746,177L757,189Z'},
+  {n:'Bulgaria',d:'M563,127L579,129L564,135L563,127Z'},
+  {n:'Bosnia and Herzegovina',d:'M553,125L552,132L544,126L553,125Z'},
+  {n:'Belarus',d:'M565,100L578,94L591,102L565,107L565,100Z'},
+  {n:'Bolivia',d:'M325,311L312,314L307,280L319,277L338,295L339,305L325,311Z'},
+  {n:'Brazil',d:'M340,334L351,323L339,311L338,295L319,277L304,281L294,271L306,262L306,245L318,248L320,239L333,235L336,246L357,238L360,250L404,270L386,311L368,319L352,344L340,334Z'},
+  {n:'Bhutan',d:'M755,173L747,175L755,173Z'},
+  {n:'Botswana',d:'M571,301L582,311L558,325L558,301L571,301Z'},
+  {n:'Central African Republic',d:'M542,229L564,219L576,235L544,244L542,229Z'},
+  {n:'Canada',d:'M328,114L321,111L328,114Z M157,115L143,109L157,115Z M344,109L353,120L335,118L344,109Z M131,100L136,105L131,100Z M273,76L267,77L273,76Z M263,68L277,73L258,73L263,68Z M234,58L223,57L234,58Z M248,57L257,63L270,57L274,64L237,86L271,97L278,108L287,93L285,76L312,88L321,82L345,102L302,120L319,113L321,122L332,119L318,129L310,118L270,134L271,124L255,116L158,114L124,84L108,82L108,56L233,63L236,50L248,57Z M183,47L219,57L177,58L188,55L168,51L183,47Z M210,46L203,46L210,46Z M288,47L275,46L288,47Z M260,47L328,64L311,66L316,78L284,72L297,62L254,54L249,49L260,47Z M221,45L231,51L215,49L221,45Z M241,48L233,46L241,48Z M165,52L150,50L153,44L173,44L165,52Z M240,42L231,42L240,42Z M226,37L215,40L226,37Z M199,38L173,41L199,38Z M237,36L278,42L237,36Z M177,34L159,39L177,34Z M239,35L232,34L239,35Z M194,34L185,34L194,34Z M195,32L187,32L195,32Z M234,33L226,31L234,33Z M222,32L207,30L222,32Z M258,29L231,27L258,29Z M310,19L328,21L276,38L251,38L264,35L259,27L273,26L246,23L310,19Z'},
+  {n:'Switzerland',d:'M527,118L517,121L527,118Z'},
+  {n:'Chile',d:'M309,396L311,404L293,397L309,396Z M311,310L296,387L310,395L302,400L292,395L290,380L298,368L305,301L311,310Z'},
+  {n:'China',d:'M855,112L875,115L872,122L863,132L826,142L840,146L831,153L838,172L807,193L793,185L776,189L767,168L747,174L721,164L705,140L744,113L768,131L792,134L832,120L821,116L836,102L855,112Z'},
+  {n:'Ivory Coast',d:'M492,236L479,238L477,222L492,223L492,236Z'},
+  {n:'Cameroon',d:'M536,244L524,237L540,214L544,245L536,244Z'},
+  {n:'Democratic Republic of the Congo',d:'M586,240L582,287L562,281L560,270L534,267L554,236L586,240Z'},
+  {n:'Republic of the Congo',d:'M536,263L536,244L551,240L536,263Z'},
+  {n:'Colombia',d:'M291,250L281,245L284,229L302,216L296,225L313,233L314,247L306,245L306,262L291,250Z'},
+  {n:'Costa Rica',d:'M270,227L261,220L270,227Z'},
+  {n:'Cuba',d:'M271,186L294,194L264,189L271,186Z'},
+  {n:'Czech Republic',d:'M547,115L534,110L547,115Z'},
+  {n:'Germany',d:'M528,97L540,102L536,118L517,113L528,97Z'},
+  {n:'Djibouti',d:'M620,215L616,219L620,215Z'},
+  {n:'Denmark',d:'M530,93L523,96L530,93Z'},
+  {n:'Dominican Republic',d:'M301,195L310,198L301,195Z'},
+  {n:'Algeria',d:'M533,185L509,197L476,170L496,160L497,151L523,147L533,185Z'},
+  {n:'Ecuador',d:'M277,259L278,248L291,250L277,259Z'},
+  {n:'Egypt',d:'M597,168L590,167L602,189L569,189L570,162L597,168Z'},
+  {n:'Eritrea',d:'M618,215L601,210L602,203L618,215Z'},
+  {n:'Spain',d:'M475,134L508,134L485,150L481,134L475,134Z'},
+  {n:'Estonia',d:'M568,89L578,85L568,89Z'},
+  {n:'Ethiopia',d:'M605,208L633,228L625,236L606,240L592,228L605,208Z'},
+  {n:'Finland',d:'M579,58L586,77L559,81L571,69L557,58L579,58Z'},
+  {n:'Falkland Islands',d:'M330,394L340,393L330,394Z'},
+  {n:'France',d:'M354,243L350,234L354,243Z M510,110L522,114L521,129L496,130L487,115L510,110Z'},
+  {n:'Gabon',d:'M531,261L525,252L536,244L540,256L531,261Z'},
+  {n:'England',d:'M492,87L504,108L485,111L492,100L483,92L492,87Z'},
+  {n:'Georgia',d:'M615,135L630,136L615,135Z'},
+  {n:'Ghana',d:'M503,234L492,236L492,220L500,219L503,234Z'},
+  {n:'Guinea',d:'M477,229L458,219L475,216L477,229Z'},
+  {n:'Gambia',d:'M453,213L462,212L453,213Z'},
+  {n:'Guinea Bissau',d:'M458,219L454,216L462,215L458,219Z'},
+  {n:'Equatorial Guinea',d:'M526,247L531,244L526,247Z'},
+  {n:'Greece',d:'M566,151L573,152L566,151Z M574,135L560,148L558,137L574,135Z'},
+  {n:'Greenland',d:'M370,20L466,24L444,27L451,27L440,37L446,44L427,55L438,55L389,68L376,83L357,73L350,63L359,56L348,57L357,54L337,40L296,33L370,20Z'},
+  {n:'Guatemala',d:'M250,212L244,208L252,201L250,212Z'},
+  {n:'Guyana',d:'M334,227L343,245L334,245L334,227Z'},
+  {n:'Honduras',d:'M257,214L255,206L269,208L257,214Z'},
+  {n:'Croatia',d:'M552,122L544,126L551,132L538,125L552,122Z'},
+  {n:'Haiti',d:'M297,195L301,200L297,195Z'},
+  {n:'Hungary',d:'M545,120L563,117L545,120Z'},
+  {n:'Indonesia',d:'M841,272L833,274L841,272Z M802,269L821,273L802,269Z M862,259L855,259L862,259Z M873,253L892,257L892,275L869,261L863,253L873,253Z M848,246L834,249L843,252L842,265L836,257L832,265L833,248L848,246Z M857,247L856,252L857,247Z M827,245L823,261L803,251L822,238L827,245Z M794,266L765,235L788,250L794,266Z'},
+  {n:'India',d:'M716,151L731,174L771,173L757,189L746,177L747,190L723,206L715,228L702,191L689,184L709,160L705,155L716,151Z'},
+  {n:'Ireland',d:'M483,100L472,106L483,100Z'},
+  {n:'Iran',d:'M650,147L670,149L671,180L643,173L626,156L624,140L650,147Z'},
+  {n:'Iraq',d:'M626,150L635,167L609,161L618,147L626,150Z'},
+  {n:'Iceland',d:'M460,65L448,74L432,68L460,65Z'},
+  {n:'Israel',d:'M599,159L597,168L599,159Z'},
+  {n:'Italy',d:'M543,144L535,146L543,144Z M526,136L524,142L526,136Z M534,120L551,138L545,144L519,127L534,120Z'},
+  {n:'Jordan',d:'M599,160L609,161L600,169L599,160Z'},
+  {n:'Japan',d:'M874,155L868,158L874,155Z M892,147L862,163L890,136L892,147Z M900,127L889,135L894,123L900,127Z'},
+  {n:'Kazakhstan',d:'M697,133L690,137L663,123L655,135L646,134L640,126L647,120L629,116L641,106L670,109L671,100L714,99L743,113L722,125L723,132L697,133Z'},
+  {n:'Kenya',d:'M614,252L609,263L594,253L594,238L616,239L614,252Z'},
+  {n:'Kyrgyzstan',d:'M697,133L723,132L699,141L693,140L703,136L697,133Z'},
+  {n:'Cambodia',d:'M787,220L786,210L798,211L787,220Z'},
+  {n:'South Korea',d:'M857,143L860,151L851,154L857,143Z'},
+  {n:'Laos',d:'M792,210L789,199L781,201L782,188L798,206L792,210Z'},
+  {n:'Liberia',d:'M479,238L472,227L479,238Z'},
+  {n:'Libya',d:'M541,186L526,178L532,158L553,166L569,161L569,194L541,186Z'},
+  {n:'Sri Lanka',d:'M727,229L723,233L723,223L727,229Z'},
+  {n:'Lesotho',d:'M580,330L575,333L580,330Z'},
+  {n:'Lithuania',d:'M563,99L558,94L574,96L563,99Z'},
+  {n:'Latvia',d:'M558,94L578,94L558,94Z'},
+  {n:'Morocco',d:'M486,151L496,160L453,190L486,151Z'},
+  {n:'Moldova',d:'M574,116L583,121L574,116Z'},
+  {n:'Madagascar',d:'M638,285L626,321L622,298L638,285Z'},
+  {n:'Mexico',d:'M230,178L234,198L259,192L244,210L228,205L208,196L186,163L194,187L175,160L204,162L230,178Z'},
+  {n:'Macedonia',d:'M557,134L564,135L557,134Z'},
+  {n:'Mali',d:'M466,209L485,207L482,181L512,197L510,207L483,222L466,209Z'},
+  {n:'Myanmar',d:'M777,194L774,222L770,203L762,205L756,190L772,171L777,194Z'},
+  {n:'Mongolia',d:'M744,113L775,105L824,111L822,117L833,119L792,134L768,131L744,113Z'},
+  {n:'Mozambique',d:'M596,282L612,279L613,291L589,324L591,296L584,291L597,297L596,282Z'},
+  {n:'Mauritania',d:'M466,209L454,205L453,192L464,191L476,174L486,181L485,205L466,209Z'},
+  {n:'Malawi',d:'M596,282L597,297L591,288L591,276L596,282Z'},
+  {n:'Malaysia',d:'M781,233L790,246L781,233Z M829,238L805,246L824,231L829,238Z'},
+  {n:'Namibia',d:'M545,329L533,298L570,299L558,301L555,329L545,329Z'},
+  {n:'New Caledonia',d:'M960,309L956,306L960,309Z'},
+  {n:'Niger',d:'M506,217L501,209L512,197L541,186L539,215L506,217Z'},
+  {n:'Nigeria',d:'M524,237L507,233L511,212L537,212L524,237Z'},
+  {n:'Nicaragua',d:'M262,219L256,214L269,208L262,219Z'},
+  {n:'Netherlands',d:'M517,101L517,109L509,107L517,101Z'},
+  {n:'Norway',d:'M578,52L586,57L550,60L531,87L516,87L514,78L541,62L578,52Z M569,34L558,34L569,34Z M551,29L560,31L544,37L529,29L551,29Z M571,27L548,27L571,27Z'},
+  {n:'Nepal',d:'M745,173L722,170L745,173Z'},
+  {n:'New Zealand',d:'M981,364L981,372L963,378L981,364Z M985,350L996,355L987,366L985,350Z'},
+  {n:'Oman',d:'M664,191L648,204L655,181L664,191Z'},
+  {n:'Pakistan',d:'M709,147L716,151L705,155L709,160L693,175L697,182L671,180L676,176L669,167L684,167L709,147Z'},
+  {n:'Panama',d:'M284,230L270,224L284,230Z'},
+  {n:'Peru',d:'M307,299L289,291L274,267L291,250L305,258L294,271L309,285L307,299Z'},
+  {n:'Philippines',d:'M851,227L848,234L839,230L851,227Z M829,224L832,218L829,224Z M849,216L847,222L849,216Z M837,199L845,215L834,208L837,199Z'},
+  {n:'Papua New Guinea',d:'M933,269L929,264L933,269Z M922,265L912,266L922,265Z M909,271L919,279L902,271L892,275L892,257L909,271Z M925,262L919,258L925,262Z'},
+  {n:'Poland',d:'M542,108L539,101L549,98L565,99L567,109L542,108Z'},
+  {n:'North Korea',d:'M863,132L846,144L863,132Z'},
+  {n:'Portugal',d:'M475,134L482,135L478,148L475,134Z'},
+  {n:'Paraguay',d:'M326,312L338,305L348,324L337,325L326,312Z'},
+  {n:'Romania',d:'M563,117L582,125L564,128L556,122L563,117Z'},
+  {n:'Russia',d:'M899,109L895,122L894,102L899,109Z M563,99L555,99L563,99Z M14,65L28,67L20,72L0,70L0,58L14,65Z M899,47L889,46L899,47Z M919,41L906,41L919,41Z M903,40L880,41L903,40Z M660,54L643,51L655,41L691,37L662,44L654,49L660,54Z M797,36L817,39L804,44L853,46L865,53L890,48L1000,58L1000,70L993,71L998,77L954,84L936,108L933,92L957,76L895,86L875,98L893,105L871,131L863,133L864,125L875,115L864,117L843,102L827,112L775,105L743,113L692,96L671,100L670,109L632,110L633,136L602,124L611,112L588,105L576,90L588,75L579,58L614,63L592,65L603,73L622,66L621,60L690,61L685,53L694,47L702,49L701,66L707,48L797,36Z M792,32L776,34L792,32Z M642,26L625,26L642,26Z M778,31L753,27L778,31Z'},
+  {n:'Rwanda',d:'M584,253L581,258L584,253Z'},
+  {n:'Western Sahara',d:'M476,175L464,191L453,192L476,175Z'},
+  {n:'Saudi Arabia',d:'M619,205L596,172L603,162L634,171L655,189L619,205Z'},
+  {n:'Sudan',d:'M594,224L591,216L565,225L569,189L602,189L607,200L594,224Z'},
+  {n:'South Sudan',d:'M594,224L598,235L589,240L566,226L591,216L594,224Z'},
+  {n:'Senegal',d:'M454,212L460,204L468,215L454,212Z'},
+  {n:'Sierra Leone',d:'M468,231L467,222L468,231Z'},
+  {n:'El Salvador',d:'M256,213L250,212L256,213Z'},
+  {n:'Somaliland',d:'M636,224L618,221L636,224Z'},
+  {n:'Somalia',d:'M638,218L635,235L616,255L614,242L638,218Z'},
+  {n:'Republic of Serbia',d:'M558,124L562,132L553,129L558,124Z'},
+  {n:'Suriname',d:'M341,233L350,234L349,244L341,233Z'},
+  {n:'Slovakia',d:'M552,113L563,114L552,113Z'},
+  {n:'Slovenia',d:'M538,121L546,121L538,121Z'},
+  {n:'Sweden',d:'M562,67L536,96L535,72L556,58L565,61L562,67Z'},
+  {n:'Syria',d:'M608,157L599,159L602,148L618,147L608,157Z'},
+  {n:'Chad',d:'M540,214L541,186L566,196L558,224L542,229L540,214Z'},
+  {n:'Togo',d:'M505,233L500,219L505,233Z'},
+  {n:'Thailand',d:'M785,216L778,213L775,222L783,234L773,228L773,195L791,202L785,216Z'},
+  {n:'Tajikistan',d:'M697,138L708,146L688,147L697,138Z'},
+  {n:'Turkmenistan',d:'M670,151L650,147L646,134L663,131L685,145L670,151Z'},
+  {n:'East Timor',d:'M847,275L854,273L847,275Z'},
+  {n:'Tunisia',d:'M526,166L526,146L526,166Z'},
+  {n:'Turkey',d:'M603,135L621,136L623,147L573,144L581,136L603,135Z'},
+  {n:'Taiwan',d:'M838,182L835,189L838,182Z'},
+  {n:'United Republic of Tanzania',d:'M594,253L609,263L610,280L596,282L582,268L584,253L594,253Z'},
+  {n:'Uganda',d:'M589,253L582,254L586,240L594,238L589,253Z'},
+  {n:'Ukraine',d:'M588,105L611,112L601,125L561,115L565,107L588,105Z'},
+  {n:'Uruguay',d:'M340,334L351,346L338,344L340,334Z'},
+  {n:'USA',d:'M237,113L266,121L270,134L312,119L314,126L288,141L290,151L274,163L276,180L266,166L237,168L229,178L204,162L175,160L154,138L159,114L237,113Z M23,73L31,74L23,73Z M69,52L108,56L108,82L139,96L104,83L79,86L82,80L42,99L64,86L41,82L53,70L33,68L51,66L37,60L69,52Z'},
+  {n:'Uzbekistan',d:'M685,146L663,131L655,135L655,125L690,137L698,133L703,136L685,146Z'},
+  {n:'Venezuela',d:'M302,217L301,225L306,216L328,220L332,236L316,248L313,233L296,225L302,217Z'},
+  {n:'Vietnam',d:'M800,190L794,197L803,218L792,226L799,208L784,188L800,190Z'},
+  {n:'Yemen',d:'M648,204L623,215L618,208L636,198L648,204Z'},
+  {n:'South Africa',d:'M588,331L554,347L545,329L583,311L588,331Z'},
+  {n:'Zambia',d:'M591,276L592,289L575,300L561,295L566,280L582,287L580,274L591,276Z'},
+  {n:'Zimbabwe',d:'M587,312L570,299L591,296L587,312Z'},
+]
+
+// ─── Coordinate helpers ───────────────────────────────────────────────────────
 function lx(lon: number) { return ((lon + 180) / 360) * 1000 }
 function ly(lat: number) { return ((90 - lat) / 180) * 500 }
 
-// ─── Full world SVG paths (simplified but recognizable) ───────────────────────
-// Using SVG path "d" strings for accurate country shapes
-// Coordinate space: 0-1000 x, 0-500 y (lon -180→180, lat 90→-90)
-function p(coords: [number,number][]): string {
-  return 'M' + coords.map(([lo,la]) => `${lx(lo).toFixed(1)},${ly(la).toFixed(1)}`).join('L') + 'Z'
-}
-
-// ─── World landmass paths (complete continents + islands) ─────────────────────
-const WORLD_PATHS: string[] = [
-  // North America mainland
-  p([[-168,72],[-140,70],[-120,68],[-100,72],[-80,70],[-60,65],[-55,50],[-52,46],[-66,44],[-70,42],[-72,41],[-74,40],[-76,38],[-77,35],[-80,32],[-81,25],[-82,24],[-88,30],[-90,29],[-97,26],[-100,28],[-104,29],[-107,32],[-111,31],[-117,32],[-120,34],[-122,37],[-124,41],[-124,49],[-123,50],[-125,50],[-130,55],[-135,58],[-140,60],[-145,60],[-150,59],[-152,58],[-156,58],[-160,57],[-164,60],[-166,64],[-168,72]]),
-  // Canada north
-  p([[-60,78],[-80,80],[-100,82],[-120,80],[-140,78],[-120,74],[-100,72],[-80,70],[-60,65],[-60,78]]),
-  // Greenland
-  p([[-45,85],[-20,84],[-18,76],[-30,73],[-44,76],[-52,70],[-56,64],[-44,60],[-42,64],[-48,68],[-52,72],[-45,85]]),
-  // Central America + Mexico
-  p([[-117,32],[-110,24],[-108,27],[-104,20],[-90,18],[-83,10],[-77,8],[-76,8],[-80,8],[-83,10],[-87,16],[-89,16],[-92,18],[-94,18],[-97,20],[-99,20],[-104,19],[-109,24],[-110,24],[-117,32]]),
-  // Cuba
-  p([[-85,22],[-75,20],[-75,22],[-85,23],[-85,22]]),
-  // South America
-  p([[-81,8],[-76,8],[-72,12],[-60,9],[-52,4],[-50,1],[-44,2],[-37,-5],[-35,-9],[-35,-12],[-38,-14],[-38,-18],[-40,-22],[-43,-23],[-45,-24],[-48,-27],[-50,-30],[-52,-33],[-53,-34],[-57,-38],[-62,-38],[-65,-40],[-68,-44],[-70,-46],[-71,-52],[-68,-54],[-65,-55],[-62,-51],[-58,-46],[-57,-40],[-58,-34],[-62,-28],[-60,-5],[-62,-12],[-64,-12],[-66,-10],[-68,-12],[-70,-11],[-73,-10],[-75,-8],[-78,-2],[-80,0],[-81,2],[-81,8]]),
-  // Argentina south
-  p([[-66,-22],[-58,-22],[-53,-33],[-57,-38],[-62,-38],[-65,-40],[-68,-44],[-70,-46],[-71,-52],[-68,-54],[-65,-55],[-60,-51],[-66,-22]]),
-  // Europe
-  p([[2,51],[8,55],[14,54],[22,54],[24,50],[22,48],[18,48],[14,46],[12,44],[14,38],[12,36],[2,36],[0,38],[-2,37],[-8,38],[-9,44],[-2,44],[2,44],[2,51]]),
-  // Scandinavia
-  p([[6,58],[10,62],[14,68],[18,70],[24,70],[28,68],[30,64],[26,60],[22,56],[18,56],[14,56],[10,56],[6,58]]),
-  // UK + Ireland
-  p([[-6,58],[0,58],[2,52],[1,51],[-2,50],[-5,50],[-5,52],[-3,54],[-2,56],[-4,56],[-6,58]]),
-  p([[-10,52],[-6,52],[-6,54],[-8,55],[-10,53],[-10,52]]),
-  // Russia main
-  p([[32,68],[40,70],[55,68],[70,70],[80,72],[90,76],[100,76],[110,74],[120,72],[130,70],[140,70],[148,60],[142,52],[136,46],[132,44],[128,48],[120,52],[110,52],[105,52],[90,54],[75,55],[62,54],[55,58],[50,62],[40,64],[32,68]]),
-  // Russia far east
-  p([[140,52],[145,60],[150,60],[155,58],[160,60],[165,62],[170,64],[175,64],[178,68],[175,70],[165,68],[158,60],[148,54],[140,52]]),
-  // Turkey + Middle East
-  p([[26,42],[36,42],[44,40],[48,38],[56,26],[50,14],[42,12],[36,22],[30,32],[26,40],[26,42]]),
-  // Arabian Peninsula
-  p([[36,30],[50,28],[56,22],[58,18],[52,12],[44,12],[40,14],[38,18],[36,24],[36,30]]),
-  // Iran/Iraq
-  p([[44,38],[58,38],[62,26],[56,24],[50,24],[44,28],[44,38]]),
-  // India
-  p([[66,36],[74,34],[80,30],[88,26],[92,22],[88,8],[80,8],[76,8],[72,20],[68,22],[66,28],[66,36]]),
-  // China main
-  p([[73,40],[80,50],[90,52],[100,52],[110,52],[120,52],[130,48],[134,46],[135,43],[132,38],[124,32],[122,28],[118,22],[110,20],[100,22],[96,28],[90,28],[84,32],[78,36],[73,40]]),
-  // Southeast Asia
-  p([[100,22],[106,22],[108,16],[108,8],[104,10],[100,4],[100,8],[96,16],[98,20],[100,22]]),
-  // Indonesia (Java+Sumatra simplified)
-  p([[96,6],[105,-6],[110,-8],[116,-8],[108,-8],[102,-2],[98,4],[96,6]]),
-  p([[114,-8],[120,-10],[124,-8],[118,-6],[116,-8],[114,-8]]),
-  p([[120,-8],[130,-4],[140,-8],[138,-8],[132,-6],[128,-4],[124,-6],[120,-8]]),
-  // Philippines
-  p([[118,18],[122,18],[124,12],[122,8],[118,10],[118,18]]),
-  // Japan
-  p([[130,32],[136,34],[140,40],[142,44],[140,44],[138,36],[134,34],[130,34],[130,32]]),
-  p([[142,44],[144,44],[141,43],[140,44],[142,44]]),
-  // Korean Peninsula
-  p([[124,42],[130,42],[130,34],[126,34],[124,38],[124,42]]),
-  // Africa
-  p([[0,36],[2,36],[12,36],[14,36],[22,36],[32,32],[36,30],[42,12],[44,12],[46,8],[42,4],[38,0],[34,-2],[30,-4],[28,-8],[26,-10],[24,-8],[18,-6],[12,-4],[6,0],[0,4],[0,10],[2,14],[4,14],[4,10],[0,10],[0,14],[2,14],[4,18],[4,22],[0,28],[-4,28],[-8,28],[-14,32],[-14,28],[-8,28],[-4,28],[0,28],[0,36]]),
-  // Africa east
-  p([[32,-2],[38,0],[42,4],[46,8],[50,12],[44,12],[42,4],[38,0],[36,0],[34,-2],[32,-2]]),
-  // Africa south
-  p([[18,-22],[26,-18],[32,-22],[32,-26],[30,-30],[28,-34],[26,-34],[18,-34],[17,-30],[18,-22]]),
-  // Madagascar
-  p([[44,-12],[50,-14],[50,-26],[46,-26],[44,-22],[44,-12]]),
-  // Australia
-  p([[114,-22],[122,-18],[130,-12],[136,-12],[138,-16],[136,-20],[140,-18],[148,-22],[154,-28],[154,-38],[148,-38],[144,-38],[136,-36],[128,-34],[120,-34],[114,-28],[114,-22]]),
-  // New Zealand
-  p([[166,-46],[174,-42],[176,-38],[174,-36],[172,-40],[170,-44],[166,-46]]),
-  p([[168,-44],[172,-44],[174,-44],[172,-46],[168,-44]]),
-  // Sri Lanka
-  p([[80,10],[82,10],[82,6],[80,8],[80,10]]),
-  // Iceland
-  p([[-24,66],[-14,66],[-14,64],[-18,63],[-24,64],[-24,66]]),
-  // Antarctica (simplified)
-  p([[-180,-68],[-120,-68],[-60,-70],[0,-70],[60,-70],[120,-68],[180,-68],[180,-90],[-180,-90],[-180,-68]]),
-]
-
-// ─── Country data ─────────────────────────────────────────────────────────────
-// Precise country shapes for the 50 highlighted countries
-const COUNTRY_SHAPES: Record<string, [number,number][]> = {
+// ─── Country highlight shapes ─────────────────────────────────────────────────
+const HIGHLIGHTS: Record<string,[number,number][]> = {
   CN: [[73,40],[80,50],[90,52],[100,52],[110,52],[120,52],[128,48],[134,46],[135,43],[130,32],[122,28],[118,22],[110,20],[100,22],[96,28],[90,28],[84,32],[78,36],[73,40]],
   IN: [[66,36],[74,34],[80,30],[88,26],[92,22],[88,10],[80,8],[76,8],[72,20],[68,22],[66,28],[66,36]],
-  US: [[-124,48],[-116,49],[-104,49],[-97,49],[-87,47],[-83,45],[-76,44],[-72,41],[-70,42],[-67,44],[-67,47],[-70,44],[-74,40],[-77,35],[-80,32],[-81,25],[-82,24],[-88,30],[-90,29],[-97,26],[-100,28],[-104,29],[-107,32],[-111,31],[-117,32],[-120,34],[-122,37],[-124,40],[-124,48]],
+  US: [[-124,48],[-116,49],[-104,49],[-97,49],[-87,47],[-83,45],[-76,44],[-72,41],[-70,42],[-67,44],[-67,47],[-74,40],[-77,35],[-80,32],[-81,25],[-82,24],[-88,30],[-90,29],[-97,26],[-100,28],[-104,29],[-107,32],[-111,31],[-117,32],[-120,34],[-122,37],[-124,40],[-124,48]],
   ID: [[96,6],[105,-6],[110,-8],[116,-8],[108,-8],[102,-2],[98,4],[96,6]],
   PK: [[60,36],[70,38],[76,36],[74,32],[70,28],[64,26],[60,24],[56,26],[60,30],[60,36]],
   BR: [[-73,-10],[-70,-4],[-68,-2],[-60,0],[-52,4],[-50,1],[-44,2],[-37,-5],[-35,-9],[-35,-12],[-38,-14],[-38,-18],[-40,-22],[-43,-23],[-48,-27],[-52,-33],[-53,-34],[-58,-28],[-58,-24],[-57,-20],[-58,-16],[-60,-14],[-62,-12],[-64,-12],[-66,-10],[-68,-12],[-70,-11],[-73,-10]],
@@ -136,13 +218,13 @@ const COUNTRY_SHAPES: Record<string, [number,number][]> = {
   CI: [[-8,10],[0,10],[0,4],[-8,4],[-8,10]],
 }
 
-interface Country2 {
+interface Country {
   id:string; name:string; capital:string; continent:string
   population:number; area:number; language:string; currency:string
   utcOffset:number; flag:string; capLat:number; capLon:number
 }
 
-const COUNTRIES: Country2[] = [
+const COUNTRIES: Country[] = [
   {id:'CN',name:'China',capital:'Pequim',continent:'Ásia',population:1412,area:9597,language:'Mandarim',currency:'Yuan (¥)',utcOffset:8,flag:'🇨🇳',capLat:39.9,capLon:116.4},
   {id:'IN',name:'Índia',capital:'Nova Delhi',continent:'Ásia',population:1408,area:3287,language:'Hindi/Inglês',currency:'Rúpia (₹)',utcOffset:5.5,flag:'🇮🇳',capLat:28.6,capLon:77.2},
   {id:'US',name:'EUA',capital:'Washington D.C.',continent:'América do Norte',population:334,area:9834,language:'Inglês',currency:'Dólar ($)',utcOffset:-5,flag:'🇺🇸',capLat:38.9,capLon:-77.0},
@@ -194,7 +276,6 @@ const COUNTRIES: Country2[] = [
   {id:'CI',name:'Costa do Marfim',capital:'Yamoussoukro',continent:'África',population:27,area:322,language:'Francês',currency:'Franco CFA',utcOffset:0,flag:'🇨🇮',capLat:6.8,capLon:-5.3},
 ]
 
-// Country highlight colors by continent
 const CONT_COLOR: Record<string,string> = {
   'Ásia':'#f97316','América do Norte':'#3b82f6','América do Sul':'#22c55e',
   'Europa':'#8b5cf6','África':'#eab308','Europa/Ásia':'#ec4899','Oceania':'#06b6d4'
@@ -215,9 +296,9 @@ function getSunLon(date: Date): number {
 export default function AtlasGlobal() {
   const [now, setNow] = useState(new Date())
   const [layer, setLayer] = useState<LayerType>('countries')
-  const [hovered, setHovered] = useState<Country2|null>(null)
-  const [selected, setSelected] = useState<Country2|null>(null)
-  const [hoveredCap, setHoveredCap] = useState<Country2|null>(null)
+  const [hovered, setHovered] = useState<Country|null>(null)
+  const [selected, setSelected] = useState<Country|null>(null)
+  const [hoveredCap, setHoveredCap] = useState<Country|null>(null)
   const [mouse, setMouse] = useState({x:0,y:0})
   const [showGrid, setShowGrid] = useState(true)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -227,16 +308,16 @@ export default function AtlasGlobal() {
   const sunLon = getSunLon(now)
   const sunX = lx(sunLon)
   const m=now.getMonth()+1, dy=now.getDate()
-  const isSummerNorth = (m===6&&dy>=21)||(m===7||m===8)||(m===9&&dy<23)
-  const northSeason = isSummerNorth?'☀️ Verão':((m===12&&dy>=21)||(m<=3&&!(m===3&&dy>20)))?'❄️ Inverno':((m>=3&&m<=6&&!(m===6&&dy>20)))?'🌸 Primavera':'🍂 Outono'
-  const southSeason = isSummerNorth?'❄️ Inverno':((m===12&&dy>=21)||(m<=3&&!(m===3&&dy>20)))?'☀️ Verão':((m>=3&&m<=6&&!(m===6&&dy>20)))?'🍂 Outono':'🌸 Primavera'
+  const isSummerNorth=(m===6&&dy>=21)||(m===7||m===8)||(m===9&&dy<23)
+  const northSeason=isSummerNorth?'☀️ Verão':((m===12&&dy>=21)||(m<=3&&!(m===3&&dy>20)))?'❄️ Inverno':((m>=3&&m<=6&&!(m===6&&dy>20)))?'🌸 Primavera':'🍂 Outono'
+  const southSeason=isSummerNorth?'❄️ Inverno':((m===12&&dy>=21)||(m<=3&&!(m===3&&dy>20)))?'☀️ Verão':((m>=3&&m<=6&&!(m===6&&dy>20)))?'🍂 Outono':'🌸 Primavera'
 
   const onMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const r = svgRef.current?.getBoundingClientRect()
     if (r) setMouse({x:e.clientX-r.left, y:e.clientY-r.top})
   },[])
 
-  function getHighlightColor(c: Country2): string {
+  function getHighlightColor(c: Country): string {
     if (layer==='timezones') { const h=((c.utcOffset+12)/24)*300; return `hsl(${h},75%,42%)` }
     if (layer==='seasons') { const n=c.capLat>0?northSeason:southSeason; return n.includes('Verão')?'#f97316':n.includes('Inverno')?'#3b82f6':n.includes('Primavera')?'#22c55e':'#d97706' }
     return CONT_COLOR[c.continent]||'#6366f1'
@@ -256,7 +337,6 @@ export default function AtlasGlobal() {
   return (
     <div style={{display:'flex',flexDirection:'column',gap:10,height:'100%'}}>
 
-      {/* Toolbar */}
       <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
         <span style={{fontSize:'0.58rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.1em',marginRight:2}}>Camada:</span>
         {LAYERS.map(l=>(
@@ -269,98 +349,99 @@ export default function AtlasGlobal() {
       </div>
 
       <div style={{display:'flex',gap:14,flex:1,minHeight:0}}>
-
-        {/* MAP */}
-        <div style={{flex:1,position:'relative',borderRadius:14,overflow:'hidden',border:'1px solid var(--border)',background:'#061828'}}>
+        <div style={{flex:1,position:'relative',borderRadius:14,overflow:'hidden',border:'1px solid var(--border)',background:'#4a9ece'}}>
           <svg ref={svgRef} viewBox="0 0 1000 500" preserveAspectRatio="xMidYMid meet"
             style={{width:'100%',height:'100%',display:'block',cursor:'crosshair'}}
             onMouseMove={onMouseMove}
             onMouseLeave={()=>{setHovered(null);setHoveredCap(null)}}>
 
             <defs>
-              <radialGradient id="ocean" cx="40%" cy="40%">
-                <stop offset="0%" stopColor="#0a4a8a"/>
-                <stop offset="60%" stopColor="#062050"/>
-                <stop offset="100%" stopColor="#020c1e"/>
-              </radialGradient>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="2" result="b"/>
-                <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
+              <linearGradient id="ocean" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#5ba3d0"/>
+                <stop offset="40%" stopColor="#4a8eba"/>
+                <stop offset="100%" stopColor="#3a7aa8"/>
+              </linearGradient>
             </defs>
 
-            {/* Ocean */}
+            {/* Ocean background — classic blue */}
             <rect width="1000" height="500" fill="url(#ocean)"/>
 
-            {/* Grid */}
+            {/* Grid lines */}
             {showGrid && <>
               {[-60,-30,0,30,60].map(la=>(
                 <line key={la} x1={0} y1={ly(la)} x2={1000} y2={ly(la)}
-                  stroke={la===0?'rgba(96,165,250,0.35)':'rgba(96,165,250,0.1)'}
-                  strokeWidth={la===0?1:0.5} strokeDasharray={la===0?'':'4,4'}/>
+                  stroke={la===0?'rgba(255,255,255,0.5)':'rgba(255,255,255,0.2)'}
+                  strokeWidth={la===0?1.2:0.5} strokeDasharray={la===0?'':'4,4'}/>
               ))}
-              {[-150,-120,-90,-60,-30,0,30,60,90,120,150].map(lo=>(
-                <line key={lo} x1={lx(lo)} y1={0} x2={lx(lo)} y2={500} stroke="rgba(96,165,250,0.08)" strokeWidth={0.4} strokeDasharray="4,4"/>
+              {[-120,-60,0,60,120].map(lo=>(
+                <line key={lo} x1={lx(lo)} y1={0} x2={lx(lo)} y2={500} stroke="rgba(255,255,255,0.15)" strokeWidth={0.4} strokeDasharray="4,4"/>
               ))}
-              <text x={lx(0)+2} y={ly(0)-3} fill="rgba(96,165,250,0.5)" fontSize={6.5}>Equador</text>
-              <text x={lx(1)} y={ly(23.5)-3} fill="rgba(96,165,250,0.3)" fontSize={5.5}>Trópico de Câncer</text>
-              <text x={lx(1)} y={ly(-23.5)+9} fill="rgba(96,165,250,0.3)" fontSize={5.5}>Trópico de Capricórnio</text>
+              <text x={lx(0)+2} y={ly(0)-3} fill="rgba(255,255,255,0.6)" fontSize={6.5}>Equador</text>
+              <text x={lx(2)} y={ly(23.5)-3} fill="rgba(255,255,255,0.4)" fontSize={5.5}>Trópico de Câncer</text>
+              <text x={lx(2)} y={ly(-23.5)+9} fill="rgba(255,255,255,0.4)" fontSize={5.5}>Trópico de Capricórnio</text>
             </>}
 
-            {/* World landmass base layer — light grey/green tones */}
-            {WORLD_PATHS.map((d,i)=>(
-              <path key={i} d={d} fill="rgba(60,80,55,0.55)" stroke="rgba(80,100,70,0.4)" strokeWidth={0.4} strokeLinejoin="round"/>
+            {/* World base map — all 157 countries in classic green/tan */}
+            {WORLD_PATHS.map((wp,i)=>(
+              <path key={i} d={wp.d}
+                fill="#c8d8a0" stroke="#8aa870" strokeWidth={0.5} strokeLinejoin="round"/>
             ))}
 
             {/* Night overlay */}
             {layer!=='seasons' && <>
-              <rect width={sunX} height={500} fill="rgba(0,2,12,0.48)"/>
+              <rect width={sunX} height={500} fill="rgba(0,0,20,0.45)"/>
               <line x1={sunX} y1={0} x2={sunX} y2={500} stroke="rgba(255,210,60,0.3)" strokeWidth={2}/>
-              <line x1={sunX} y1={0} x2={sunX} y2={500} stroke="rgba(255,210,60,0.08)" strokeWidth={10}/>
             </>}
             {layer==='daynight' && (
-              <g transform={`translate(${sunX},${ly(0)})`} filter="url(#glow)">
+              <g transform={`translate(${sunX},${ly(0)})`}>
                 <circle r={14} fill="rgba(255,220,50,0.15)" stroke="rgba(255,220,50,0.4)" strokeWidth={1.5}/>
-                <circle r={7} fill="rgba(255,220,50,0.8)"/>
+                <circle r={7} fill="rgba(255,220,50,0.85)"/>
                 <text x={0} y={4} textAnchor="middle" fontSize={9} fill="#fff">☀</text>
               </g>
             )}
 
-            {/* 50 highlighted countries — colored overlay */}
+            {/* 50 countries highlight overlays */}
             {COUNTRIES.map(c=>{
-              const shape = COUNTRY_SHAPES[c.id]
+              const shape = HIGHLIGHTS[c.id]
               if (!shape) return null
               const isH = hovered?.id===c.id
               const isSel = selected?.id===c.id
               const col = isSel?'#fbbf24':isH?'#fff':getHighlightColor(c)
-              const opacity = isSel?0.95:isH?0.9:0.55
+              const op = isSel?0.88:isH?0.82:0.0
               return (
                 <polygon key={c.id}
                   points={shape.map(([lo,la])=>`${lx(lo).toFixed(1)},${ly(la).toFixed(1)}`).join(' ')}
-                  fill={col} fillOpacity={opacity}
-                  stroke={isH||isSel?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.3)'}
-                  strokeWidth={isH||isSel?1.5:0.5} strokeLinejoin="round"
-                  style={{cursor:'pointer',transition:'fill-opacity 0.12s,stroke-width 0.12s'}}
+                  fill={col} fillOpacity={op}
+                  stroke={isH||isSel?'rgba(255,255,255,0.95)':'transparent'}
+                  strokeWidth={isH||isSel?1.5:0} strokeLinejoin="round"
+                  style={{cursor:'pointer'}}
                   onMouseEnter={()=>setHovered(c)}
                   onMouseLeave={()=>setHovered(null)}
                   onClick={()=>setSelected(c===selected?null:c)}/>
               )
             })}
 
-            {/* Season overlay labels */}
-            {layer==='seasons' && <>
-              <rect x={330} y={6} width={340} height={22} rx={5} fill="rgba(0,0,0,0.5)"/>
-              <text x={500} y={21} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={10} fontWeight="bold">Norte: {northSeason}  ·  Sul: {southSeason}</text>
-              <line x1={0} y1={ly(0)} x2={1000} y2={ly(0)} stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="6,4"/>
-            </>}
+            {/* Invisible hover targets for all 50 countries (even when opacity=0) */}
+            {COUNTRIES.map(c=>{
+              const shape = HIGHLIGHTS[c.id]
+              if (!shape) return null
+              return (
+                <polygon key={c.id+'_hit'}
+                  points={shape.map(([lo,la])=>`${lx(lo).toFixed(1)},${ly(la).toFixed(1)}`).join(' ')}
+                  fill="transparent" stroke="none"
+                  style={{cursor:'pointer'}}
+                  onMouseEnter={()=>setHovered(c)}
+                  onMouseLeave={()=>setHovered(null)}
+                  onClick={()=>setSelected(c===selected?null:c)}/>
+              )
+            })}
 
-            {/* Timezone meridians */}
-            {layer==='timezones' && [-120,-90,-60,-30,0,30,60,90,120].map(lo=>(
-              <g key={lo}>
-                <line x1={lx(lo)} y1={0} x2={lx(lo)} y2={500} stroke="rgba(255,255,255,0.06)" strokeWidth={0.5}/>
-                <text x={lx(lo)+2} y={12} fontSize={6} fill="rgba(255,255,255,0.35)">UTC{lo/15>=0?'+':''}{lo/15}</text>
-              </g>
-            ))}
+            {/* Season labels */}
+            {layer==='seasons' && <>
+              <rect x={330} y={6} width={340} height={22} rx={5} fill="rgba(0,0,0,0.45)"/>
+              <text x={500} y={21} textAnchor="middle" fill="rgba(255,255,255,0.9)" fontSize={10} fontWeight="bold">Norte: {northSeason}  ·  Sul: {southSeason}</text>
+              <line x1={0} y1={ly(0)} x2={1000} y2={ly(0)} stroke="rgba(255,255,255,0.25)" strokeWidth={1} strokeDasharray="6,4"/>
+            </>}
 
             {/* Capitals */}
             {(layer==='capitals'||layer==='timezones') && COUNTRIES.map(c=>{
@@ -372,35 +453,21 @@ export default function AtlasGlobal() {
                   onMouseLeave={()=>setHoveredCap(null)}
                   onClick={()=>setSelected(c)}>
                   <circle r={isH?7:3.5}
-                    fill={isH?'#fbbf24':'rgba(255,255,255,0.88)'}
-                    stroke={isH?'#f59e0b':'rgba(0,0,0,0.4)'} strokeWidth={isH?1.5:1}
+                    fill={isH?'#fbbf24':'rgba(30,30,60,0.85)'}
+                    stroke={isH?'#f59e0b':'rgba(255,255,255,0.7)'} strokeWidth={isH?1.5:1}
                     style={{transition:'all 0.12s'}}/>
-                  {isH&&<text x={8} y={-4} fontSize={7.5} fill="#fbbf24" fontWeight="bold" stroke="rgba(0,0,0,0.6)" strokeWidth={0.5}>{c.capital}</text>}
+                  {isH&&<text x={8} y={-4} fontSize={7.5} fill="#1a1a2e" fontWeight="bold"
+                    stroke="rgba(255,255,255,0.8)" strokeWidth={2} paintOrder="stroke"
+                    ><tspan>{c.capital}</tspan></text>}
                 </g>
               )
             })}
 
-            {/* Continent legend */}
-            {layer==='countries' && (() => {
-              const conts = Object.entries(CONT_COLOR)
-              return (
-                <g>
-                  <rect x={6} y={468} width={360} height={26} rx={5} fill="rgba(0,0,0,0.55)"/>
-                  {conts.map(([cont,col],i)=>(
-                    <g key={cont} transform={`translate(${14+i*53},474)`}>
-                      <rect x={0} y={0} width={8} height={8} rx={2} fill={col} fillOpacity={0.8}/>
-                      <text x={10} y={7.5} fontSize={6} fill="rgba(255,255,255,0.6)">{cont.split('/')[0].split(' ').pop()}</text>
-                    </g>
-                  ))}
-                </g>
-              )
-            })()}
-
           </svg>
 
-          {/* Tooltip — hovered capital */}
+          {/* Tooltip capital */}
           {hoveredCap && (
-            <div style={{position:'absolute',left:tipX,top:tipY,minWidth:190,padding:'10px 13px',borderRadius:11,background:'rgba(4,14,30,0.97)',border:'1px solid rgba(251,191,36,0.4)',backdropFilter:'blur(8px)',zIndex:20,pointerEvents:'none'}}>
+            <div style={{position:'absolute',left:tipX,top:tipY,minWidth:190,padding:'10px 13px',borderRadius:11,background:'rgba(20,30,50,0.97)',border:'1px solid rgba(251,191,36,0.45)',backdropFilter:'blur(8px)',zIndex:20,pointerEvents:'none'}}>
               <div style={{fontWeight:800,fontSize:'0.82rem',color:'#fbbf24',marginBottom:5}}>{hoveredCap.flag} {hoveredCap.capital}</div>
               <div style={{fontFamily:'monospace',fontSize:'1rem',fontWeight:900,color:'#34d399',marginBottom:3}}>{getLocalTime(hoveredCap.utcOffset)}</div>
               <div style={{fontSize:'0.62rem',color:'rgba(255,255,255,0.55)'}}>UTC{hoveredCap.utcOffset>=0?'+':''}{hoveredCap.utcOffset} · {hoveredCap.name}</div>
@@ -408,24 +475,24 @@ export default function AtlasGlobal() {
             </div>
           )}
 
-          {/* Tooltip — hovered country */}
+          {/* Tooltip country */}
           {hovered && !hoveredCap && (
-            <div style={{position:'absolute',left:tipX,top:tipY,padding:'8px 12px',borderRadius:10,background:'rgba(4,14,30,0.95)',border:`1px solid ${CONT_COLOR[hovered.continent]||'rgba(96,165,250,0.3)'}55`,backdropFilter:'blur(6px)',zIndex:20,pointerEvents:'none'}}>
+            <div style={{position:'absolute',left:tipX,top:tipY,padding:'8px 12px',borderRadius:10,background:'rgba(20,30,50,0.95)',border:`1px solid ${CONT_COLOR[hovered.continent]||'#60a5fa'}66`,backdropFilter:'blur(6px)',zIndex:20,pointerEvents:'none'}}>
               <div style={{fontWeight:700,fontSize:'0.8rem',color:'#fff'}}>{hovered.flag} {hovered.name}</div>
               <div style={{fontSize:'0.62rem',color:'rgba(255,255,255,0.5)',marginTop:2}}>{hovered.capital} · {hovered.continent}</div>
               {layer==='timezones'&&<div style={{fontFamily:'monospace',color:'#34d399',fontSize:'0.72rem',marginTop:2}}>{getLocalTime(hovered.utcOffset)} · UTC{hovered.utcOffset>=0?'+':''}{hovered.utcOffset}</div>}
-              <div style={{fontSize:'0.58rem',color:'rgba(255,255,255,0.3)',marginTop:2}}>Clique para detalhes completos</div>
+              <div style={{fontSize:'0.58rem',color:'rgba(255,255,255,0.3)',marginTop:2}}>Clique para detalhes</div>
             </div>
           )}
         </div>
 
-        {/* SIDE PANEL */}
+        {/* Side panel */}
         <div style={{width:244,display:'flex',flexDirection:'column',gap:10,overflowY:'auto',flexShrink:0}}>
           {selected ? (
             <div style={{borderRadius:13,border:'1px solid rgba(96,165,250,0.3)',background:'var(--card-bg)',overflow:'hidden'}}>
               <div style={{padding:'14px 15px',background:`linear-gradient(135deg,${CONT_COLOR[selected.continent]||'#6366f1'}18,transparent)`,borderBottom:'1px solid var(--border)'}}>
                 <div style={{fontSize:'2.2rem',marginBottom:4}}>{selected.flag}</div>
-                <div style={{fontWeight:900,fontSize:'1.05rem',color:'var(--text-primary)'}}>{selected.name}</div>
+                <div style={{fontWeight:900,fontSize:'1.05rem',color:'var(--text-primary)'}}> {selected.name}</div>
                 <div style={{fontSize:'0.65rem',color:'var(--text-muted)',marginTop:1}}>{selected.continent}</div>
               </div>
               <div style={{padding:'12px 15px',display:'flex',flexDirection:'column',gap:7}}>
@@ -450,7 +517,7 @@ export default function AtlasGlobal() {
           ) : (
             <div style={{borderRadius:13,border:'1px solid var(--border)',background:'var(--card-bg)',padding:'13px 14px'}}>
               <div style={{fontSize:'0.6rem',color:'var(--text-muted)',fontFamily:'var(--font-mono)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:10}}>🗺️ Atlas Global</div>
-              <div style={{fontSize:'0.72rem',color:'var(--text-secondary)',lineHeight:1.6,marginBottom:10}}>Passe o mouse sobre um país colorido para ver informações. Clique para detalhes completos.</div>
+              <div style={{fontSize:'0.72rem',color:'var(--text-secondary)',lineHeight:1.6,marginBottom:10}}>Passe o mouse sobre um país para ver. Clique para detalhes.</div>
               <div style={{display:'flex',flexDirection:'column',gap:4}}>
                 {LAYERS.map(l=>(
                   <button key={l.id} onClick={()=>setLayer(l.id)}
@@ -472,9 +539,9 @@ export default function AtlasGlobal() {
             <div style={{borderRadius:11,border:'1px solid var(--border)',background:'var(--card-bg)',padding:'11px 13px'}}>
               <div style={{fontSize:'0.6rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>Estações Atuais</div>
               <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {[{label:'Hemisfério Norte',val:northSeason,c:'rgba(59,130,246,0.1)',b:'rgba(59,130,246,0.2)'},{label:'Hemisfério Sul',val:southSeason,c:'rgba(52,211,153,0.08)',b:'rgba(52,211,153,0.2)'}].map(s=>(
-                  <div key={s.label} style={{padding:'7px 10px',borderRadius:8,background:s.c,border:`1px solid ${s.b}`}}>
-                    <div style={{fontSize:'0.57rem',color:'var(--text-muted)'}}>{s.label}</div>
+                {[{label:'Norte',val:northSeason,b:'rgba(59,130,246,0.2)'},{label:'Sul',val:southSeason,b:'rgba(52,211,153,0.2)'}].map(s=>(
+                  <div key={s.label} style={{padding:'7px 10px',borderRadius:8,background:'rgba(255,255,255,0.03)',border:`1px solid ${s.b}`}}>
+                    <div style={{fontSize:'0.57rem',color:'var(--text-muted)'}}>Hemisfério {s.label}</div>
                     <div style={{fontWeight:800,fontSize:'0.85rem',color:'var(--text-primary)',marginTop:1}}>{s.val}</div>
                   </div>
                 ))}
@@ -482,15 +549,14 @@ export default function AtlasGlobal() {
             </div>
           )}
 
-          {/* Country list */}
           <div style={{borderRadius:11,border:'1px solid var(--border)',background:'var(--card-bg)',padding:'11px 13px',flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
             <div style={{fontSize:'0.58rem',color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.1em',marginBottom:8}}>50 países destacados</div>
             <div style={{overflowY:'auto',display:'flex',flexDirection:'column',gap:3,flex:1}}>
               {COUNTRIES.map(c=>(
                 <button key={c.id} onClick={()=>setSelected(c===selected?null:c)}
-                  style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${selected?.id===c.id?'rgba(251,191,36,0.5)':'transparent'}`,background:selected?.id===c.id?'rgba(251,191,36,0.08)':'transparent',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:6,transition:'all 0.1s'}}
-                  onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.04)'}
-                  onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=selected?.id===c.id?'rgba(251,191,36,0.08)':'transparent'}>
+                  style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${selected?.id===c.id?'rgba(251,191,36,0.5)':'transparent'}`,background:selected?.id===c.id?'rgba(251,191,36,0.08)':'transparent',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:6}}
+                  onMouseEnter={e=>setHovered(c)}
+                  onMouseLeave={()=>setHovered(null)}>
                   <span style={{fontSize:'0.85rem'}}>{c.flag}</span>
                   <span style={{fontSize:'0.68rem',color:'var(--text-secondary)',fontWeight:selected?.id===c.id?700:400}}>{c.name}</span>
                   <div style={{width:8,height:8,borderRadius:2,background:CONT_COLOR[c.continent]||'#666',marginLeft:'auto',flexShrink:0}}/>
