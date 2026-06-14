@@ -17,6 +17,7 @@ import GamingHub from './components/gaming/GamingHub'
 import LinksInteresse from './components/links/LinksInteresse'
 import Agenda from './components/Agenda/Agenda'
 import Logs from './components/logs/Logs'
+import Geosfera from './components/geosfera/Geosfera'
 
 
 type Theme = 'dark' | 'light'
@@ -109,6 +110,7 @@ const NAV = [
     { id: 'agenda',     label: 'Agenda',             icon: '📅', svgIcon: null },
     { id: 'links',      label: 'Links',              icon: '🔗', svgIcon: null },
     { id: 'logs',       label: 'Logs',               icon: '📋', svgIcon: null },
+    { id: 'geosfera',   label: 'Geosfera',           icon: '🌍', svgIcon: null },
   ]},
 ]
 
@@ -248,6 +250,7 @@ function AppShell() {
           {active === 'agenda'     && <Agenda />}
           {active === 'viagens'    && <Viagens />}
           {active === 'logs'       && <Logs />}
+          {active === 'geosfera'   && <Geosfera />}
         </div>
       </div>
 

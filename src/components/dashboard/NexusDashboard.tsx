@@ -1,6 +1,7 @@
 import React from 'react'
 import PainelChecklistDia from './ChecklistDia'
 import PainelArcade from './Arcade'
+import PainelGeosfera from './GeosferaCard'
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEditaisCadastrados, useEdital } from '../../hooks/useEdital'
@@ -1776,7 +1777,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
   ]
 
   // Drag and drop state
-  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo','agenda-hoje','agenda-semana','viagens-confirmadas','logs-hoje','checklist-dia','arcade'])
+  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo','agenda-hoje','agenda-semana','viagens-confirmadas','logs-hoje','checklist-dia','arcade','geosfera'])
   const [dragging, setDragging] = useState<string|null>(null)
   const [dragOver, setDragOver] = useState<string|null>(null)
 
@@ -1843,6 +1844,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
       case 'logs-hoje': return <PainelVisaoGeralLogs key="logs-hoje" {...props} />
       case 'checklist-dia': return <PainelChecklistDia key="checklist-dia" {...props} />
       case 'arcade': return <PainelArcade key="arcade" />
+      case 'geosfera': return <PainelGeosfera key="geosfera" {...props} />
       default: return null
     }
   }
