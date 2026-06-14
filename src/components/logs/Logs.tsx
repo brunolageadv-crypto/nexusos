@@ -35,6 +35,7 @@ export interface LogEntry {
   titulo: string
   descricao: string
   duracao?: number    // minutos
+  cancelado?: boolean
   criadoEm: number
 }
 
@@ -189,13 +190,14 @@ function ModalLog({ entry, onClose, onSave }: { entry: LogEntry | null; onClose:
 }
 
 // ─── Linha de Log (pauta) ─────────────────────────────────────────────────────
-function LinhaLog({ entry, onEdit, onDelete }: { entry: LogEntry; onEdit: () => void; onDelete: () => void }) {
+function LinhaLog({ entry, onEdit, onDelete, onToggleCancel }: { entry: LogEntry; onEdit: () => void; onDelete: () => void; onToggleCancel: () => void }) {
   const cfg = CAT_CFG[entry.categoria]
   const [hover, setHover] = useState(false)
+  const cancelado = !!entry.cancelado
 
   return (
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ display: 'grid', gridTemplateColumns: '80px 28px 1fr auto', gap: 0, alignItems: 'stretch', minHeight: 54, position: 'relative', transition: 'background 0.15s', background: hover ? 'rgba(255,255,255,0.025)' : 'transparent', borderRadius: 4 }}>
+      style={{ display: 'grid', gridTemplateColumns: '80px 28px 1fr auto', gap: 0, alignItems: 'stretch', minHeight: 54, position: 'relative', transition: 'background 0.15s', background: hover ? (cancelado ? 'rgba(248,113,113,0.04)' : 'rgba(255,255,255,0.025)') : 'transparent', borderRadius: 4, opacity: cancelado ? 0.55 : 1 }}>
 
       {/* Hora */}
       <div style={{ padding: '14px 12px 14px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', borderRight: `2px solid rgba(255,255,255,0.06)` }}>
@@ -204,32 +206,39 @@ function LinhaLog({ entry, onEdit, onDelete }: { entry: LogEntry; onEdit: () => 
 
       {/* Indicador vertical colorido */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-        <div style={{ width: 1, flex: 1, background: `linear-gradient(to bottom, ${cfg.cor}40, ${cfg.cor}10)` }} />
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: cfg.cor, border: `2px solid var(--bg-1,#13141f)`, boxShadow: `0 0 8px ${cfg.cor}50`, zIndex: 1, flexShrink: 0, margin: '4px 0' }} />
-        <div style={{ width: 1, flex: 1, background: `linear-gradient(to bottom, ${cfg.cor}10, transparent)` }} />
+        <div style={{ width: 1, flex: 1, background: `linear-gradient(to bottom, ${cancelado ? '#f87171' : cfg.cor}40, ${cancelado ? '#f87171' : cfg.cor}10)` }} />
+        <div style={{ width: 10, height: 10, borderRadius: '50%', background: cancelado ? '#f87171' : cfg.cor, border: `2px solid var(--bg-1,#13141f)`, boxShadow: `0 0 8px ${cancelado ? '#f8717150' : cfg.cor + '50'}`, zIndex: 1, flexShrink: 0, margin: '4px 0' }} />
+        <div style={{ width: 1, flex: 1, background: `linear-gradient(to bottom, ${cancelado ? '#f87171' : cfg.cor}10, transparent)` }} />
       </div>
 
       {/* Conteúdo */}
       <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 20, background: cfg.bg, color: cfg.cor, border: `1px solid ${cfg.cor}30`, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
-            {cfg.icon} {entry.categoria}
+          <span style={{ fontSize: '0.72rem', padding: '2px 8px', borderRadius: 20, background: cancelado ? 'rgba(248,113,113,0.1)' : cfg.bg, color: cancelado ? '#f87171' : cfg.cor, border: `1px solid ${cancelado ? 'rgba(248,113,113,0.3)' : cfg.cor + '30'}`, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' }}>
+            {cancelado ? '🚫' : cfg.icon} {entry.categoria}
           </span>
-          {entry.duracao && (
+          {cancelado && <span style={{ fontSize: '0.62rem', color: '#f87171', fontFamily: 'var(--font-mono)', fontWeight: 700, letterSpacing: '0.06em' }}>CANCELADO</span>}
+          {entry.duracao && !cancelado && (
             <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>⏱ {entry.duracao < 60 ? `${entry.duracao}min` : `${Math.floor(entry.duracao / 60)}h${entry.duracao % 60 > 0 ? (entry.duracao % 60) + 'min' : ''}`}</span>
           )}
         </div>
-        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', lineHeight: 1.3 }}>{entry.titulo}</div>
-        {entry.descricao && (
+        <div style={{ fontWeight: 700, fontSize: '0.88rem', color: cancelado ? 'var(--text-muted)' : 'var(--text-primary)', lineHeight: 1.3, textDecoration: cancelado ? 'line-through' : 'none' }}>{entry.titulo}</div>
+        {entry.descricao && !cancelado && (
           <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>{entry.descricao}</div>
         )}
       </div>
 
       {/* Ações */}
       <div style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end', justifyContent: 'center', opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
-        <button onClick={onEdit} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.08)', color: '#93c5fd', fontSize: '0.65rem', cursor: 'pointer' }}>✏️</button>
-        <button onClick={() => { if (window.confirm('Excluir este registro?')) onDelete() }}
-          style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(248,113,113,0.3)', background: 'rgba(248,113,113,0.06)', color: '#f87171', fontSize: '0.65rem', cursor: 'pointer' }}>✕</button>
+        {!cancelado && (
+          <button onClick={onEdit} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(96,165,250,0.3)', background: 'rgba(96,165,250,0.08)', color: '#93c5fd', fontSize: '0.65rem', cursor: 'pointer' }}>✏️</button>
+        )}
+        <button onClick={onToggleCancel}
+          style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid ${cancelado ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`, background: cancelado ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.06)', color: cancelado ? '#6ee7b7' : '#f87171', fontSize: '0.65rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          {cancelado ? '↩ Restaurar' : '🚫 Cancelar'}
+        </button>
+        <button onClick={() => { if (window.confirm('Excluir permanentemente?')) onDelete() }}
+          style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid rgba(100,100,100,0.3)', background: 'rgba(100,100,100,0.06)', color: 'var(--text-muted)', fontSize: '0.6rem', cursor: 'pointer' }}>🗑</button>
       </div>
     </div>
   )
@@ -279,6 +288,11 @@ export default function Logs() {
   const delEntry = useCallback(async (id: string) => {
     if (!uid) return
     await deleteDoc(doc(db, 'users', uid, 'logs', id))
+  }, [uid])
+
+  const toggleCancel = useCallback(async (entry: LogEntry) => {
+    if (!uid) return
+    await setDoc(doc(db, 'users', uid, 'logs', entry.id), clean({ ...entry, cancelado: !entry.cancelado }))
   }, [uid])
 
   // Filtros
@@ -425,6 +439,7 @@ export default function Logs() {
                     entry={entry}
                     onEdit={() => { setEditando(entry); setModalOpen(true) }}
                     onDelete={() => delEntry(entry.id)}
+                    onToggleCancel={() => toggleCancel(entry)}
                   />
                 ))}
               </div>
