@@ -916,7 +916,7 @@ export function GameChess({ onEnd, bestScore: _bs }: GameProps) {
     for(const [fr,fc,tr,tc] of ms){const {board:nb,cap}=applyMove(b,fr,fc,tr,tc);const v=eval2(nb,1,false)+(cap?{K:1000,Q:9,R:5,B:3,N:3,P:1}[cap.type]:0);if(v>bestV){bestV=v;bestM=[fr,fc,tr,tc]}}
     const [fr,fc,tr,tc]=bestM; const {board:nb,cap}=applyMove(board,fr,fc,tr,tc)
     if(cap?.type==='K'){setBoard(nb);setStatus('loss');onEnd('loss',0);return}
-    setCaptured(p=>({...p,b:[...p.b,...(cap?[cap):[]]]}))
+    setCaptured(p=>({...p,b:[...p.b,...(cap?[cap]:[])]}))
     setBoard(nb); setTurn('w')
   }
 
@@ -926,7 +926,7 @@ export function GameChess({ onEnd, bestScore: _bs }: GameProps) {
       if(moves.some(([mr,mc])=>mr===r&&mc===c)){
         const {board:nb,cap}=applyMove(board,sel[0],sel[1],r,c)
         if(cap?.type==='K'){setBoard(nb);setStatus('win');onEnd('win',200);return}
-        setCaptured(p=>({...p,w:[...p.w,...(cap?[cap):[]]]}))
+        setCaptured(p=>({...p,w:[...p.w,...(cap?[cap]:[])]}))
         setBoard(nb); setSel(null); setMoves([]); setTurn('b')
         setTimeout(()=>aiMove(nb),400)
         return
