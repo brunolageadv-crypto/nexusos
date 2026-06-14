@@ -49,10 +49,10 @@ export default function PainelGeosfera({ onNavigate, dragging, dragOver: _dO, on
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
         {/* Moon */}
-        <div style={{ padding: '10px 12px', borderRadius: 12, background: 'rgba(254,249,231,0.06)', border: '1px solid rgba(254,249,231,0.12)' }}>
+        <div style={{ padding: '10px 12px', borderRadius: 12, background: 'var(--bg-hover)', border: '1px solid var(--border-md)' }}>
           <div style={{ fontSize: '1.4rem', marginBottom: 4 }}>{moon.icon}</div>
-          <div style={{ fontWeight: 800, fontSize: '0.78rem', color: '#fef9e7', lineHeight: 1.2 }}>{moon.name}</div>
-          <div style={{ fontSize: '0.62rem', color: 'rgba(254,249,231,0.55)', marginTop: 3 }}>{moon.illumination}% ilum.</div>
+          <div style={{ fontWeight: 800, fontSize: '0.78rem', color: 'var(--text-primary)', lineHeight: 1.2 }}>{moon.name}</div>
+          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 3 }}>{moon.illumination}% ilum.</div>
         </div>
         {/* Season */}
         <div style={{ padding: '10px 12px', borderRadius: 12, background: `rgba(${season.color === '#f97316' ? '249,115,22' : season.color === '#d97706' ? '217,119,6' : season.color === '#3b82f6' ? '59,130,246' : '34,197,94'},0.08)`, border: `1px solid rgba(${season.color === '#f97316' ? '249,115,22' : season.color === '#d97706' ? '217,119,6' : season.color === '#3b82f6' ? '59,130,246' : '34,197,94'},0.2)` }}>

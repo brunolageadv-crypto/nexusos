@@ -421,7 +421,7 @@ export default function Geosfera() {
 
   // CSS vars
   const card: React.CSSProperties = {
-    borderRadius: 20, border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 20, border: '1px solid var(--border)',
     background: 'var(--card-bg)', backdropFilter: 'blur(12px)',
     overflow: 'hidden', position: 'relative',
   }
@@ -429,7 +429,7 @@ export default function Geosfera() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', background: 'var(--bg-0)' }}>
       {/* Header */}
-      <div style={{ padding: '22px 28px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'linear-gradient(135deg,rgba(30,58,138,0.08),rgba(14,116,144,0.05),transparent)' }}>
+      <div style={{ padding: '22px 28px 16px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(30,58,138,0.08),rgba(14,116,144,0.05),transparent)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 12 }}>
           <div>
             <h1 style={{ margin: 0, fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.6rem', background: 'linear-gradient(135deg,#60a5fa,#34d399,#a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.02em' }}>
@@ -465,29 +465,29 @@ export default function Geosfera() {
                 {/* Starfield bg */}
                 <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
                   {Array.from({length:30},(_,i)=>(
-                    <div key={i} style={{ position:'absolute', width: i%5===0?2:1, height: i%5===0?2:1, background:'rgba(255,255,255,0.5)', borderRadius:'50%', left:`${(i*37+13)%100}%`, top:`${(i*53+7)%100}%`, opacity: 0.3 + (i%4)*0.15 }}/>
+                    <div key={i} style={{ position:'absolute', width: i%5===0?2:1, height: i%5===0?2:1, background:'var(--text-muted)', borderRadius:'50%', left:`${(i*37+13)%100}%`, top:`${(i*53+7)%100}%`, opacity: 0.3 + (i%4)*0.15 }}/>
                   ))}
                 </div>
 
                 <div style={{ position: 'relative', display: 'flex', gap: 22, alignItems: 'center' }}>
                   <MoonCanvas phase={moon.phase} size={140} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '0.6rem', color: 'rgba(240,230,180,0.6)', textTransform: 'uppercase', letterSpacing: '0.15em', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>Fase Lunar</div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.3rem', color: '#fef9e7', marginBottom: 3 }}>{moon.phaseIcon} {moon.phaseName}</div>
-                    <div style={{ fontSize: '0.85rem', color: 'rgba(240,230,180,0.8)', marginBottom: 12 }}>{moon.illumination}% iluminada · {moon.age} dias</div>
+                    <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.15em', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>Fase Lunar</div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.3rem', color: 'var(--text-primary)', marginBottom: 3 }}>{moon.phaseIcon} {moon.phaseName}</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12 }}>{moon.illumination}% iluminada · {moon.age} dias</div>
 
-                    <div style={{ padding: '10px 14px', borderRadius: 12, background: 'rgba(255,250,220,0.06)', border: '1px solid rgba(255,250,220,0.12)', marginBottom: 14 }}>
-                      <div style={{ fontSize: '0.6rem', color: 'rgba(240,230,180,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Próxima fase</div>
-                      <div style={{ fontWeight: 700, color: '#fef9e7', fontSize: '0.85rem' }}>{moon.nextPhaseLabel}</div>
-                      <div style={{ fontSize: '0.72rem', color: 'rgba(240,230,180,0.6)', marginTop: 2 }}>em {Math.floor(moon.daysToNext)} dias e {Math.round((moon.daysToNext % 1) * 24)}h</div>
+                    <div style={{ padding: '10px 14px', borderRadius: 12, background: 'var(--bg-hover)', border: '1px solid var(--border-md)', marginBottom: 14 }}>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>Próxima fase</div>
+                      <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.85rem' }}>{moon.nextPhaseLabel}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>em {Math.floor(moon.daysToNext)} dias e {Math.round((moon.daysToNext % 1) * 24)}h</div>
                     </div>
 
                     {/* Cycle progress */}
                     <div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.58rem', color: 'rgba(240,230,180,0.4)', marginBottom: 5 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.58rem', color: 'var(--text-muted)', marginBottom: 5 }}>
                         <span>🌑 Nova</span><span>🌓 Cresc.</span><span>🌕 Cheia</span><span>🌗 Ming.</span>
                       </div>
-                      <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden', position: 'relative' }}>
+                      <div style={{ height: 6, borderRadius: 3, background: 'var(--border-md)', overflow: 'hidden', position: 'relative' }}>
                         <div style={{ height: '100%', width: `${moon.phase * 100}%`, background: 'linear-gradient(90deg,#6b6030,#fef08a,#fef9e7)', borderRadius: 3, transition: 'width 0.5s' }} />
                         <div style={{ position: 'absolute', top: '50%', left: `${moon.phase * 100}%`, transform: 'translate(-50%,-50%)', width: 10, height: 10, borderRadius: '50%', background: '#fef9e7', boxShadow: '0 0 8px rgba(255,250,180,0.8)' }} />
                       </div>
@@ -525,7 +525,7 @@ export default function Geosfera() {
                   </div>
 
                   {/* Countdown */}
-                  <div style={{ padding: '14px 16px', borderRadius: 14, background: 'rgba(0,0,0,0.25)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', marginTop: 12 }}>
+                  <div style={{ padding: '14px 16px', borderRadius: 14, background: 'rgba(0,0,0,0.30)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.15)', marginTop: 12 }}>
                     <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
                       Para {season.next.icon} {season.next.name}
                     </div>
@@ -556,7 +556,7 @@ export default function Geosfera() {
                   {/* Seasons timeline */}
                   <div style={{ display: 'flex', gap: 0, marginTop: 14, borderRadius: 10, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
                     {[{n:'Verão',ic:'☀️'},{n:'Outono',ic:'🍂'},{n:'Inverno',ic:'❄️'},{n:'Primavera',ic:'🌸'}].map(s => (
-                      <div key={s.n} style={{ flex: 1, padding: '8px 0', textAlign: 'center', background: s.n === seasonName ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)', transition: 'background 0.3s' }}>
+                      <div key={s.n} style={{ flex: 1, padding: '8px 0', textAlign: 'center', background: s.n === seasonName ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.20)', transition: 'background 0.3s' }}>
                         <div style={{ fontSize: '0.9rem' }}>{s.ic}</div>
                         <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{s.n}</div>
                       </div>
@@ -618,7 +618,7 @@ export default function Geosfera() {
                     { l: '🎆 Ano Novo', v: `${daysToNewYear} dias`, c: '#f472b6' },
                     { l: `🌐 ${nextSolstice.name}`, v: `${daysToSolstice} dias`, c: '#34d399' },
                   ].map(item => (
-                    <div key={item.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 9, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
+                    <div key={item.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', borderRadius: 9, background: 'var(--bg-hover)', border: '1px solid var(--border-md)' }}>
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>{item.l}</span>
                       <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: '0.78rem', color: item.c }}>{item.v}</span>
                     </div>
@@ -642,7 +642,7 @@ export default function Geosfera() {
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Horário em tempo real · {now.toLocaleTimeString('pt-BR')} BRT</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 14 }}>
               {clocks.map(z => (
-                <div key={z.city} style={{ ...card, padding: 22, background: z.isDay ? 'linear-gradient(135deg,rgba(30,58,138,0.15),rgba(14,116,144,0.08))' : 'linear-gradient(135deg,rgba(10,10,40,0.4),rgba(30,15,60,0.3))' }}>
+                <div key={z.city} style={{ ...card, padding: 22, background: 'var(--card-bg)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                     <div>
                       <div style={{ fontSize: '1.4rem', marginBottom: 4 }}>{z.flag}</div>
