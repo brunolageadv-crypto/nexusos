@@ -49,8 +49,8 @@ const CAT_CFG: Record<CategoriaCheck, { icon: string; cor: string }> = {
 const CATEGORIAS = Object.keys(CAT_CFG) as CategoriaCheck[]
 
 const IS: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  background: 'var(--bg-hover)',
+  border: '1px solid var(--border-md)',
   borderRadius: 9, padding: '8px 12px',
   color: 'var(--text-primary)', fontSize: '0.82rem',
   width: '100%', outline: 'none', boxSizing: 'border-box',
@@ -179,7 +179,7 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose() }}
       style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg-2,#1a1b26)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 22, width: '100%', maxWidth: 620, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(0,0,0,0.65)' }}>
+      <div style={{ background: 'var(--bg-2,#1a1b26)', border: '1px solid var(--border-md)', borderRadius: 22, width: '100%', maxWidth: 620, maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 80px rgba(0,0,0,0.65)' }}>
 
         {/* Header */}
         <div style={{ padding: '18px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -193,7 +193,7 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
         </div>
 
         {/* Abas */}
-        <div style={{ display: 'flex', gap: 0, padding: '12px 24px 0', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+        <div style={{ display: 'flex', gap: 0, padding: '12px 24px 0', borderBottom: '1px solid var(--border)' }}>
           {([['hoje', '☀ Hoje'], ['gerenciar', '⚙ Gerenciar'], ['relatorio', '📊 Relatório']] as const).map(([id, label]) => (
             <button key={id} onClick={() => setAba(id)}
               style={{ padding: '8px 16px', border: 'none', background: 'transparent', color: aba === id ? 'var(--text-primary)' : 'var(--text-muted)', fontFamily: 'var(--font-display)', fontWeight: aba === id ? 700 : 400, fontSize: '0.78rem', cursor: 'pointer', borderBottom: aba === id ? '2px solid #60a5fa' : '2px solid transparent', marginBottom: -1, whiteSpace: 'nowrap' }}>
@@ -226,7 +226,7 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                           <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Progresso do dia</span>
                           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.95rem', color: pct === 100 ? '#34d399' : '#60a5fa' }}>{feitos}/{itemsHoje.length} · {pct}%</span>
                         </div>
-                        <div style={{ height: 8, borderRadius: 4, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                        <div style={{ height: 8, borderRadius: 4, background: 'var(--border-md)', overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? 'linear-gradient(90deg,#34d399,#10b981)' : 'linear-gradient(90deg,#1A73E8,#60a5fa)', borderRadius: 4, transition: 'width 0.5s', boxShadow: `0 0 10px ${pct === 100 ? '#34d39960' : '#60a5fa60'}` }} />
                         </div>
                         {pct === 100 && <div style={{ fontSize: '0.68rem', color: '#34d399', marginTop: 6, fontWeight: 700, textAlign: 'center' }}>🎉 Dia completo!</div>}
@@ -250,11 +250,11 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                             const feito = !!marca?.feito
                             return (
                               <button key={item.id} onClick={() => toggleMarca(item)}
-                                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 11, border: `1px solid ${feito ? cfg.cor + '40' : 'rgba(255,255,255,0.08)'}`, background: feito ? `${cfg.cor}0d` : 'rgba(255,255,255,0.02)', textAlign: 'left', cursor: 'pointer', transition: 'all 0.18s', width: '100%' }}
-                                onMouseEnter={e => { if (!feito) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.05)' }}
-                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = feito ? `${cfg.cor}0d` : 'rgba(255,255,255,0.02)' }}>
+                                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 11, border: `1px solid ${feito ? cfg.cor + '40' : 'var(--border-md)'}`, background: feito ? `${cfg.cor}0d` : 'var(--bg-hover)', textAlign: 'left', cursor: 'pointer', transition: 'all 0.18s', width: '100%' }}
+                                onMouseEnter={e => { if (!feito) (e.currentTarget as HTMLElement).style.background = 'var(--bg-hover)' }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = feito ? `${cfg.cor}0d` : 'var(--card-bg)' }}>
                                 {/* Checkbox */}
-                                <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${feito ? cfg.cor : 'rgba(255,255,255,0.25)'}`, background: feito ? cfg.cor : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s', boxShadow: feito ? `0 0 10px ${cfg.cor}50` : 'none' }}>
+                                <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${feito ? cfg.cor : 'var(--border-md)'}`, background: feito ? cfg.cor : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.18s', boxShadow: feito ? `0 0 10px ${cfg.cor}50` : 'none' }}>
                                   {feito && <span style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 900 }}>✓</span>}
                                 </div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -293,12 +293,12 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                       {CATEGORIAS.map(c => <option key={c} value={c}>{CAT_CFG[c].icon} {c}</option>)}
                     </select>
                     <button onClick={() => setNovoRecorrente(v => !v)}
-                      style={{ padding: '8px 14px', borderRadius: 9, border: `1px solid ${novoRecorrente ? 'rgba(167,139,250,0.5)' : 'rgba(255,255,255,0.15)'}`, background: novoRecorrente ? 'rgba(167,139,250,0.12)' : 'rgba(255,255,255,0.04)', color: novoRecorrente ? '#a78bfa' : 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
+                      style={{ padding: '8px 14px', borderRadius: 9, border: `1px solid ${novoRecorrente ? 'rgba(167,139,250,0.5)' : 'var(--border-md)'}`, background: novoRecorrente ? 'rgba(167,139,250,0.12)' : 'var(--bg-hover)', color: novoRecorrente ? '#a78bfa' : 'var(--text-muted)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
                       {novoRecorrente ? '🔄 Recorrente' : '1️⃣ Só hoje'}
                     </button>
                   </div>
                   <button onClick={saveItem} disabled={!novoTitulo.trim()}
-                    style={{ padding: '9px', borderRadius: 10, border: 'none', background: novoTitulo.trim() ? 'linear-gradient(135deg,#1A73E8,#60a5fa)' : 'rgba(255,255,255,0.06)', color: novoTitulo.trim() ? '#fff' : 'var(--text-muted)', fontWeight: 800, fontSize: '0.82rem', cursor: novoTitulo.trim() ? 'pointer' : 'not-allowed', transition: 'all 0.15s' }}>
+                    style={{ padding: '9px', borderRadius: 10, border: 'none', background: novoTitulo.trim() ? 'linear-gradient(135deg,#1A73E8,#60a5fa)' : 'var(--bg-hover)', color: novoTitulo.trim() ? '#fff' : 'var(--text-muted)', fontWeight: 800, fontSize: '0.82rem', cursor: novoTitulo.trim() ? 'pointer' : 'not-allowed', transition: 'all 0.15s' }}>
                     + Adicionar Atividade
                   </button>
                 </div>
@@ -322,7 +322,7 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                         {cfg.icon} {cat}
                       </div>
                       {catItems.map(item => (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', marginBottom: 4 }}>
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)', marginBottom: 4 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.titulo}</div>
                             <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 2, display: 'flex', gap: 8 }}>
@@ -359,12 +359,12 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                   {taxaPorDia.map(d => {
                     if (!d) return null
                     const isFuture = d.data > hoje
-                    const bg = isFuture ? 'rgba(255,255,255,0.04)'
+                    const bg = isFuture ? 'var(--bg-hover)'
                       : d.pct === 100 ? '#34d399'
                       : d.pct >= 75 ? '#60a5fa'
                       : d.pct >= 50 ? '#fbbf24'
                       : d.pct > 0 ? '#f87171'
-                      : 'rgba(255,255,255,0.1)'
+                      : 'var(--border-md)'
                     const dia = parseInt(d.data.split('-')[2])
                     return (
                       <div key={d.data} title={`${fmtDataCurta(d.data)}: ${d.feitos}/${d.total} (${d.pct}%)`}
@@ -375,7 +375,7 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                   })}
                 </div>
                 <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-                  {[['#34d399', '100%'], ['#60a5fa', '≥75%'], ['#fbbf24', '≥50%'], ['#f87171', '>0%'], ['rgba(255,255,255,0.1)', '0%']].map(([c, l]) => (
+                  {[['#34d399', '100%'], ['#60a5fa', '≥75%'], ['#fbbf24', '≥50%'], ['#f87171', '>0%'], ['var(--border-md)', '0%']].map(([c, l]) => (
                     <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                       <div style={{ width: 10, height: 10, borderRadius: 3, background: c }} />
                       <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{l}</span>
@@ -392,7 +392,7 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                     {taxaPorItem.sort((a, b) => b.pct - a.pct).map(({ item, feitos, total: tot, pct }) => {
                       const cfg = CAT_CFG[item.categoria]
                       return (
-                        <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', borderRadius: 10, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                        <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 12px', borderRadius: 10, background: 'var(--card-bg)', border: '1px solid var(--border-md)' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ fontSize: '0.8rem' }}>{cfg.icon}</span>
@@ -400,7 +400,7 @@ export function ModalChecklist({ onClose, items, itemsHoje, marcas, getMarca, ui
                             </div>
                             <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.88rem', color: pct >= 80 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#f87171' }}>{pct}%</span>
                           </div>
-                          <div style={{ height: 5, borderRadius: 3, background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                          <div style={{ height: 5, borderRadius: 3, background: 'var(--border-md)', overflow: 'hidden' }}>
                             <div style={{ height: '100%', width: `${pct}%`, background: pct >= 80 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#f87171', borderRadius: 3, transition: 'width 0.8s' }} />
                           </div>
                           <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{feitos} de {tot} dias concluído(s)</div>
@@ -468,7 +468,7 @@ export default function PainelChecklistDia({ dragging, dragOver: _dO, onDragStar
         {/* Barra de progresso */}
         {total > 0 && (
           <div onClick={() => setModalAberto(true)} style={{ cursor: 'pointer' }}>
-            <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+            <div style={{ height: 6, borderRadius: 3, background: 'var(--border-md)', overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? 'linear-gradient(90deg,#34d399,#10b981)' : `linear-gradient(90deg,#1A73E8,${cor})`, borderRadius: 3, transition: 'width 0.6s', boxShadow: `0 0 8px ${cor}40` }} />
             </div>
           </div>
@@ -482,10 +482,10 @@ export default function PainelChecklistDia({ dragging, dragOver: _dO, onDragStar
               const cfg = CAT_CFG[item.categoria]
               return (
                 <div key={item.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 8, background: feito ? `${cfg.cor}0d` : 'rgba(255,255,255,0.03)', border: `1px solid ${feito ? cfg.cor + '25' : 'rgba(255,255,255,0.06)'}`, transition: 'all 0.15s' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 8, background: feito ? `${cfg.cor}0d` : 'var(--card-bg)', border: `1px solid ${feito ? cfg.cor + '40' : 'var(--border-md)'}`, transition: 'all 0.15s' }}>
                   {/* Checkbox clicável no card */}
                   <button onClick={e => toggleMarca(item.id, e)}
-                    style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${feito ? cfg.cor : 'rgba(255,255,255,0.25)'}`, background: feito ? cfg.cor : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', transition: 'all 0.15s', padding: 0, boxShadow: feito ? `0 0 6px ${cfg.cor}50` : 'none' }}>
+                    style={{ width: 18, height: 18, borderRadius: 5, border: `2px solid ${feito ? cfg.cor : 'var(--border-md)'}`, background: feito ? cfg.cor : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, cursor: 'pointer', transition: 'all 0.15s', padding: 0, boxShadow: feito ? `0 0 6px ${cfg.cor}50` : 'none' }}>
                     {feito && <span style={{ color: '#fff', fontSize: '0.6rem', fontWeight: 900, lineHeight: 1 }}>✓</span>}
                   </button>
                   <span onClick={() => setModalAberto(true)}
