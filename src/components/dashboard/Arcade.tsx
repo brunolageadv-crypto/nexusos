@@ -163,7 +163,7 @@ function Game2048({ onEnd, bestScore }: GameProps) {
 // ── 2. Snake ──────────────────────────────────────────────────────────────────
 function GameSnake({ onEnd, bestScore }: GameProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const stateRef = useRef({snake:[[10,10]],dir:[1,0],food:[15,15],score:0,over:false,started:false})
+  const stateRef = useRef<{snake:[number,number][];dir:[number,number];food:[number,number];score:number;over:boolean;started:boolean}>({snake:[[10,10]],dir:[1,0],food:[15,15],score:0,over:false,started:false})
   const [score,setScore]=useState(0); const [over,setOver]=useState(false); const [started,setStarted]=useState(false)
   const animRef=useRef<number>()
   const lastRef=useRef(0)
@@ -616,7 +616,7 @@ function GameMathQuiz({ onEnd, bestScore }: GameProps) {
 }
 
 // ── More games as stubs with playable core ─────────────────────────────────────
-function GamePong({ onEnd, bestScore }: GameProps) {
+function GamePong({ onEnd, bestScore: _bestScore }: GameProps) {
   const canvasRef=useRef<HTMLCanvasElement>(null)
   const st=useRef({ball:{x:200,y:150,dx:3,dy:2},p1:{y:120},p2:{y:120},s1:0,s2:0,over:false,ai:true})
   const animRef=useRef<number>(); const [ui,setUi]=useState({s1:0,s2:0,over:false,winner:''})
