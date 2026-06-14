@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { GameSudoku, GameConnect4, GameDamas, GameMastermind, GameMaze, GameHanoi, GamePuzzleSlide, GameLogicSeq, GamePatience, GameWordSearch } from './ArcadeGamesB'
+import { GameAsteroids, GameSpaceShooter, GameFlappy, GameHelicopter, GameQuickClick, GameAim } from './ArcadeGamesC'
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const SK = {
@@ -722,6 +723,13 @@ export const GAMES: GameDef[] = [
   { id:'logic_seq',name:'Sequências Lógicas',cat:'Lógica',icon:'🔣',desc:'Descubra o padrão da sequência',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameLogicSeq {...p}/> },
   { id:'patience',name:'Paciência',cat:'Cartas',icon:'🃏',desc:'Klondike Solitaire clássico',xpWin:100,xpPlay:20,xpRecord:40,component:(p)=><GamePatience {...p}/> },
   { id:'word_search',name:'Caça-Palavras',cat:'Palavras',icon:'🔍',desc:'Encontre as palavras jurídicas',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameWordSearch {...p}/> },
+  // Lote C — Canvas Arcade
+  { id:'asteroids',name:'Asteroids',cat:'Arcade',icon:'☄️',desc:'Destrua os asteroides com sua nave',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameAsteroids {...p}/> },
+  { id:'space_shooter',name:'Space Shooter',cat:'Arcade',icon:'🚀',desc:'Destrua as naves inimigas em 5 waves',xpWin:90,xpPlay:18,xpRecord:38,component:(p)=><GameSpaceShooter {...p}/> },
+  { id:'flappy',name:'Flappy Bird',cat:'Arcade',icon:'🐦',desc:'Passe pelos canos sem cair',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameFlappy {...p}/> },
+  { id:'helicopter',name:'Helicopter Game',cat:'Arcade',icon:'🚁',desc:'Pilote o helicóptero pelos obstáculos',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameHelicopter {...p}/> },
+  { id:'quick_click',name:'Clique Rápido',cat:'Reflexo',icon:'🖱️',desc:'Clique nos alvos antes que desapareçam',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameQuickClick {...p}/> },
+  { id:'aim',name:'Mira Alvo',cat:'Reflexo',icon:'🎯',desc:'Acerte os alvos em movimento',xpWin:70,xpPlay:14,xpRecord:30,component:(p)=><GameAim {...p}/> },
   // Stubs — development
   ...([
 
@@ -756,12 +764,12 @@ export const GAMES: GameDef[] = [
     ['spider','Spider Solitaire','Cartas','🕷','Solitário Spider com 2 naipes'],
     ['pyramid','Pyramid','Cartas','🔺','Some 13 com pares de cartas'],
     ['tripeaks','TriPeaks','Cartas','⛰','Colete as cartas das três pirâmides'],
-    ['asteroids','Asteroids','Arcade','☄','Destrua os asteroides com sua nave'],
-    ['space_shooter','Space Shooter','Arcade','🚀','Destrua as naves inimigas'],
-    ['flappy','Flappy Bird','Arcade','🐦','Passe pelos canos sem cair'],
-    ['helicopter','Helicopter Game','Arcade','🚁','Pilote o helicóptero pelos obstáculos'],
-    ['quick_click','Clique Rápido','Reflexo','🖱','Clique nos alvos o mais rápido possível'],
-    ['aim','Mira Alvo','Reflexo','🎯','Acerte os alvos em movimento'],
+    // replaced: ['asteroids','Asteroids','Arcade','☄','D
+    // replaced: ['space_shooter','Space Shooter','Arcade
+    // replaced: ['flappy','Flappy Bird','Arcade','🐦','Pa
+    // replaced: ['helicopter','Helicopter Game','Arcade'
+    // replaced: ['quick_click','Clique Rápido','Reflexo'
+    // replaced: ['aim','Mira Alvo','Reflexo','🎯','Acerte
     ['visual_reflex','Reflexo Visual','Reflexo','👀','Reaja às mudanças visuais'],
     // word_search — replaced below
     ['anagram','Anagrama','Palavras','🔀','Forme palavras com as letras embaralhadas'],
