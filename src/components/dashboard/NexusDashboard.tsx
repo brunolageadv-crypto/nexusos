@@ -201,8 +201,29 @@ function useWishlistStats() {
   return { pendentes, prioritarios, totalPendente, listasAtivas, totalItens: itens.length }
 }
 
+function useViagensConfirmadas() {
+  const [viagens, setViagens] = useState<any[]>([])
+  const uid = useUid()
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(collection(db, `users/${uid}/viagens`), snap => setViagens(snap.docs.map(d => d.data())))
+  }, [uid])
+  return viagens.filter(v => v.status === 'Confirmada').sort((a: any, b: any) => (a.dataInicio || '').localeCompare(b.dataInicio || ''))
+}
 
-// ─── Layout multi ─────────────────────────────────────────────────────────────
+function useLogsHoje() {
+  const [logs, setLogs] = useState<any[]>([])
+  const uid = useUid()
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(collection(db, `users/${uid}/logs`), snap => setLogs(snap.docs.map(d => d.data())))
+  }, [uid])
+  const hoje = new Date().toISOString().slice(0, 10)
+  const logHoje = logs.filter(l => l.data === hoje)
+  const total = logs.length
+  const minHoje = logHoje.reduce((a: number, l: any) => a + (l.duracao || 0), 0)
+  return { logHoje, total, minHoje }
+}
 function useLayouts() {
   const uid = useUid()
   const [layouts, setLayouts] = useState<Layout[]>([{ id: 'default', nome: 'Principal', widgets: DEFAULT_WIDGETS }])
@@ -1753,7 +1774,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
   ]
 
   // Drag and drop state
-  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo','agenda-hoje','agenda-semana'])
+  const [ordem, setOrdem] = useState(() => ['editais','financeiro','prontuario','concursos','ponto','financeiro2','saude','wishlist','diario','gaming','media','agua','calendario','contas-pagar-mini','ponto-saldo','agenda-hoje','agenda-semana','viagens-confirmadas','logs-hoje'])
   const [dragging, setDragging] = useState<string|null>(null)
   const [dragOver, setDragOver] = useState<string|null>(null)
 
@@ -1816,6 +1837,8 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
       case 'ponto-saldo':  return <PainelVisaoGeralPontoSaldo key="ponto-saldo"  {...props} />
       case 'agenda-hoje':  return <PainelVisaoGeralAgendaHoje  key="agenda-hoje"  {...props} />
       case 'agenda-semana': return <PainelVisaoGeralAgendaSemana key="agenda-semana" {...props} />
+      case 'viagens-confirmadas': return <PainelVisaoGeralViagensConfirmadas key="viagens-confirmadas" {...props} />
+      case 'logs-hoje': return <PainelVisaoGeralLogs key="logs-hoje" {...props} />
       default: return null
     }
   }
@@ -1922,6 +1945,86 @@ function PainelVisaoGeralAgendaSemana({ onNavigate, dragging, dragOver: _dOas, o
           )
         })}
       </div>
+    </button>
+  )
+}
+
+function PainelVisaoGeralViagensConfirmadas({ onNavigate, dragging, dragOver: _dOvc, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const confirmadas = useViagensConfirmadas()
+  const cor = '#34d399'
+  return (
+    <button onClick={() => onNavigate('viagens')} draggable
+      onDragStart={() => onDragStart?.('viagens-confirmadas')} onDragEnd={() => onDragEnd?.()}
+      onDragOver={e => onDragOver?.(e, 'viagens-confirmadas')} onDrop={e => onDrop?.(e, 'viagens-confirmadas')}
+      style={{ padding: '16px 20px', borderRadius: 16, border: `1px solid ${cor}25`, background: `linear-gradient(135deg,${cor}08,transparent)`, textAlign: 'left', cursor: 'grab', transition: 'all 0.2s', opacity: dragging === 'viagens-confirmadas' ? 0.45 : 1 }}
+      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = `0 8px 24px ${cor}18` }}
+      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-mono)', marginBottom: 4 }}>✈️ Viagens · Confirmadas</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.5rem', color: cor, lineHeight: 1 }}>{confirmadas.length}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 3 }}>viagem(ns) confirmada(s)</div>
+        </div>
+        <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>✈️</span>
+      </div>
+      {confirmadas.length === 0 ? (
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Nenhuma viagem confirmada</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+          {confirmadas.slice(0, 2).map((v: any) => (
+            <div key={v.id || v.titulo} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 9px', borderRadius: 9, background: `${cor}10`, border: `1px solid ${cor}20` }}>
+              <span style={{ fontSize: '0.85rem' }}>🟢</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.titulo}</div>
+                {v.dataInicio && <div style={{ fontSize: '0.6rem', color: cor, fontFamily: 'var(--font-mono)' }}>{new Date(v.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}</div>}
+              </div>
+            </div>
+          ))}
+          {confirmadas.length > 2 && <div style={{ fontSize: '0.62rem', color: cor, textAlign: 'right', marginTop: 2 }}>+{confirmadas.length - 2} mais →</div>}
+        </div>
+      )}
+    </button>
+  )
+}
+
+function PainelVisaoGeralLogs({ onNavigate, dragging, dragOver: _dOlogs, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const { logHoje, total, minHoje } = useLogsHoje()
+  const cor = '#a78bfa'
+  const CAT_CORES: Record<string, string> = {
+    'Trabalho': '#60a5fa', 'Estudo': '#a78bfa', 'Jurídico': '#818cf8', 'Concurso': '#c084fc',
+    'Saude': '#34d399', 'Exercicio': '#10b981', 'Financas': '#fbbf24', 'Reuniao': '#f59e0b',
+  }
+  return (
+    <button onClick={() => onNavigate('logs')} draggable
+      onDragStart={() => onDragStart?.('logs-hoje')} onDragEnd={() => onDragEnd?.()}
+      onDragOver={e => onDragOver?.(e, 'logs-hoje')} onDrop={e => onDrop?.(e, 'logs-hoje')}
+      style={{ padding: '16px 20px', borderRadius: 16, border: `1px solid ${cor}25`, background: `linear-gradient(135deg,${cor}08,transparent)`, textAlign: 'left', cursor: 'grab', transition: 'all 0.2s', opacity: dragging === 'logs-hoje' ? 0.45 : 1 }}
+      onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = `0 8px 24px ${cor}18` }}
+      onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(0)'; el.style.boxShadow = 'none' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'var(--font-mono)', marginBottom: 4 }}>📋 Logs · Hoje</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.5rem', color: cor, lineHeight: 1 }}>{logHoje.length}</div>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 3 }}>
+            {minHoje > 0 ? `${Math.floor(minHoje / 60)}h${minHoje % 60 > 0 ? String(minHoje % 60) + 'min' : ''} registrado(s)` : 'registro(s) hoje'}
+          </div>
+        </div>
+        <span style={{ fontSize: '1.5rem', opacity: 0.6 }}>📋</span>
+      </div>
+      {logHoje.length === 0 ? (
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Nenhum registro hoje · Clique para registrar</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 4 }}>
+          {logHoje.slice(0, 3).map((l: any, i: number) => (
+            <div key={l.id || i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 8px', borderRadius: 8, background: `${CAT_CORES[l.categoria] || cor}10`, border: `1px solid ${CAT_CORES[l.categoria] || cor}20` }}>
+              <span style={{ fontSize: '0.72rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', flexShrink: 0 }}>{l.hora}</span>
+              <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.titulo}</span>
+            </div>
+          ))}
+          {logHoje.length > 3 && <div style={{ fontSize: '0.62rem', color: cor, textAlign: 'right', marginTop: 2 }}>+{logHoje.length - 3} mais →</div>}
+        </div>
+      )}
+      <div style={{ marginTop: 10, fontSize: '0.62rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Total histórico: {total} registros</div>
     </button>
   )
 }

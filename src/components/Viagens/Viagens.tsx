@@ -824,37 +824,116 @@ export default function Viagens() {
           )}
         </div>
 
-        {/* Coluna direita — Histórico / Mural de Memórias */}
-        <div style={{ padding: '20px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.12em' }}>🔵 Mural de Memórias</div>
+        {/* Coluna direita — Painéis por status */}
+        <div style={{ padding: '20px 18px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-          {realizadas.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '0.75rem' }}>As viagens realizadas aparecem aqui</div>
-          ) : (
-            realizadas.map(v => {
-              const dias = calcDias(v.dataInicio, v.dataFim)
-              return (
-                <button key={v.id} onClick={() => setDetalhe(v)}
-                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
-                  <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(96,165,250,0.2)', transition: 'border-color 0.2s' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(96,165,250,0.5)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(96,165,250,0.2)'}>
-                    {v.imagemUrl && (
-                      <div style={{ height: 80, background: `url(${v.imagemUrl}) center/cover` }} />
-                    )}
-                    <div style={{ padding: '10px 12px', background: 'rgba(96,165,250,0.05)' }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 3 }}>{v.titulo}</div>
-                      {v.destino && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>📍 {v.destino}</div>}
-                      <div style={{ fontSize: '0.62rem', color: '#60a5fa', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-                        {v.dataInicio && new Date(v.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
-                        {dias > 0 && ` · ${dias}d`}
+          {/* Confirmadas */}
+          {(() => {
+            const confirmadas = viagens.filter(v => v.status === 'Confirmada').sort((a, b) => (a.dataInicio || '').localeCompare(b.dataInicio || ''))
+            return (
+              <div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: '#34d399', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34d399', boxShadow: '0 0 6px #34d399', display: 'inline-block' }} />
+                  Confirmadas ({confirmadas.length})
+                </div>
+                {confirmadas.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '14px 0', color: 'var(--text-muted)', fontSize: '0.7rem' }}>Nenhuma viagem confirmada</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {confirmadas.map(v => {
+                      const dias = calcDias(v.dataInicio, v.dataFim)
+                      const total = calcCustoTotal(v, hospedagens)
+                      return (
+                        <button key={v.id} onClick={() => setDetalhe(v)}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                          <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(52,211,153,0.3)', transition: 'all 0.2s', background: 'rgba(52,211,153,0.04)' }}
+                            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(52,211,153,0.6)'; (e.currentTarget as HTMLElement).style.background = 'rgba(52,211,153,0.08)' }}
+                            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(52,211,153,0.3)'; (e.currentTarget as HTMLElement).style.background = 'rgba(52,211,153,0.04)' }}>
+                            {v.imagemUrl && <div style={{ height: 70, background: `url(${v.imagemUrl}) center/cover` }} />}
+                            <div style={{ padding: '10px 12px' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 2 }}>{v.titulo}</div>
+                              {v.destino && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>📍 {v.destino}</div>}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 }}>
+                                <div style={{ fontSize: '0.62rem', color: '#34d399', fontFamily: 'var(--font-mono)' }}>
+                                  {v.dataInicio && fmtData(v.dataInicio)}{dias > 0 && ` · ${dias}d`}
+                                </div>
+                                {total > 0 && <div style={{ fontSize: '0.62rem', color: '#fbbf24', fontFamily: 'var(--font-display)', fontWeight: 700 }}>{fmtMoeda(total)}</div>}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Expectativas */}
+          {(() => {
+            const expectativas = viagens.filter(v => v.status === 'Expectativa').sort((a, b) => (a.dataInicio || '').localeCompare(b.dataInicio || ''))
+            return (
+              <div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#94a3b8', display: 'inline-block' }} />
+                  Expectativas ({expectativas.length})
+                </div>
+                {expectativas.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '14px 0', color: 'var(--text-muted)', fontSize: '0.7rem' }}>Nenhuma expectativa registrada</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {expectativas.map(v => (
+                      <button key={v.id} onClick={() => setDetalhe(v)}
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', width: '100%' }}>
+                        <div style={{ borderRadius: 10, border: '1px solid rgba(148,163,184,0.2)', transition: 'all 0.2s', padding: '9px 12px', background: 'rgba(148,163,184,0.04)' }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(148,163,184,0.45)'; (e.currentTarget as HTMLElement).style.background = 'rgba(148,163,184,0.08)' }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(148,163,184,0.2)'; (e.currentTarget as HTMLElement).style.background = 'rgba(148,163,184,0.04)' }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: 1 }}>{v.titulo}</div>
+                          {v.destino && <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>📍 {v.destino}</div>}
+                          {v.finalidade && <div style={{ fontSize: '0.58rem', color: '#94a3b8', marginTop: 3, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{v.finalidade}</div>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Realizadas */}
+          <div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#60a5fa', display: 'inline-block' }} />
+              Mural de Memórias ({realizadas.length})
+            </div>
+            {realizadas.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '14px 0', color: 'var(--text-muted)', fontSize: '0.7rem' }}>As viagens realizadas aparecem aqui</div>
+            ) : (
+              realizadas.map(v => {
+                const dias = calcDias(v.dataInicio, v.dataFim)
+                return (
+                  <button key={v.id} onClick={() => setDetalhe(v)}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', width: '100%', marginBottom: 7 }}>
+                    <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(96,165,250,0.2)', transition: 'border-color 0.2s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(96,165,250,0.5)'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = 'rgba(96,165,250,0.2)'}>
+                      {v.imagemUrl && <div style={{ height: 70, background: `url(${v.imagemUrl}) center/cover` }} />}
+                      <div style={{ padding: '10px 12px', background: 'rgba(96,165,250,0.05)' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 3 }}>{v.titulo}</div>
+                        {v.destino && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>📍 {v.destino}</div>}
+                        <div style={{ fontSize: '0.62rem', color: '#60a5fa', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                          {v.dataInicio && new Date(v.dataInicio + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
+                          {dias > 0 && ` · ${dias}d`}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              )
-            })
-          )}
+                  </button>
+                )
+              })
+            )}
+          </div>
+
         </div>
       </div>
 
