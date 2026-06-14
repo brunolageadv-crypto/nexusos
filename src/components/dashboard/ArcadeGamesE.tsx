@@ -34,7 +34,7 @@ export function GameVisualReflex({ onEnd, bestScore }: GameProps) {
   const showTime = useRef(0)
   const ROUNDS = 12
 
-  function nextRound(r: number) {
+  function nextRound(_r: number) {
     const tColor = COLORS[Math.floor(Math.random() * COLORS.length)]
     const tShape = SHAPES[Math.floor(Math.random() * SHAPES.length)]
     setTarget({ color: tColor, shape: tShape })
@@ -771,7 +771,7 @@ export function GameBubblePop({ onEnd, bestScore }: GameProps) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 10. CONNECT DOTS
 // ══════════════════════════════════════════════════════════════════════════════
-export function GameConnectDots({ onEnd, bestScore }: GameProps) {
+export function GameConnectDots({ onEnd, bestScore: _bsCD }: GameProps) {
   const N = 5
   type Line = { r1: number; c1: number; r2: number; c2: number; player: 'P' | 'AI' }
   type Box = { owner: 'P' | 'AI' | null }
@@ -813,7 +813,7 @@ export function GameConnectDots({ onEnd, bestScore }: GameProps) {
     }
   }
 
-  function doAI(ls: Line[], bx: Box[][], sc: { P: number; AI: number }) {
+  function doAI(ls: Line[], _bx: Box[][], sc: { P: number; AI: number }) {
     // Find all valid lines
     const allLines: [number, number, number, number][] = []
     for (let r = 0; r < N; r++) for (let c = 0; c < N - 1; c++) if (!hasLine(ls, r, c, r, c + 1)) allLines.push([r, c, r, c + 1])

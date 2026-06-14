@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState } from 'react'
 import type { GameProps } from './Arcade'
 
 function SBar({ items }: { items: { l: string; v: string | number; c: string }[] }) {
@@ -855,31 +855,7 @@ export function GameSpider({ onEnd, bestScore: _bs }: GameProps) {
 // 10. PALAVRA CRUZADA (mini 7×7)
 // ══════════════════════════════════════════════════════════════════════════════
 export function GameCrossword({ onEnd, bestScore: _bs }: GameProps) {
-  const PUZZLE = {
-    grid: [
-      ['#','#','C','#','#','#','#'],
-      ['P','R','O','C','E','S','S'],
-      ['#','#','N','#','#','#','U'],
-      ['L','I','S','T','A','#','P'],
-      ['#','#','T','#','G','#','R'],
-      ['N','O','I','T','R','E','M'],  // 'NOTIRE' → NOITREM → backward? simplified
-      ['#','#','T','#','A','#','O'],
-    ],
-    clues: {
-      across: [
-        {n:1,r:1,c:0,answer:'PROCESSO',clue:'Ação judicial em andamento'},
-        {n:2,r:3,c:0,answer:'LISTA',clue:'Relação de itens'},
-        {n:3,r:5,c:0,answer:'NOITREM',clue:'Conjunto de normas (anag.)'},
-      ],
-      down: [
-        {n:4,r:0,c:2,answer:'CONSTIT',clue:'___ uição federal'},
-        {n:5,r:1,c:6,answer:'SUPREMO',clue:'Tribunal maior'},
-        {n:6,r:3,c:4,answer:'AGRAVO',clue:'Tipo de recurso'},
-      ]
-    }
-  }
-
-  // Simplified version with a fixed mini crossword
+  // Mini crossword
   const FIXED = {
     words: [
       {word:'RECURSO', r:0, c:0, dir:'h', clue:'1→ Meio de impugnação de decisão'},
