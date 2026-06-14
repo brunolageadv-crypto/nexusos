@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { GameSudoku, GameConnect4, GameDamas, GameMastermind, GameMaze, GameHanoi, GamePuzzleSlide, GameLogicSeq, GamePatience, GameWordSearch } from './ArcadeGamesB'
 import { GameAsteroids, GameSpaceShooter, GameFlappy, GameHelicopter, GameQuickClick, GameAim } from './ArcadeGamesC'
 import { GameSeqMemory, GameNumMemory, GameVisualMemory, GameColorMemory, GameOthello, GameGomoku, GameNim, GameMancala, GameHex, GameChess } from './ArcadeGamesD'
+import { GameVisualReflex, GameAnagram, GameHiddenWord, GameEquations, GameNumSeq, GameFastOps, GameSecretCode, GameColorMatch, GameBubblePop, GameConnectDots, GameStackBlocks, GameMerge } from './ArcadeGamesE'
+import { GameNonogram, GamePipe, GameMatchPair, GameSwitches, GameNumCubes, GameFreeCell, GamePyramid, GameTriPeaks, GameSpider, GameCrossword, GameJigsaw, GameTangram } from './ArcadeGamesF'
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const SK = {
@@ -742,17 +744,43 @@ export const GAMES: GameDef[] = [
   { id:'helicopter',name:'Helicopter Game',cat:'Arcade',icon:'🚁',desc:'Pilote o helicóptero pelos obstáculos',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameHelicopter {...p}/> },
   { id:'quick_click',name:'Clique Rápido',cat:'Reflexo',icon:'🖱️',desc:'Clique nos alvos antes que desapareçam',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameQuickClick {...p}/> },
   { id:'aim',name:'Mira Alvo',cat:'Reflexo',icon:'🎯',desc:'Acerte os alvos em movimento',xpWin:70,xpPlay:14,xpRecord:30,component:(p)=><GameAim {...p}/> },
+  // Lote E — Reflexo/Palavras/Matemática/Casual
+  { id:'visual_reflex',name:'Reflexo Visual',cat:'Reflexo',icon:'👀',desc:'Reaja: cor e forma iguais ao alvo?',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameVisualReflex {...p}/> },
+  { id:'anagram',name:'Anagrama',cat:'Palavras',icon:'🔀',desc:'Reorganize as letras em 60 segundos',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameAnagram {...p}/> },
+  { id:'hidden_word',name:'Palavra Oculta',cat:'Palavras',icon:'🔑',desc:'Wordle jurídico — 6 tentativas',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameHiddenWord {...p}/> },
+  { id:'equations',name:'Equações',cat:'Matemática',icon:'➗',desc:'Resolva equações lineares e quadráticas',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameEquations {...p}/> },
+  { id:'num_seq',name:'Sequências Numéricas',cat:'Matemática',icon:'📈',desc:'Complete sequências com combo bônus',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameNumSeq {...p}/> },
+  { id:'fast_ops',name:'Operações Rápidas',cat:'Matemática',icon:'⚡',desc:'Máximo de contas em 45 segundos',xpWin:65,xpPlay:13,xpRecord:26,component:(p)=><GameFastOps {...p}/> },
+  { id:'secret_code',name:'Código Secreto',cat:'Lógica',icon:'🔐',desc:'Descubra o código de 4 dígitos',xpWin:70,xpPlay:14,xpRecord:30,component:(p)=><GameSecretCode {...p}/> },
+  { id:'color_match',name:'Color Match',cat:'Casual',icon:'🎨',desc:'A tinta combina com o significado?',xpWin:55,xpPlay:11,xpRecord:22,component:(p)=><GameColorMatch {...p}/> },
+  { id:'bubble_pop',name:'Bubble Pop',cat:'Casual',icon:'🫧',desc:'Estoure as bolhas antes que fujam',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameBubblePop {...p}/> },
+  { id:'connect_dots',name:'Connect Dots',cat:'Casual',icon:'⬛',desc:'Conecte pontos para fazer quadrados',xpWin:65,xpPlay:13,xpRecord:27,component:(p)=><GameConnectDots {...p}/> },
+  { id:'stack_blocks',name:'Stack Blocks',cat:'Casual',icon:'📦',desc:'Empilhe blocos com precisão',xpWin:70,xpPlay:14,xpRecord:30,component:(p)=><GameStackBlocks {...p}/> },
+  { id:'merge',name:'Merge Game',cat:'Casual',icon:'🔮',desc:'Una peças iguais para chegar em 512',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameMerge {...p}/> },
+  // Lote F — Puzzle/Lógica/Cartas/Palavras
+  { id:'nonogram',name:'Nonogram',cat:'Puzzle',icon:'📋',desc:'Picross — pinte células pelos números',xpWin:90,xpPlay:18,xpRecord:38,component:(p)=><GameNonogram {...p}/> },
+  { id:'pipes',name:'Pipe Puzzle',cat:'Puzzle',icon:'🔧',desc:'Gire os canos para conectar fonte ao destino',xpWin:75,xpPlay:14,xpRecord:30,component:(p)=><GamePipe {...p}/> },
+  { id:'match_pair',name:'Match Pair',cat:'Puzzle',icon:'🃏',desc:'Combine pares de conceitos jurídicos',xpWin:55,xpPlay:11,xpRecord:22,component:(p)=><GameMatchPair {...p}/> },
+  { id:'switches',name:'Interruptores',cat:'Lógica',icon:'💡',desc:'Ligue as lâmpadas no padrão correto',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameSwitches {...p}/> },
+  { id:'num_cubes',name:'Cubos Numéricos',cat:'Lógica',icon:'🎲',desc:'Selecione cubos que somem/multipliquem o alvo',xpWin:65,xpPlay:13,xpRecord:26,component:(p)=><GameNumCubes {...p}/> },
+  { id:'freecell',name:'FreeCell',cat:'Cartas',icon:'🗂',desc:'Solitário FreeCell clássico',xpWin:100,xpPlay:20,xpRecord:42,component:(p)=><GameFreeCell {...p}/> },
+  { id:'pyramid',name:'Pyramid',cat:'Cartas',icon:'🔺',desc:'Combine cartas que somem 13',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GamePyramid {...p}/> },
+  { id:'tripeaks',name:'TriPeaks',cat:'Cartas',icon:'⛰',desc:'Remova cartas +1/-1 do topo com combos',xpWin:75,xpPlay:14,xpRecord:30,component:(p)=><GameTriPeaks {...p}/> },
+  { id:'spider',name:'Spider Solitaire',cat:'Cartas',icon:'🕷',desc:'1 naipe — ordene K→A em 10 colunas',xpWin:100,xpPlay:20,xpRecord:45,component:(p)=><GameSpider {...p}/> },
+  { id:'crossword',name:'Palavra Cruzada',cat:'Palavras',icon:'📰',desc:'Mini cruzada com termos jurídicos',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameCrossword {...p}/> },
+  { id:'jigsaw',name:'Jigsaw Puzzle',cat:'Puzzle',icon:'🧩',desc:'Reordene as peças de emoji por troca',xpWin:65,xpPlay:13,xpRecord:26,component:(p)=><GameJigsaw {...p}/> },
+  { id:'tangram',name:'Tangram',cat:'Puzzle',icon:'⬟',desc:'Identifique a forma geométrica exibida',xpWin:55,xpPlay:11,xpRecord:22,component:(p)=><GameTangram {...p}/> },
   // Stubs — development
   ...([
 
     // puzzle_slide — replaced below
     // sudoku — replaced below
-    ['nonogram','Nonogram','Puzzle','📋','Pinte as células baseado nas pistas'],
+    // done: ['nonogram','Nonogram','Puzzle','📋'
     // hanoi — replaced below
-    ['pipes','Pipe Puzzle','Puzzle','🔧','Conecte os canos para passar a água'],
-    ['tangram','Tangram','Puzzle','⬟','Monte as formas com as peças'],
-    ['jigsaw','Jigsaw Puzzle','Puzzle','🧩','Monte o quebra-cabeça de imagens'],
-    ['match_pair','Match Pair','Puzzle','🃏','Combine os pares de cartas'],
+    // done: ['pipes','Pipe Puzzle','Puzzle','🔧'
+    // done: ['tangram','Tangram','Puzzle','⬟','
+    // done: ['jigsaw','Jigsaw Puzzle','Puzzle',
+    // done: ['match_pair','Match Pair','Puzzle'
     // stub-replaced: ['seq_memory','Memória por Sequênci
     // stub-replaced: ['num_memory','Memória Numérica','M
     // stub-replaced: ['visual_memory','Memória Visual','
@@ -766,35 +794,35 @@ export const GAMES: GameDef[] = [
     // stub-replaced: ['nim','Nim','Estratégia','🪨','Remo
     // stub-replaced: ['mancala','Mancala','Estratégia','
     // mastermind — replaced below
-    ['secret_code','Código Secreto','Lógica','🔐','Quebre o código numérico'],
+    // done: ['secret_code','Código Secreto','Ló
     // maze — replaced below
-    ['switches','Desafio de Interruptores','Lógica','💡','Ligue todas as lâmpadas'],
-    ['num_cubes','Cubos Numéricos','Lógica','🎲','Complete as sequências de cubos'],
+    // done: ['switches','Desafio de Interruptor
+    // done: ['num_cubes','Cubos Numéricos','Lóg
     // logic_seq — replaced below
     // patience — replaced below
-    ['freecell','FreeCell','Cartas','🗂','Organize as cartas nas células livres'],
-    ['spider','Spider Solitaire','Cartas','🕷','Solitário Spider com 2 naipes'],
-    ['pyramid','Pyramid','Cartas','🔺','Some 13 com pares de cartas'],
-    ['tripeaks','TriPeaks','Cartas','⛰','Colete as cartas das três pirâmides'],
+    // done: ['freecell','FreeCell','Cartas','🗂'
+    // done: ['spider','Spider Solitaire','Carta
+    // done: ['pyramid','Pyramid','Cartas','🔺','
+    // done: ['tripeaks','TriPeaks','Cartas','⛰'
     // replaced: ['asteroids','Asteroids','Arcade','☄','D
     // replaced: ['space_shooter','Space Shooter','Arcade
     // replaced: ['flappy','Flappy Bird','Arcade','🐦','Pa
     // replaced: ['helicopter','Helicopter Game','Arcade'
     // replaced: ['quick_click','Clique Rápido','Reflexo'
     // replaced: ['aim','Mira Alvo','Reflexo','🎯','Acerte
-    ['visual_reflex','Reflexo Visual','Reflexo','👀','Reaja às mudanças visuais'],
+    // done: ['visual_reflex','Reflexo Visual','
     // word_search — replaced below
-    ['anagram','Anagrama','Palavras','🔀','Forme palavras com as letras embaralhadas'],
-    ['hidden_word','Palavra Oculta','Palavras','🔑','Descubra a palavra oculta pelas dicas'],
-    ['crossword','Palavra Cruzada','Palavras','📰','Complete a palavra cruzada'],
-    ['equations','Equações','Matemática','➗','Resolva as equações matemáticas'],
-    ['num_seq','Sequências Numéricas','Matemática','📈','Complete a sequência de números'],
-    ['fast_ops','Operações Rápidas','Matemática','⚡','Calcule o mais rápido possível'],
-    ['connect_dots','Connect Dots','Casual','⬛','Conecte os pontos para fazer quadrados'],
-    ['color_match','Color Match','Casual','🎨','Combine as cores corretamente'],
-    ['bubble_pop','Bubble Pop','Casual','🫧','Estoure as bolhas coloridas'],
-    ['stack_blocks','Stack Blocks','Casual','📦','Empilhe os blocos com precisão'],
-    ['merge','Merge Game','Casual','🔮','Junte os elementos iguais'],
+    // done: ['anagram','Anagrama','Palavras','🔀
+    // done: ['hidden_word','Palavra Oculta','Pa
+    // done: ['crossword','Palavra Cruzada','Pal
+    // done: ['equations','Equações','Matemática
+    // done: ['num_seq','Sequências Numéricas','
+    // done: ['fast_ops','Operações Rápidas','Ma
+    // done: ['connect_dots','Connect Dots','Cas
+    // done: ['color_match','Color Match','Casua
+    // done: ['bubble_pop','Bubble Pop','Casual'
+    // done: ['stack_blocks','Stack Blocks','Cas
+    // done: ['merge','Merge Game','Casual','🔮',
   ] as [string,string,string,string,string][]).map(([id,name,cat,icon,desc])=>makeStub(id,name,cat,icon,desc))
 ]
 
