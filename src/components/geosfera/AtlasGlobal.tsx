@@ -8,7 +8,7 @@ function ly(lat: number) { return ((90 - lat) / 180) * 500 }
 // Using SVG path "d" strings for accurate country shapes
 // Coordinate space: 0-1000 x, 0-500 y (lon -180→180, lat 90→-90)
 function p(coords: [number,number][]): string {
-  return 'M' + coords.map(([lo,la],i) => `${lx(lo).toFixed(1)},${ly(la).toFixed(1)}`).join('L') + 'Z'
+  return 'M' + coords.map(([lo,la]) => `${lx(lo).toFixed(1)},${ly(la).toFixed(1)}`).join('L') + 'Z'
 }
 
 // ─── World landmass paths (complete continents + islands) ─────────────────────
@@ -83,13 +83,6 @@ const WORLD_PATHS: string[] = [
 ]
 
 // ─── Country data ─────────────────────────────────────────────────────────────
-interface Country {
-  id:string; name:string; capital:string; continent:string
-  population:number; area:number; language:string; currency:string
-  utcOffset:number; flag:string; color:string; capLat:number; capLon:number
-  path: string
-}
-
 // Precise country shapes for the 50 highlighted countries
 const COUNTRY_SHAPES: Record<string, [number,number][]> = {
   CN: [[73,40],[80,50],[90,52],[100,52],[110,52],[120,52],[128,48],[134,46],[135,43],[130,32],[122,28],[118,22],[110,20],[100,22],[96,28],[90,28],[84,32],[78,36],[73,40]],
