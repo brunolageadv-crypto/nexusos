@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { GameProps } from './Arcade'
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -295,12 +295,10 @@ export function GameDamas({ onEnd, bestScore: _bs }: GameProps) {
       }
       setSelected(null);setMoves([])
     }
-    if(b[r]?.[c]?.player==='P'){
+    if(board[r]?.[c]?.player==='P'){
       const m=getMoves(board,r,c)
       setSelected([r,c]);setMoves(m)
     }
-    function b(){ return board }
-    if(board[r]?.[c]?.player==='P'){const m=getMoves(board,r,c);setSelected([r,c]);setMoves(m)}
   }
 
   function doAI(b:Board){
@@ -310,7 +308,7 @@ export function GameDamas({ onEnd, bestScore: _bs }: GameProps) {
     pieces.forEach(([r,c])=>getMoves(b,r,c).forEach(([tr,tc])=>allMoves.push([r,c,tr,tc])))
     if(!allMoves.length){setStatus('win');onEnd('win',200);return}
     // Prefer captures
-    const captures=allMoves.filter(([fr,fc,tr,tc])=>Math.abs(tr-fr)===2)
+    const captures=allMoves.filter(([fr,_fc,tr,_tc])=>Math.abs(tr-fr)===2)
     const mv=captures.length?captures[Math.floor(Math.random()*captures.length)]:allMoves[Math.floor(Math.random()*allMoves.length)]
     const nb=applyMove(b,mv[0],mv[1],mv[2],mv[3])
     const pPieces=nb.flat().filter(p=>p?.player==='P').length
