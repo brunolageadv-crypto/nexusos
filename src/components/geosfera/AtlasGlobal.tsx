@@ -179,9 +179,6 @@ export default function AtlasGlobal() {
   const sunLon = getSunLongitude(now)
   const sunX = lonToX(sunLon)
 
-  // Ocean background + day/night gradient
-  const dayPct = Math.round(((sunLon + 180) / 360) * 100)
-
   // Season hemispheres
   const m = now.getMonth() + 1, d = now.getDate()
   let northSeason = '', southSeason = ''
