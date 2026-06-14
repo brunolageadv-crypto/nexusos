@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 // ─── Pure math — no external deps ────────────────────────────────────────────
 
@@ -254,8 +254,6 @@ function EarthCanvas({ date, size = 200 }: { date: Date; size: number }) {
     // Night side gradient overlay
     ctx.save()
     ctx.beginPath(); ctx.arc(r, r, r - 2, 0, Math.PI * 2); ctx.clip()
-    const nightX = r + Math.cos(sunLonRad) * r
-    const grad = ctx.createLinearGradient(nightX - r * 0.8, r, nightX + r * 0.8, r)
     const angle = sunLonRad
     const gx1 = r + Math.cos(angle + Math.PI * 0.5) * r * 1.2
     const gy1 = r + Math.sin(angle + Math.PI * 0.5) * r * 1.2
