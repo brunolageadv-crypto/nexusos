@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { GameSudoku, GameConnect4, GameDamas, GameMastermind, GameMaze, GameHanoi, GamePuzzleSlide, GameLogicSeq, GamePatience, GameWordSearch } from './ArcadeGamesB'
 import { GameAsteroids, GameSpaceShooter, GameFlappy, GameHelicopter, GameQuickClick, GameAim } from './ArcadeGamesC'
+import { GameSeqMemory, GameNumMemory, GameVisualMemory, GameColorMemory, GameOthello, GameGomoku, GameNim, GameMancala, GameHex, GameChess } from './ArcadeGamesD'
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const SK = {
@@ -723,6 +724,17 @@ export const GAMES: GameDef[] = [
   { id:'logic_seq',name:'Sequências Lógicas',cat:'Lógica',icon:'🔣',desc:'Descubra o padrão da sequência',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameLogicSeq {...p}/> },
   { id:'patience',name:'Paciência',cat:'Cartas',icon:'🃏',desc:'Klondike Solitaire clássico',xpWin:100,xpPlay:20,xpRecord:40,component:(p)=><GamePatience {...p}/> },
   { id:'word_search',name:'Caça-Palavras',cat:'Palavras',icon:'🔍',desc:'Encontre as palavras jurídicas',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameWordSearch {...p}/> },
+  // Lote D — Memória + Estratégia
+  { id:'seq_memory',name:'Memória por Sequência',cat:'Memória',icon:'🔷',desc:'Memorize e repita sequências de símbolos',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameSeqMemory {...p}/> },
+  { id:'num_memory',name:'Memória Numérica',cat:'Memória',icon:'🔢',desc:'Memorize sequências de números crescentes',xpWin:70,xpPlay:14,xpRecord:30,component:(p)=><GameNumMemory {...p}/> },
+  { id:'visual_memory',name:'Memória Visual',cat:'Memória',icon:'👁',desc:'Memorize a posição das células destacadas',xpWin:65,xpPlay:13,xpRecord:28,component:(p)=><GameVisualMemory {...p}/> },
+  { id:'color_memory',name:'Memória de Cores',cat:'Memória',icon:'🎨',desc:'Memorize e repita sequências de cores',xpWin:55,xpPlay:11,xpRecord:22,component:(p)=><GameColorMemory {...p}/> },
+  { id:'othello',name:'Othello',cat:'Estratégia',icon:'⚫',desc:'Domine o tabuleiro com suas peças',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameOthello {...p}/> },
+  { id:'gomoku',name:'Gomoku',cat:'Estratégia',icon:'⬤',desc:'Faça 5 em linha no tabuleiro 15x15',xpWin:75,xpPlay:14,xpRecord:30,component:(p)=><GameGomoku {...p}/> },
+  { id:'nim',name:'Nim',cat:'Estratégia',icon:'🪨',desc:'Remova pedras — quem pegar a última perde',xpWin:60,xpPlay:12,xpRecord:25,component:(p)=><GameNim {...p}/> },
+  { id:'mancala',name:'Mancala',cat:'Estratégia',icon:'🫙',desc:'Colete mais sementes que o adversário',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameMancala {...p}/> },
+  { id:'hex',name:'Hex',cat:'Estratégia',icon:'🔷',desc:'Conecte os dois lados do tabuleiro hexagonal',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameHex {...p}/> },
+  { id:'chess',name:'Xadrez',cat:'Estratégia',icon:'♚',desc:'Xadrez completo 8x8 com IA minimax',xpWin:100,xpPlay:20,xpRecord:45,component:(p)=><GameChess {...p}/> },
   // Lote C — Canvas Arcade
   { id:'asteroids',name:'Asteroids',cat:'Arcade',icon:'☄️',desc:'Destrua os asteroides com sua nave',xpWin:80,xpPlay:15,xpRecord:35,component:(p)=><GameAsteroids {...p}/> },
   { id:'space_shooter',name:'Space Shooter',cat:'Arcade',icon:'🚀',desc:'Destrua as naves inimigas em 5 waves',xpWin:90,xpPlay:18,xpRecord:38,component:(p)=><GameSpaceShooter {...p}/> },
@@ -741,18 +753,18 @@ export const GAMES: GameDef[] = [
     ['tangram','Tangram','Puzzle','⬟','Monte as formas com as peças'],
     ['jigsaw','Jigsaw Puzzle','Puzzle','🧩','Monte o quebra-cabeça de imagens'],
     ['match_pair','Match Pair','Puzzle','🃏','Combine os pares de cartas'],
-    ['seq_memory','Memória por Sequência','Memória','🔢','Memorize e repita a sequência de números'],
-    ['num_memory','Memória Numérica','Memória','🔟','Memorize a sequência numérica'],
-    ['visual_memory','Memória Visual','Memória','👁','Memorize a posição dos objetos'],
-    ['color_memory','Memória de Cores','Memória','🎨','Memorize a sequência de cores'],
+    // stub-replaced: ['seq_memory','Memória por Sequênci
+    // stub-replaced: ['num_memory','Memória Numérica','M
+    // stub-replaced: ['visual_memory','Memória Visual','
+    // stub-replaced: ['color_memory','Memória de Cores',
     // damas — replaced below
-    ['chess','Xadrez Simplificado','Estratégia','♚','Versão simplificada do xadrez'],
-    ['othello','Othello','Estratégia','⚫','Domine o tabuleiro com suas peças'],
+    // stub-replaced: ['chess','Xadrez Simplificado','Est
+    // stub-replaced: ['othello','Othello','Estratégia','
     // connect4 — replaced below
-    ['gomoku','Gomoku','Estratégia','⬤','Faça 5 em linha no tabuleiro'],
-    ['hex','Hex','Estratégia','🔷','Conecte os dois lados do tabuleiro'],
-    ['nim','Nim','Estratégia','🪨','Remova pedras estrategicamente'],
-    ['mancala','Mancala','Estratégia','🫙','Colete mais pedras que o adversário'],
+    // stub-replaced: ['gomoku','Gomoku','Estratégia','⬤'
+    // stub-replaced: ['hex','Hex','Estratégia','🔷','Cone
+    // stub-replaced: ['nim','Nim','Estratégia','🪨','Remo
+    // stub-replaced: ['mancala','Mancala','Estratégia','
     // mastermind — replaced below
     ['secret_code','Código Secreto','Lógica','🔐','Quebre o código numérico'],
     // maze — replaced below
