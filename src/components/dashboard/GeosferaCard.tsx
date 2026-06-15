@@ -20,6 +20,7 @@ function getMoonPhase(date: Date): { icon: string; name: string; illumination: n
   return { icon, name, illumination }
 }
 
+function brDate(d: Date) { return new Date(d.getTime() - 3 * 3600000) }
 function getSeason(date: Date): { icon: string; name: string; color: string } {
   const m = date.getMonth() + 1, d = date.getDate()
   if (m === 12 && d >= 21 || m <= 3 && !(m === 3 && d > 20)) return { icon: '☀️', name: 'Verão', color: '#f97316' }
@@ -32,8 +33,9 @@ export default function PainelGeosfera({ onNavigate, dragging, dragOver: _dO, on
   const [now, setNow] = useState(new Date())
   useEffect(() => { const i = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(i) }, [])
 
+  const _br = brDate(now)
   const moon = getMoonPhase(now)
-  const season = getSeason(now)
+  const season = getSeason(_br)
 
   return (
     <button onClick={() => onNavigate('geosfera')} draggable

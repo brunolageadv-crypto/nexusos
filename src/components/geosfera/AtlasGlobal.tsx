@@ -307,7 +307,8 @@ export default function AtlasGlobal() {
 
   const sunLon = getSunLon(now)
   const sunX = lx(sunLon)
-  const m=now.getMonth()+1, dy=now.getDate()
+  const _br=new Date(now.getTime()-3*3600000)
+  const m=_br.getMonth()+1, dy=_br.getDate()
   const isSummerNorth=(m===6&&dy>=21)||(m===7||m===8)||(m===9&&dy<23)
   const northSeason=isSummerNorth?'☀️ Verão':((m===12&&dy>=21)||(m<=3&&!(m===3&&dy>20)))?'❄️ Inverno':((m>=3&&m<=6&&!(m===6&&dy>20)))?'🌸 Primavera':'🍂 Outono'
   const southSeason=isSummerNorth?'❄️ Inverno':((m===12&&dy>=21)||(m<=3&&!(m===3&&dy>20)))?'☀️ Verão':((m>=3&&m<=6&&!(m===6&&dy>20)))?'🍂 Outono':'🌸 Primavera'

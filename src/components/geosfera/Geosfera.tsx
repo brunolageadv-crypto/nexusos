@@ -3,6 +3,14 @@ import AtlasGlobal from './AtlasGlobal'
 
 // ─── Pure math — no external deps ────────────────────────────────────────────
 
+
+// ── Brasília local date helper (UTC-3) ────────────────────────────────────────
+function brDate(date: Date): Date {
+  // Returns a Date object shifted to Brasília time (UTC-3)
+  // so that getMonth(), getDate(), getFullYear() etc. return BRT values
+  return new Date(date.getTime() - 3 * 3600000)
+}
+
 // ══ MOON CALCULATIONS ════════════════════════════════════════════════════════
 function getMoonData(date: Date) {
   const MS_PER_DAY = 86400000
@@ -383,32 +391,33 @@ export default function Geosfera() {
   }, [])
 
   const moon = getMoonData(now)
-  const season = getSeasonData(now)
-  const sun = getSunData(now)
+  const season = getSeasonData(brDate(now))
+  const sun = getSunData(brDate(now))
   const clocks = getWorldClocks(now)
 
   const seasonName = season.current.name
   const vis = SEASON_VISUALS[seasonName] || SEASON_VISUALS['Verão']
 
   // Calendar data
-  const doy = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
+  const _brNow = brDate(now)
+  const doy = Math.floor((_brNow.getTime() - new Date(_brNow.getFullYear(), 0, 0).getTime()) / 86400000)
   const weekNum = Math.ceil(doy / 7)
-  const daysLeft = 365 - doy + (isLeapYear(now.getFullYear()) ? 1 : 0)
-  const quarter = Math.ceil((now.getMonth() + 1) / 3)
+  const daysLeft = 365 - doy + (isLeapYear(_brNow.getFullYear()) ? 1 : 0)
+  const quarter = Math.ceil((_brNow.getMonth() + 1) / 3)
 
   function isLeapYear(y: number) { return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 }
 
   // Next events
-  const msToNewYear = new Date(now.getFullYear() + 1, 0, 1).getTime() - now.getTime()
+  const msToNewYear = new Date(_brNow.getFullYear() + 1, 0, 1).getTime() - now.getTime()
   const daysToNewYear = Math.floor(msToNewYear / 86400000)
   const daysToFullMoon = moon.daysToNext
 
   // Equinoxes/solstices approx
   const solstices = [
-    { name: 'Solstício de Verão', date: new Date(`${now.getFullYear()}-12-21`) },
-    { name: 'Equinócio de Outono', date: new Date(`${now.getFullYear()}-03-21`) },
-    { name: 'Solstício de Inverno', date: new Date(`${now.getFullYear()}-06-21`) },
-    { name: 'Equinócio de Primavera', date: new Date(`${now.getFullYear()}-09-23`) },
+    { name: 'Solstício de Verão', date: new Date(`${_brNow.getFullYear()}-12-21`) },
+    { name: 'Equinócio de Outono', date: new Date(`${_brNow.getFullYear()}-03-21`) },
+    { name: 'Solstício de Inverno', date: new Date(`${_brNow.getFullYear()}-06-21`) },
+    { name: 'Equinócio de Primavera', date: new Date(`${_brNow.getFullYear()}-09-23`) },
   ]
   const nextSolstice = solstices.filter(s => s.date > now).sort((a,b) => a.date.getTime() - b.date.getTime())[0] || solstices[0]
   const daysToSolstice = Math.ceil((nextSolstice.date.getTime() - now.getTime()) / 86400000)
@@ -703,13 +712,13 @@ export default function Geosfera() {
         {activeTab === 'calendar' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 16 }}>
             {[
-              { l: '📅 Dia do Ano', v: doy, sub: `de ${isLeapYear(now.getFullYear()) ? 366 : 365}`, c: '96,165,250' },
+              { l: '📅 Dia do Ano', v: doy, sub: `de ${isLeapYear(_brNow.getFullYear()) ? 366 : 365}`, c: '96,165,250' },
               { l: '📆 Semana do Ano', v: weekNum, sub: `de 52`, c: '167,139,250' },
-              { l: '📊 Trimestre', v: `Q${quarter}`, sub: now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }), c: '52,211,153' },
-              { l: '⏳ Dias Restantes', v: daysLeft, sub: `para ${now.getFullYear() + 1}`, c: '251,191,36' },
+              { l: '📊 Trimestre', v: `Q${quarter}`, sub: _brNow.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }), c: '52,211,153' },
+              { l: '⏳ Dias Restantes', v: daysLeft, sub: `para ${_brNow.getFullYear() + 1}`, c: '251,191,36' },
               { l: '🌙 Próxima Lua', v: `${Math.floor(moon.daysToNext)}d`, sub: moon.nextPhaseLabel, c: '254,249,231' },
               { l: `${season.next.icon} ${season.next.name}`, v: `${season.daysToNext}d`, sub: 'próxima estação', c: '244,114,182' },
-              { l: '🎆 Ano Novo', v: `${daysToNewYear}d`, sub: `${now.getFullYear() + 1}`, c: '248,113,113' },
+              { l: '🎆 Ano Novo', v: `${daysToNewYear}d`, sub: `${_brNow.getFullYear() + 1}`, c: '248,113,113' },
               { l: '🌐 ' + nextSolstice.name, v: `${daysToSolstice}d`, sub: 'fenômeno astronômico', c: '34,211,153' },
             ].map(item => (
               <div key={item.l} style={{ ...card, padding: 22 }}>
