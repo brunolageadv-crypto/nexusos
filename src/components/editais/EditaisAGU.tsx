@@ -138,7 +138,7 @@ function SubRow({ subId, nome, hooks }: {
               updateField(subId, 'finalizado' as any, e.target.checked)
               // Auto-data se não tiver
               if (e.target.checked && !s.dataFinalizacao) {
-                updateField(subId, 'dataFinalizacao', new Date().toISOString().slice(0, 10))
+                updateField(subId, 'dataFinalizacao', new Date(Date.now()-3*3600000).toISOString().slice(0,10))
               }
             }}
             style={{ display: 'none' }}

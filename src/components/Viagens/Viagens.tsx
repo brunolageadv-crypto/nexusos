@@ -67,7 +67,7 @@ interface Cofre {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
-function todayISO() { return new Date().toISOString().slice(0, 10) }
+function todayISO() { return new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10) }
 function fmtMoeda(v: number) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 function fmtData(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—' }
 function calcDias(ini: string, fim: string): number {

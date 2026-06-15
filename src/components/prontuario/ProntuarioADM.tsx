@@ -119,7 +119,7 @@ function FormModal({ uid, demanda, onClose }: { uid: string | null; demanda: Dem
   const [descricao, setDescricao] = useState(demanda?.descricao || '')
   const [numeroDemanda, setNumeroDemanda] = useState(demanda?.numeroDemanda || '')
   const [processoSEI, setProcessoSEI] = useState(demanda?.processoSEI || '')
-  const [dataAbertura, setDataAbertura] = useState(demanda?.dataAbertura || new Date().toISOString().slice(0,10))
+  const [dataAbertura, setDataAbertura] = useState(demanda?.dataAbertura || new Date(Date.now()-3*3600000).toISOString().slice(0,10))
   const [prazo, setPrazo] = useState(demanda?.prazo || '')
   const [solicitante, setSolicitante] = useState(demanda?.solicitante || '')
   const [unidade, setUnidade] = useState(demanda?.unidadeDemandante || '')
@@ -384,7 +384,7 @@ function DetalheModal({ uid, demanda, onClose, onEdit }: { uid: string|null; dem
 
 // ─── Calendário ───────────────────────────────────────────────────────────────
 function Calendario({ demandas, onClickDemanda }: { demandas: Demanda[]; onClickDemanda: (d:Demanda)=>void }) {
-  const hoje = new Date()
+  const hoje = new Date(Date.now()-3*3600000)
   const [mes, setMes] = useState(hoje.getMonth())
   const [ano, setAno] = useState(hoje.getFullYear())
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']

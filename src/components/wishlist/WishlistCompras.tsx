@@ -145,7 +145,7 @@ function ModalItem({ uid, item, onClose }: { uid: string | null; item: ItemWishl
       preco: parseFloat(preco) || 0,
       precoAtual: parseFloat(precoAtual) || undefined,
       loja: loja || undefined, link: link || undefined,
-      dataDesejo: item?.dataDesejo || new Date().toISOString().slice(0, 10),
+      dataDesejo: item?.dataDesejo || new Date(Date.now()-3*3600000).toISOString().slice(0,10),
       dataPlanejada: dataPlanejada || undefined,
       dataCompra: dataCompra || undefined,
       notas: notas || undefined,
@@ -358,7 +358,7 @@ function AbaWishlist({ uid, itens, onEdit }: {
   const toggleStatus = async (item: ItemWishlist, novoStatus: Status) => {
     if (!uid) return
     const updateData: Record<string, unknown> = { status: novoStatus }
-    if (novoStatus === 'comprado') updateData.dataCompra = new Date().toISOString().slice(0, 10)
+    if (novoStatus === 'comprado') updateData.dataCompra = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
     await updateDoc(doc(db, 'users', uid, 'wishlist', item.id), updateData)
   }
 

@@ -100,7 +100,7 @@ function usePontoStats() {
     return onSnapshot(query(collection(db, `users/${uid}/ponto`), orderBy('data', 'desc')), snap =>
       setRegistros(snap.docs.map(d => d.data())))
   }, [uid])
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const mesAtual = hoje.slice(0, 7)
   const regHoje = registros.find(r => r.data === hoje)
   const minMes = registros.filter(r => r.data.startsWith(mesAtual)).reduce((a, r) => a + (r.minutos || 0), 0)
@@ -115,7 +115,7 @@ function useContasPagar() {
     return onSnapshot(query(collection(db, `users/${uid}/contasPagar`), orderBy('vencimento', 'asc')), snap =>
       setContas(snap.docs.map(d => d.data())))
   }, [uid])
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const pendentes = contas.filter(c => !c.pago)
   const vencendo = pendentes.filter(c => { const d = Math.ceil((new Date(c.vencimento).getTime() - Date.now()) / 86400000); return d >= 0 && d <= 7 })
   const vencidas = pendentes.filter(c => new Date(c.vencimento).toISOString().slice(0,10) < hoje)
@@ -129,7 +129,7 @@ function useConcursosDash() {
     if (!uid || !db) return
     return onSnapshot(collection(db, `users/${uid}/concursos`), snap => setConcursos(snap.docs.map(d => d.data())))
   }, [uid])
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const ativos = concursos.filter(c => c.status !== 'encerrado')
   const proximos = [...concursos].filter(c => c.dataProva && c.dataProva >= hoje).sort((a,b) => a.dataProva.localeCompare(b.dataProva)).slice(0, 3)
   return { concursos: ativos, proximos, total: concursos.length }
@@ -166,7 +166,7 @@ function useSaudeHoje() {
   const uid = useUid()
   useEffect(() => {
     if (!uid || !db) return
-    const hoje = new Date().toISOString().slice(0, 10)
+    const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
     return onSnapshot(collection(db, `users/${uid}/saude`), snap => {
       const list = snap.docs.map(d => d.data())
       setTodos(list)
@@ -221,7 +221,7 @@ function useLogsHoje() {
     if (!uid || !db) return
     return onSnapshot(collection(db, `users/${uid}/logs`), snap => setLogs(snap.docs.map(d => d.data())))
   }, [uid])
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const logHoje = logs.filter(l => l.data === hoje)
   const total = logs.length
   const minHoje = logHoje.reduce((a: number, l: any) => a + (l.duracao || 0), 0)
@@ -599,7 +599,7 @@ function ConcursosDashCard({ onNavigate }: { onNavigate:(id:string)=>void }) {
 // ─── ProntuarioCalendarCard ───────────────────────────────────────────────────
 function ProntuarioCalendarCard({ onNavigate }: { onNavigate:(id:string)=>void }) {
   const demandas = useProntuarioDemandas()
-  const hoje = new Date()
+  const hoje = new Date(Date.now()-3*3600000)
   const [mes, setMes] = useState(hoje.getMonth())
   const [ano, setAno] = useState(hoje.getFullYear())
   const MESES=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -1639,7 +1639,7 @@ function PainelFinanceiro({ onNavigate }: any) {
     const u2 = onSnapshot(query(collection(db,`users/${uid}/contasPagar`),orderBy('vencimento','asc')), s => setContas(s.docs.map(d=>d.data())))
     return () => { u1(); u2() }
   }, [uid])
-  const mes = new Date().toISOString().slice(0,7)
+  const mes = new Date(Date.now()-3*3600000).toISOString().slice(0,7)
   const tMes = trans.filter(t => t.data?.startsWith(mes))
   const receita = tMes.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0)
   const despesa = tMes.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0)
@@ -1755,7 +1755,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
     const u5 = onSnapshot(query(collection(db,`users/${uid}/ponto`),orderBy('data','desc')), s=>setPonto(s.docs.map(d=>d.data())))
     return () => { u1(); u2(); u3(); u4(); u5() }
   }, [uid])
-  const mes = new Date().toISOString().slice(0,7)
+  const mes = new Date(Date.now()-3*3600000).toISOString().slice(0,7)
   const tMes = trans.filter(t=>t.data?.startsWith(mes))
   const receita = tMes.filter(t=>t.tipo==='receita').reduce((a,t)=>a+t.valor,0)
   const despesa = tMes.filter(t=>t.tipo==='despesa').reduce((a,t)=>a+t.valor,0)
@@ -1868,7 +1868,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
 function PainelVisaoGeralAgendaHoje({ onNavigate, dragging, dragOver: _dOah, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
   const uid = useUid()
   const [eventos, setEventos] = useState<any[]>([])
-  const hoje = new Date().toISOString().slice(0,10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/agenda`),orderBy('data','asc')), s=>setEventos(s.docs.map(d=>d.data()))) }, [uid])
   const evHoje = eventos.filter(e=>e.data===hoje)
   const pendentes = evHoje.filter(e=>!e.concluido)
@@ -1911,13 +1911,13 @@ function PainelVisaoGeralAgendaSemana({ onNavigate, dragging, dragOver: _dOas, o
   const uid = useUid()
   const [eventos, setEventos] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/agenda`),orderBy('data','asc')), s=>setEventos(s.docs.map(d=>d.data()))) }, [uid])
-  const hoje = new Date()
+  const hoje = new Date(Date.now()-3*3600000)
   const ini = new Date(hoje); ini.setDate(hoje.getDate()-hoje.getDay())
   const fim = new Date(ini); fim.setDate(ini.getDate()+6)
   const iniStr = ini.toISOString().slice(0,10)
   const fimStr = fim.toISOString().slice(0,10)
   const evSemana = eventos.filter(e=>e.data>=iniStr&&e.data<=fimStr)
-  const proxPrazo = eventos.filter(e=>e.tipo==='prazo'&&e.data>=new Date().toISOString().slice(0,10)&&!e.concluido).sort((a:any,b:any)=>a.data.localeCompare(b.data))[0]
+  const proxPrazo = eventos.filter(e=>e.tipo==='prazo'&&e.data>=new Date(Date.now()-3*3600000).toISOString().slice(0,10)&&!e.concluido).sort((a:any,b:any)=>a.data.localeCompare(b.data))[0]
   const cor = '#7B1FA2'
   const DIAS_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
   const diasSemana = Array.from({length:7},(_,i)=>{ const d=new Date(ini); d.setDate(ini.getDate()+i); return d })
@@ -1941,7 +1941,7 @@ function PainelVisaoGeralAgendaSemana({ onNavigate, dragging, dragOver: _dOas, o
       {/* Mini bar chart da semana */}
       <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:32 }}>
         {diasSemana.map((d,i)=>{
-          const isToday = d.toISOString().slice(0,10)===new Date().toISOString().slice(0,10)
+          const isToday = d.toISOString().slice(0,10)===new Date(Date.now()-3*3600000).toISOString().slice(0,10)
           const h = evPorDia[i]>0 ? Math.max(8,(evPorDia[i]/maxEv)*28) : 4
           return (
             <div key={i} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
@@ -2041,7 +2041,7 @@ function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragS
   const [adding, setAdding] = useState(false)
   const [inputVal, setInputVal] = useState('')
   const meta = 2000
-  const hoje = useMemo(() => new Date().toISOString().slice(0,10), [])
+  const hoje = useMemo(() => new Date(Date.now()-3*3600000).toISOString().slice(0,10), [])
 
   useEffect(() => {
     if(!uid||!db) return
@@ -2120,7 +2120,7 @@ function PainelVisaoGeralAgua({ onNavigate, dragging, dragOver: _dOagua, onDragS
 }
 
 function PainelVisaoGeralCalendario({ dragging, dragOver: _dOcal, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
-  const hoje = new Date()
+  const hoje = new Date(Date.now()-3*3600000)
   const DIAS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
   const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
   const ano = hoje.getFullYear(), mes = hoje.getMonth()
@@ -2162,7 +2162,7 @@ function PainelVisaoGeralContasPagar({ onNavigate, dragging, dragOver: _dOcp, on
   const pendentes = contas.filter(c=>!c.pago)
   const total = pendentes.reduce((a:number,c:any)=>a+c.valor,0)
   const fmtBRL = (v:number) => v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0})
-  const hoje = new Date().toISOString().slice(0,10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const urgentes = pendentes.filter(c=>{const d=Math.ceil((new Date(c.vencimento+'T00:00:00').getTime()-Date.now())/86400000);return d<=7&&d>=0})
   const vencidas = pendentes.filter(c=>c.vencimento<hoje)
   const cor = vencidas.length>0?'#D93025':urgentes.length>0?'#F29900':'#1A73E8'
@@ -2194,7 +2194,7 @@ function PainelVisaoGeralPontoSaldo({ onNavigate, dragging, dragOver: _dOps, onD
   const uid = useUid()
   const [registros, setRegistros] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/ponto`),orderBy('data','desc')), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
-  const mes = new Date().toISOString().slice(0,7)
+  const mes = new Date(Date.now()-3*3600000).toISOString().slice(0,7)
   const META_DIA = 480
   const regMes = registros.filter(r=>r.data?.startsWith(mes)&&(r.tipo==='trabalho'||r.tipo==='homeoffice')&&r.minutos>0)
   const saldo = regMes.reduce((a,r)=>a+(r.minutos-META_DIA),0)
@@ -2229,7 +2229,7 @@ function PainelVisaoGeralSaude({ onNavigate, dragging, dragOver: _dOsaude, onDra
   const uid = useUid()
   const [registros, setRegistros] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/saude`), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
-  const mes = new Date().toISOString().slice(0,7)
+  const mes = new Date(Date.now()-3*3600000).toISOString().slice(0,7)
   const regMes = registros.filter(r=>r.data?.startsWith(mes))
   let streak=0; const dCheck=new Date()
   while(true){ const ds=dCheck.toISOString().slice(0,10); if(!registros.find((r:any)=>r.data===ds)) break; streak++; dCheck.setDate(dCheck.getDate()-1) }
@@ -2389,7 +2389,7 @@ function PainelConcursos({ onNavigate }: any) {
   const uid = useUid()
   const [concursos, setConcursos] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/concursos`), s=>setConcursos(s.docs.map(d=>d.data()))) }, [uid])
-  const hoje = new Date().toISOString().slice(0,10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const ativos = concursos.filter(c=>c.status!=='encerrado')
   const proximos = [...concursos].filter(c=>c.dataProva&&c.dataProva>=hoje).sort((a,b)=>a.dataProva.localeCompare(b.dataProva)).slice(0,4)
   const ST_COR: Record<string,string> = { inscricao_aberta:'#34d399', inscricao_encerrada:'#fbbf24', aguardando_edital:'#60a5fa', em_preparacao:'#a78bfa', realizado:'#94a3b8', encerrado:'#6b7280' }
@@ -2435,7 +2435,7 @@ function PainelPonto({ onNavigate }: any) {
   const uid = useUid()
   const [registros, setRegistros] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(query(collection(db,`users/${uid}/ponto`),orderBy('data','desc')), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
-  const hoje = new Date().toISOString().slice(0,10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const mes = hoje.slice(0,7)
   const regHoje = registros.find(r=>r.data===hoje)
   const minMes = registros.filter(r=>r.data?.startsWith(mes)).reduce((a,r)=>a+(r.minutos||0),0)
@@ -2486,7 +2486,7 @@ function PainelSaude({ onNavigate }: any) {
   const uid = useUid()
   const [registros, setRegistros] = useState<any[]>([])
   useEffect(() => { if(!uid||!db) return; return onSnapshot(collection(db,`users/${uid}/saude`), s=>setRegistros(s.docs.map(d=>d.data()))) }, [uid])
-  const hoje = new Date().toISOString().slice(0,10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const mes = hoje.slice(0,7)
   const regHoje = registros.find(r=>r.data===hoje)
   const regMes = registros.filter(r=>r.data?.startsWith(mes))
@@ -2561,7 +2561,7 @@ function PainelWishlist({ onNavigate }: any) {
 function PainelDiario({ onNavigate }: any) {
   const uid = useUid()
   const [dados, setDados] = useState<any>(null)
-  const hoje = new Date().toISOString().slice(0,10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   useEffect(() => {
     if(!uid||!db) return
     import('firebase/firestore').then(({getDoc})=>{
@@ -2754,7 +2754,7 @@ function BarraSaudacaoBusca({ uid, onNavigate }: { uid: string|null; onNavigate:
   const nome = 'Bruno'
 
   // Build smart subtitle
-  const hoje = new Date().toISOString().slice(0, 10)
+  const hoje = new Date(Date.now()-3*3600000).toISOString().slice(0,10)
   const prazosHoje = demandas.filter(d => d.prazo === hoje && d.status !== 'concluida' && d.status !== 'cancelada').length
   const contasVencendo = contas.filter(c => {
     if (c.pago) return false

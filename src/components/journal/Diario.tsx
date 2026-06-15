@@ -16,7 +16,7 @@ interface Nota {
 }
 
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
-function todayISO() { return new Date().toISOString().slice(0,10) }
+function todayISO() { return new Date(Date.now()-3*3600000).toISOString().slice(0,10) }
 function fmtDataCurta(d: string) {
   const dt = new Date(d + 'T12:00:00')
   return dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })

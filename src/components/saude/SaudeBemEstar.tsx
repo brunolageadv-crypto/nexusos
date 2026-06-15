@@ -38,7 +38,7 @@ interface RegistroSaude {
 }
 const TIPOS_TREINO = ['Musculação','Corrida','Ciclismo','Natação','Yoga','Pilates','Caminhada','Funcional','Crossfit','Artes Marciais','Outro']
 const SINTOMAS_COMUNS = ['Dor de cabeça','Cansaço','Ansiedade','Dor nas costas','Insônia','Stress','Gripe/Resfriado','Dor muscular','Azia','Tontura','Náusea','Palpitação']
-function today() { return new Date().toISOString().slice(0,10) }
+function today() { return new Date(Date.now()-3*3600000).toISOString().slice(0,10) }
 function newId() { return Math.random().toString(36).slice(2,10) }
 function defaultAlergia(): RegistroAlergia {
   return {

@@ -244,7 +244,7 @@ function MediaDrawer({ item, uid, onClose, onSave }: { item: MediaItem; uid: str
             <label style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 7 }}>Status</label>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {(Object.entries(STATUS_CONFIG) as [MediaStatus, typeof STATUS_CONFIG[MediaStatus]][]).map(([k, v]) => (
-                <button key={k} onClick={() => upd({ status: k, dataConclusao: k === 'concluido' ? (editado.dataConclusao || new Date().toISOString().slice(0, 10)) : editado.dataConclusao })}
+                <button key={k} onClick={() => upd({ status: k, dataConclusao: k === 'concluido' ? (editado.dataConclusao || new Date(Date.now()-3*3600000).toISOString().slice(0,10)) : editado.dataConclusao })}
                   style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${editado.status === k ? v.color : 'var(--border-md)'}`, background: editado.status === k ? `${v.color}18` : 'transparent', color: editado.status === k ? v.color : 'var(--text-muted)', fontSize: '0.72rem', fontWeight: editado.status === k ? 700 : 400, cursor: 'pointer', transition: 'all 0.15s' }}>
                   {v.icon} {v.label}
                 </button>
@@ -390,7 +390,7 @@ function ModalAdicionar({ uid, onClose }: { uid: string | null; onClose: () => v
       episodiosAssistidos: 0,
       paginaAtual: 0,
       capituloAtual: 0,
-      dataInicio: status === 'andamento' ? new Date().toISOString().slice(0, 10) : undefined,
+      dataInicio: status === 'andamento' ? new Date(Date.now()-3*3600000).toISOString().slice(0,10) : undefined,
       criadoEm: Date.now(), updatedAt: Date.now(),
     }
     await setDoc(doc(db, 'users', uid, 'media', id), clean(item))

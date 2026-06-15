@@ -110,7 +110,7 @@ function ModalProgresso({ game, uid, onClose, onSave }: { game: Game; uid: strin
     setSaving(true)
     const updated: Game = {
       ...game, progresso: pct, status,
-      dataFim: status === 'concluido' && !game.dataFim ? new Date().toISOString().slice(0, 10) : game.dataFim,
+      dataFim: status === 'concluido' && !game.dataFim ? new Date(Date.now()-3*3600000).toISOString().slice(0,10) : game.dataFim,
       updatedAt: Date.now(),
     }
     await setDoc(doc(db, 'users', uid, 'games', game.id), clean(updated))
@@ -210,7 +210,7 @@ function ModalGame({ game, uid, onClose }: { game: Game | null; uid: string | nu
       id, titulo: titulo.trim(), plataforma, status, progresso,
       coverUrl: coverUrl || undefined,
       dataInicio: dataInicio || undefined,
-      dataFim: status === 'concluido' ? (dataFim || new Date().toISOString().slice(0, 10)) : (dataFim || undefined),
+      dataFim: status === 'concluido' ? (dataFim || new Date(Date.now()-3*3600000).toISOString().slice(0,10)) : (dataFim || undefined),
       nota: nota || undefined,
       notaPessoal: notaPessoal || undefined,
       criadoEm: game?.criadoEm || Date.now(),

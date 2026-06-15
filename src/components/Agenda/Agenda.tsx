@@ -49,7 +49,7 @@ const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 const DIAS_SEMANA_FULL = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado']
 
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
-function todayISO() { return new Date().toISOString().slice(0, 10) }
+function todayISO() { return new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10) }
 function fmtDate(d: string) {
   if (!d) return ''
   const [y, m, dy] = d.split('-')
@@ -399,7 +399,7 @@ function EventoCard({ evento, onEdit, onDelete, onToggle }: {
 
 // ─── View semanal ─────────────────────────────────────────────────────────────
 function ViewSemanal({ eventos, onAddEvento, onEditEvento }: { eventos: Evento[]; onAddEvento: (data: string) => void; onEditEvento: (e: Evento) => void }) {
-  const hoje = new Date()
+  const hoje = new Date(Date.now()-3*3600000)
   const inicioSemana = new Date(hoje)
   inicioSemana.setDate(hoje.getDate() - hoje.getDay())
   const dias = Array.from({ length: 7 }, (_, i) => {

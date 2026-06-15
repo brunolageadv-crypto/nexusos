@@ -68,7 +68,7 @@ const CATEGORIAS = Object.keys(CAT_CFG) as CategoriaLog[]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
-function todayISO() { return new Date().toISOString().slice(0, 10) }
+function todayISO() { return new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10) }
 function nowHHMM() { return new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }
 function fmtData(d: string) {
   return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : '—'

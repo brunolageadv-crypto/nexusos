@@ -56,7 +56,7 @@ const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'O
 function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 function fmtDate(d: string) { if (!d) return ''; const [y, m, dy] = d.split('-'); return `${dy}/${m}/${y}` }
 function fmtMoeda(v: number) { return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-function todayISO() { return new Date().toISOString().slice(0, 10) }
+function todayISO() { return new Date(Date.now()-3*3600000).toISOString().slice(0,10) }
 function daysUntil(d: string) { return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000) }
 
 const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', background: 'var(--input-bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontFamily: 'var(--font-body)', fontSize: '0.88rem' }

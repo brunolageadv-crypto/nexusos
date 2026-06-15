@@ -35,7 +35,7 @@ const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov'
 // COLORS_PIE removido
 
 /* ═══ Helpers ════════════════════════════════════════════════ */
-function todayISO() { return new Date().toISOString().slice(0,10) }
+function todayISO() { return new Date(Date.now()-3*3600000).toISOString().slice(0,10) }
 function fmtDate(d: string) { if(!d)return''; const[y,m,dy]=d.split('-'); return `${dy}/${m}/${y}` }
 function fmtWeekDay(d: string) { return new Date(d+'T12:00').toLocaleDateString('pt-BR',{weekday:'short'}) }
 function fmtHM(min: number) { if(!min)return'—'; const h=Math.floor(min/60),m=min%60; return `${h}h${m>0?` ${m}m`:''}` }
