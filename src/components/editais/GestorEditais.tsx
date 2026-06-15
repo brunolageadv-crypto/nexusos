@@ -5,6 +5,8 @@ import { db } from '../../lib/firebase'
 import { useEdital } from '../../hooks/useEdital'
 import type { EditalCadastrado, DisciplinaEdital, SubtopicoEdital } from '../../hooks/useEdital'
 import { AGU_DISCIPLINAS } from './aguData'
+import { PGM_BH_DISCIPLINAS } from './pgmBhData'
+import { PGM_CWB_DISCIPLINAS } from './pgmCuritibaData'
 import EditalDetalhe from './EditalDetalhe'
 import { useUid } from '../../hooks/useUid'
 
@@ -40,7 +42,55 @@ function aguParaEdital(): EditalCadastrado {
   }
 }
 
+function pgmBhParaEdital(): EditalCadastrado {
+  return {
+    id: 'pgm-bh-procurador',
+    nome: 'Procurador Municipal — BH',
+    orgao: 'PGM-BH',
+    cargo: 'Procurador Municipal',
+    ano: '2016',
+    cor: '#0891b2',
+    descricao: 'Concurso para o cargo de Procurador Municipal da Prefeitura de Belo Horizonte (Edital nº 03/2016, Cebraspe).',
+    disciplinas: PGM_BH_DISCIPLINAS.map(d => ({
+      id: d.id,
+      nome: d.nome,
+      cor: d.cor,
+      topicos: d.topicos.map(t => ({
+        id: t.id,
+        nome: t.nome,
+        subtopicos: t.subtopicos.map(s => ({ id: s.id, nome: s.nome })),
+      })),
+    })),
+    criadoEm: 1, // fixo para aparecer logo após a AGU
+  }
+}
+
+function pgmCuritibaParaEdital(): EditalCadastrado {
+  return {
+    id: 'pgm-curitiba-procurador',
+    nome: 'Procurador Municipal — Curitiba',
+    orgao: 'PGM-Curitiba',
+    cargo: 'Procurador do Município',
+    ano: '2019',
+    cor: '#059669',
+    descricao: 'Concurso para o cargo de Procurador do Município de Curitiba (Edital nº 5/2019, UFPR/Núcleo de Concursos).',
+    disciplinas: PGM_CWB_DISCIPLINAS.map(d => ({
+      id: d.id,
+      nome: d.nome,
+      cor: d.cor,
+      topicos: d.topicos.map(t => ({
+        id: t.id,
+        nome: t.nome,
+        subtopicos: t.subtopicos.map(s => ({ id: s.id, nome: s.nome })),
+      })),
+    })),
+    criadoEm: 2, // fixo para aparecer logo após a PGM-BH
+  }
+}
+
 const AGU_EDITAL = aguParaEdital()
+const PGM_BH_EDITAL = pgmBhParaEdital()
+const PGM_CWB_EDITAL = pgmCuritibaParaEdital()
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function newId() { return Math.random().toString(36).slice(2, 10) }
@@ -350,7 +400,7 @@ function ModalEdital({ uid, edital, onClose }: {
 
         {/* Footer */}
         <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-md)', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div>{isEdit && edital.id !== 'agu-advogado-uniao' && (
+          <div>{isEdit && !['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador'].includes(edital.id) && (
             <button onClick={del} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#f87171', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}>Excluir Edital</button>
           )}</div>
           <div style={{ display: 'flex', gap: 10 }}>
@@ -375,7 +425,7 @@ function EditalCard({ edital, onAbrir, onEditar, hooks }: {
 }) {
   const allIds = edital.disciplinas.flatMap(d => d.topicos.flatMap(t => t.subtopicos.map(s => s.id)))
   const stats = hooks.getStats(allIds)
-  const isAGU = edital.id === 'agu-advogado-uniao'
+  const isFixo = ['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador'].includes(edital.id)
   const diasProva = edital.dataProva
     ? Math.ceil((new Date(edital.dataProva).getTime() - Date.now()) / 86400000)
     : null
@@ -409,9 +459,9 @@ function EditalCard({ edital, onAbrir, onEditar, hooks }: {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-              {isAGU && (
-                <span style={{ fontSize: '0.6rem', padding: '2px 8px', borderRadius: 20, background: 'rgba(79,70,229,0.15)', color: '#818cf8', border: '1px solid rgba(79,70,229,0.3)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                  AGU
+              {isFixo && (
+                <span style={{ fontSize: '0.6rem', padding: '2px 8px', borderRadius: 20, background: `${edital.cor}26`, color: edital.cor, border: `1px solid ${edital.cor}4d`, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                  {edital.orgao}
                 </span>
               )}
               <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{edital.orgao} · {edital.ano}</span>
@@ -526,7 +576,7 @@ export default function GestorEditais() {
     if (!uid) return
     return onSnapshot(collection(db, 'users', uid, 'editais'), snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EditalCadastrado))
-        .filter(e => e.id !== 'agu-advogado-uniao') // AGU já vem hardcoded
+        .filter(e => !['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador'].includes(e.id)) // editais fixos já vêm hardcoded
         .sort((a, b) => b.criadoEm - a.criadoEm)
       setEditaisCustom(list)
       setLoading(false)
@@ -534,7 +584,7 @@ export default function GestorEditais() {
   }, [uid])
 
   // AGU sempre primeiro, depois os customizados
-  const todosEditais = [AGU_EDITAL, ...editaisCustom]
+  const todosEditais = [AGU_EDITAL, PGM_BH_EDITAL, PGM_CWB_EDITAL, ...editaisCustom]
 
   // Se há um edital aberto, mostrar o detalhe
   if (editalAberto) {
