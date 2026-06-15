@@ -555,7 +555,7 @@ export default function AtlasGlobal() {
               {COUNTRIES.map(c=>(
                 <button key={c.id} onClick={()=>setSelected(c===selected?null:c)}
                   style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${selected?.id===c.id?'rgba(251,191,36,0.5)':'transparent'}`,background:selected?.id===c.id?'rgba(251,191,36,0.08)':'transparent',cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:6}}
-                  onMouseEnter={e=>setHovered(c)}
+                  onMouseEnter={()=>setHovered(c)}
                   onMouseLeave={()=>setHovered(null)}>
                   <span style={{fontSize:'0.85rem'}}>{c.flag}</span>
                   <span style={{fontSize:'0.68rem',color:'var(--text-secondary)',fontWeight:selected?.id===c.id?700:400}}>{c.name}</span>
