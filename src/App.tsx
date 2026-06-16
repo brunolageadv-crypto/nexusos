@@ -4,6 +4,7 @@ import { db } from './lib/firebase'
 import { useAuth } from './hooks/useAuth'
 import LoginPage from './auth/LoginPage'
 import GestorEditais from './components/editais/GestorEditais'
+import MapaMental from './components/mapamental/MapaMental'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
 import PontoEletronico from './components/ponto/PontoEletronico'
@@ -93,6 +94,7 @@ const NAV = [
     { id: 'editais',    label: 'Editais',            icon: null, svgIcon: 'editais' },
     { id: 'concursos',  label: 'Concursos',          icon: '🎯', svgIcon: null },
     { id: 'prontuario', label: 'Prontuário ADM',     icon: '📋', svgIcon: null },
+    { id: 'mapamental', label: 'Mapa Mental',        icon: '🧠', svgIcon: null },
   ]},
   { section: 'FINANÇAS & VIDA', items: [
     { id: 'financeiro', label: 'Financeiro',         icon: '◎',  svgIcon: null },
@@ -241,6 +243,7 @@ function AppShell() {
           {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
           {active === 'prontuario' && <ProntuarioADM />}
+          {active === 'mapamental' && <MapaMental />}
           {active === 'saude'      && <SaudeBemEstar />}
           {active === 'wishlist'   && <WishlistCompras />}
           {active === 'journal'    && <Diario onNavigate={setActive} />}
