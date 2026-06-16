@@ -645,6 +645,7 @@ function mountMapaMental(root: HTMLElement){
     for(const id in pos){ const p=pos[id],s=sizes[id]; mnX=Math.min(mnX,p.x-s.w/2); mxX=Math.max(mxX,p.x+s.w/2); mnY=Math.min(mnY,p.y-s.h/2); mxY=Math.max(mxY,p.y+s.h/2) }
     const PAD=64,offX=PAD-mnX,offY=PAD-mnY; const W=(mxX-mnX)+PAD*2,H=(mxY-mnY)+PAD*2
     surface.style.width=W+'px'; surface.style.height=H+'px'; sub.style.width=W+'px'; sub.style.height=H+'px'
+    svg.setAttribute('width',String(W)); svg.setAttribute('height',String(H)); svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.style.width=W+'px'; svg.style.height=H+'px'
     const sp={}; for(const id in pos){ sp[id]={x:pos[id].x+offX,y:pos[id].y+offY}; els[id].style.left=sp[id].x+'px'; els[id].style.top=sp[id].y+'px' }
     drawEdges(svg,m,sp,sizes)
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))
