@@ -500,7 +500,7 @@ function mountMapaMental(root: HTMLElement){
   function buildPaletteTabs(){ const host=q('palTabs'); host.innerHTML=''
     Object.keys(PALETTES).forEach(key=>{ const b=document.createElement('button'); b.textContent=PAL_LABELS[key]; b.dataset.pal=key
       b.addEventListener('click',()=>{ paletteTab=key; renderSwatches(); syncStyleControls() }); host.appendChild(b) }) }
-  function renderSwatches(){ const host=q('swatches'); host.innerHTML=''
+  function renderSwatches(){ const host=q('swatches'); host.innerHTML='';
     (PALETTES[paletteTab]||PALETTES.minimal).forEach(col=>{ const s=document.createElement('div'); s.className='mm-sw'; s.style.background=col; s.dataset.col=col; s.addEventListener('click',()=>setStyle('color',col)); host.appendChild(s) }) }
   function setStyle(prop,val){ if(!selectedSet.length) return; const m=activeMap(); pushHistory()
     selectedSet.forEach(id=>{ const n=m.nodes[id]; if(!n) return; n.style[prop]=val; if(prop==='color') n.style.palette=paletteTab }); render(); save(); syncStyleControls() }
@@ -681,8 +681,14 @@ export default function MapaMental(){
     }
     const el = ref.current
     if(!el) return
-    const cleanup = mountMapaMental(el)
-    return cleanup
+    let cleanup: (() => void) | undefined
+    try {
+      cleanup = mountMapaMental(el)
+    } catch (err) {
+      console.error('[MapaMental] falha ao montar:', err)
+      el.innerHTML = '<div style="padding:40px;font-family:system-ui;color:#9aa0bd;display:flex;flex-direction:column;gap:8px;align-items:center;justify-content:center;height:100%;min-height:60vh"><b style="font-size:1rem;color:#e9ebf5">Não foi possível carregar o Mapa Mental</b><span style="font-size:.82rem">Abra o console (F12) para ver o erro. Recarregue a página para tentar de novo.</span></div>'
+    }
+    return () => { try { cleanup && cleanup() } catch (e) { /* noop */ } }
   }, [])
   return <div ref={ref} className="mm-app" />
 }
