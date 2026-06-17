@@ -126,7 +126,7 @@ const MM_CSS = `
 .mm-app .mm-topleft .ham:hover{ background:var(--mm-hover);color:var(--mm-text) }
 .mm-app .mm-topleft .name{ font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
 .mm-app .mm-topleft .meta{ font-size:.66rem;color:var(--mm-text-faint);font-family:var(--mm-mono) }
-.mm-app .mm-style{ bottom:16px;left:50%;transform:translateX(-50%) translateY(20px);padding:12px 14px;display:none;gap:14px;align-items:flex-start;opacity:0;transition:opacity var(--mm-tr),transform var(--mm-tr);flex-wrap:wrap;max-width:92% }
+.mm-app .mm-style{ z-index:36;bottom:16px;left:50%;transform:translateX(-50%) translateY(20px);padding:12px 14px;display:none;gap:14px;align-items:flex-start;opacity:0;transition:opacity var(--mm-tr),transform var(--mm-tr);flex-wrap:wrap;max-width:92% }
 .mm-app .mm-style.show{ display:flex;opacity:1;transform:translateX(-50%) translateY(0) }
 .mm-app .mm-grp{ display:flex;flex-direction:column;gap:7px }
 .mm-app .mm-grp > label{ font-size:.58rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mm-text-faint);font-weight:700;font-family:var(--mm-mono) }
@@ -146,6 +146,8 @@ const MM_CSS = `
 .mm-app .mm-sep{ width:1px;align-self:stretch;background:var(--mm-border) }
 .mm-app .mm-hint{ bottom:16px;left:14px;padding:8px 12px;font-size:.66rem;color:var(--mm-text-faint);font-family:var(--mm-mono);display:flex;gap:12px;flex-wrap:wrap;max-width:38% }
 .mm-app .mm-hint b{ color:var(--mm-text-dim) }
+.mm-app .mm-hint{ transition:opacity var(--mm-tr) }
+.mm-app .mm-hint.mm-hidden{ opacity:0;pointer-events:none }
 .mm-app .mm-empty{ position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--mm-text-faint);text-align:center;pointer-events:none }
 .mm-app .mm-empty h2{ font-size:1.1rem;color:var(--mm-text-dim);font-weight:700 }
 .mm-app .mm-empty p{ font-size:.82rem;max-width:320px;line-height:1.5 }
@@ -230,7 +232,7 @@ const MM_HTML = `
       <button class="mm-chip" data-line="angular">⌐</button>
     </div></div>
   </div>
-  <div class="mm-float mm-hint">
+  <div class="mm-float mm-hint" data-mm="hint">
     <span><b>Tab</b> filho</span><span><b>Enter</b> editar</span><span><b>↑↓←→</b> navegar</span>
     <span><b>arraste</b> mover</span><span><b>Del</b> remover</span><span><b>Ctrl+Z</b> desfazer</span>
   </div>
@@ -423,7 +425,9 @@ function mountMapaMental(root: HTMLElement){
   function toggleSelect(id){ const i=selectedSet.indexOf(id); i<0?selectedSet.push(id):selectedSet.splice(i,1); updateSelection() }
   function clearSelection(){ if(editingId) return; selectedSet=[]; updateSelection() }
   function updateSelection(){ for(const id in elsById) elsById[id].classList.toggle('selected',selectedSet.includes(id))
-    const panel=q('stylePanel'); if(selectedSet.length){ panel.classList.add('show'); syncStyleControls() } else panel.classList.remove('show') }
+    const panel=q('stylePanel'); const hint=q('hint')
+    if(selectedSet.length){ panel.classList.add('show'); if(hint) hint.classList.add('mm-hidden'); syncStyleControls() }
+    else { panel.classList.remove('show'); if(hint) hint.classList.remove('mm-hidden') } }
 
   /* ── arraste de nó (move o ramo, estilo MindNode) ── */
   function startNodeDrag(e,id){ const m=activeMap(); const n=m.nodes[id]; const v=view(); const sx=e.clientX,sy=e.clientY
@@ -499,7 +503,10 @@ function mountMapaMental(root: HTMLElement){
   /* ── painel de estilo ── */
   function buildPaletteTabs(){ const host=q('palTabs'); host.innerHTML=''
     Object.keys(PALETTES).forEach(key=>{ const b=document.createElement('button'); b.textContent=PAL_LABELS[key]; b.dataset.pal=key
-      b.addEventListener('click',()=>{ paletteTab=key; renderSwatches(); syncStyleControls() }); host.appendChild(b) }) }
+      b.addEventListener('click',()=>{ paletteTab=key
+        host.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.pal===key))
+        q('swatches').querySelectorAll('.mm-sw').forEach(sw=>sw.classList.remove('on'))
+        renderSwatches() }); host.appendChild(b) }) }
   function renderSwatches(){ const host=q('swatches'); host.innerHTML='';
     (PALETTES[paletteTab]||PALETTES.minimal).forEach(col=>{ const s=document.createElement('div'); s.className='mm-sw'; s.style.background=col; s.dataset.col=col; s.addEventListener('click',()=>setStyle('color',col)); host.appendChild(s) }) }
   function setStyle(prop,val){ if(!selectedSet.length) return; const m=activeMap(); pushHistory()
