@@ -6,6 +6,7 @@ import LoginPage from './auth/LoginPage'
 import GestorEditais from './components/editais/GestorEditais'
 import MapaMental from './components/mapamental/MapaMental'
 import AnalisePDF from './components/analisepdf/AnalisePDF'
+import ChecklistTopbar from './components/dashboard/ChecklistTopbar'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
 import PontoEletronico from './components/ponto/PontoEletronico'
@@ -216,6 +217,8 @@ function AppShell() {
           <span className="topbar-title">{currentLabel}</span>
           <div className="topbar-right">
             <div className="sync-dot" />
+            {/* Check list do dia */}
+            <ChecklistTopbar />
             {/* Botão troca de visualização do dashboard */}
             {active === 'dashboard' && (
               <button onClick={toggleDashView}

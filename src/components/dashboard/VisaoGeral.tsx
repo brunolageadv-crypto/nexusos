@@ -18,6 +18,7 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
+import { useEdital, useEditaisCadastrados } from '../../hooks/useEdital'
 import PainelArcade from './Arcade'
 
 /* ───────────────────────── helpers de data ───────────────────────── */
@@ -115,19 +116,40 @@ function Linha({ cor, titulo, meta, right }: any) {
 function AguProgresso({ agu, onNavigate }: any) { return <Kpi icon="📊" label="Progresso AGU" value={`${agu.global.pctConcluido}%`} sub={`${agu.global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`} color="#1A73E8" pct={agu.global.pctConcluido} navTo="editais" onNavigate={onNavigate} /> }
 function AguQuestoes({ agu, onNavigate }: any) { return <Kpi icon="📝" label="Questões" value={agu.global.questoes || '—'} sub={`${agu.global.acertos} acertos`} color="#8B5CF6" navTo="editais" onNavigate={onNavigate} /> }
 function AguAcerto({ agu, onNavigate }: any) { return <Kpi icon="🎯" label="% Acerto" value={agu.global.questoes > 0 ? `${agu.global.pctAcerto}%` : '—'} sub="desempenho geral" color="#0F9D58" pct={agu.global.questoes > 0 ? agu.global.pctAcerto : 0} navTo="editais" onNavigate={onNavigate} /> }
-function AguDisciplinas({ agu, onNavigate }: any) {
-  const top = [...agu.discStats].sort((a, b) => b.pctConcluido - a.pctConcluido)
+function EditaisCard({ agu, onNavigate }: any) {
+  const { editais } = useEditaisCadastrados()
+  const [sel, setSel] = useState(0)
+  const all = [{ id: 'agu', nome: 'Edital AGU', cor: '#1A73E8', isBuiltin: true }, ...editais.map((e: any) => ({ id: e.id, nome: e.nome, cor: e.cor || '#1A73E8', isBuiltin: false }))]
+  const cur = all[sel % all.length]
+  const hookCur = useEdital(cur.isBuiltin ? 'agu' : cur.id)
+  const curEdital = editais.find((e: any) => e.id === cur.id)
+  const ids = cur.isBuiltin ? null : (curEdital ? curEdital.disciplinas.flatMap((d: any) => d.topicos.flatMap((t: any) => t.subtopicos.map((s: any) => s.id))) : [])
+  const stats = cur.isBuiltin ? agu.global : hookCur.getStats(ids || [])
+  const discs = cur.isBuiltin
+    ? [...agu.discStats].sort((a, b) => b.pctConcluido - a.pctConcluido)
+    : (curEdital ? curEdital.disciplinas.map((d: any) => { const dids = d.topicos.flatMap((t: any) => t.subtopicos.map((s: any) => s.id)); return { ...d, ...hookCur.getStats(dids), total: dids.length } }) : [])
+  const arrow: React.CSSProperties = { width: 26, height: 26, flexShrink: 0, borderRadius: 8, border: '1px solid var(--border-md)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }
   return (
-    <CardShell icon="⚖" title="AGU · Disciplinas" color="#1A73E8" badge={`${agu.global.pctConcluido}% geral`} footer="Abrir Editais" navTo="editais" onNavigate={onNavigate}>
-      {top.map((d: any) => (
-        <div key={d.id || d.nome} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
-            <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '78%' }}>{d.nome}</span>
-            <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{d.pctConcluido}%</span>
-          </div>
-          <div style={{ height: 5, borderRadius: 3, background: 'var(--bg-4)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${d.pctConcluido}%`, background: '#1A73E8', borderRadius: 3, transition: 'width .8s' }} /></div>
+    <CardShell icon="⚖" title="Editais" color={cur.cor} badge={`${(sel % all.length) + 1}/${all.length}`} footer="Abrir Editais" navTo="editais" onNavigate={onNavigate}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button style={arrow} onClick={() => setSel(s => (s - 1 + all.length) % all.length)} title="Edital anterior" disabled={all.length < 2}>‹</button>
+        <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.84rem', color: cur.cor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cur.nome}</div>
+          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{stats.pctConcluido}% · {stats.concluidos}/{ids ? ids.length : (agu.discStats.reduce((a: number, d: any) => a + (d.total || 0), 0))} subtópicos</div>
         </div>
-      ))}
+        <button style={arrow} onClick={() => setSel(s => (s + 1) % all.length)} title="Próximo edital" disabled={all.length < 2}>›</button>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {discs.length === 0 ? <Empty icon="⚖" msg="Sem disciplinas neste edital" /> : discs.map((d: any) => (
+          <div key={d.id || d.nome} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
+              <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '78%' }}>{(d.nome || '').replace('Direito ', '')}</span>
+              <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{d.pctConcluido}%</span>
+            </div>
+            <div style={{ height: 5, borderRadius: 3, background: 'var(--bg-4)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${d.pctConcluido}%`, background: d.cor || cur.cor, borderRadius: 3, transition: 'width .8s' }} /></div>
+          </div>
+        ))}
+      </div>
     </CardShell>
   )
 }
@@ -194,20 +216,31 @@ function AgendaSemana({ agenda, onNavigate }: any) {
 }
 
 // — Saúde —
-function SaudeStreak({ saude, onNavigate }: any) { return <Kpi icon="✚" label="Saúde · Streak" value={`${saude.streak}d`} sub={saude.reg ? 'registro de hoje ✓' : 'sem registro hoje'} color="#0F9D58" navTo="saude" onNavigate={onNavigate} /> }
+function calcSonoH(sono: any): number {
+  if (!sono || !sono.inicio || !sono.fim) return 0
+  const [ih, im] = sono.inicio.split(':').map(Number)
+  const [fh, fm] = sono.fim.split(':').map(Number)
+  let mins = (fh * 60 + fm) - (ih * 60 + im); if (mins < 0) mins += 1440
+  return Math.round(mins / 60 * 10) / 10
+}
+function SaudeStreak({ saude, onNavigate }: any) {
+  const a = saude.reg?.agua ?? 0, m = saude.reg?.metaAgua ?? 2000
+  return <Kpi icon="✚" label="Saúde · Streak" value={`${saude.streak}d`} sub={saude.reg ? `água ${(a / 1000).toFixed(1)}/${(m / 1000).toFixed(1)}L hoje` : 'sem registro hoje'} color="#0F9D58" navTo="saude" onNavigate={onNavigate} />
+}
 function SaudeHoje({ saude, onNavigate }: any) {
   const r = saude.reg || {}
+  const sonoH = calcSonoH(r.sono)
   const items = [
-    { l: 'Água', v: r.agua != null ? `${r.agua} ml` : '—', c: '#039BE5' },
-    { l: 'Peso', v: r.peso != null ? `${r.peso} kg` : '—', c: '#0F9D58' },
-    { l: 'Sono', v: r.sono != null ? `${r.sono} h` : '—', c: '#7B1FA2' },
-    { l: 'Humor', v: r.humor != null ? `${r.humor}/5` : '—', c: '#F29900' },
+    { l: 'Água', v: r.agua != null ? `${((r.agua || 0) / 1000).toFixed(1)}L` : '—', sub: r.metaAgua ? `meta ${(r.metaAgua / 1000).toFixed(1)}L` : '', c: '#039BE5' },
+    { l: 'Peso', v: r.peso ? `${r.peso} kg` : '—', sub: '', c: '#0F9D58' },
+    { l: 'Sono', v: sonoH ? `${sonoH} h` : '—', sub: '', c: '#7B1FA2' },
+    { l: 'Humor', v: r.humor != null ? `${r.humor}/5` : '—', sub: r.energia != null ? `energia ${r.energia}/5` : '', c: '#F29900' },
   ]
   return (
     <CardShell icon="✚" title="Saúde · Hoje" color="#0F9D58" badge={`streak ${saude.streak}d`} footer="Abrir Saúde" navTo="saude" onNavigate={onNavigate}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
         {items.map(it => <div key={it.l} style={{ padding: '9px 11px', borderRadius: 10, background: `${it.c}0c`, border: `1px solid ${it.c}22` }}>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>{it.l}</div>
+          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>{it.l}{it.sub ? ` · ${it.sub}` : ''}</div>
           <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>{it.v}</div>
         </div>)}
       </div>
@@ -346,25 +379,27 @@ function Saudacao() {
   )
 }
 
-// — Atalhos —
+// — Atalhos —  (cor base neutra; ao passar o mouse, cada um ganha sua cor vibrante)
 const ATALHOS = [
-  { id: 'editais', l: 'Editais', i: '⚖', c: '#1A73E8' }, { id: 'concursos', l: 'Concursos', i: '🎯', c: '#8B5CF6' },
-  { id: 'prontuario', l: 'Prontuário', i: '📋', c: '#5b5bd6' }, { id: 'mapamental', l: 'Mapa Mental', i: '🧠', c: '#7c6cff' },
-  { id: 'analisepdf', l: 'Análise PDF', i: '📄', c: '#D93025' }, { id: 'ponto', l: 'Ponto', i: '⊙', c: '#F29900' },
-  { id: 'saude', l: 'Saúde', i: '✚', c: '#0F9D58' }, { id: 'wishlist', l: 'Wishlist', i: '🛒', c: '#F29900' },
-  { id: 'viagens', l: 'Viagens', i: '✈️', c: '#039BE5' }, { id: 'journal', l: 'Notas', i: '✦', c: '#8ab4f8' },
-  { id: 'media', l: 'Media', i: '▶', c: '#3b82f6' }, { id: 'gaming', l: 'Gaming', i: '🎮', c: '#8B5CF6' },
-  { id: 'agenda', l: 'Agenda', i: '📅', c: '#1A73E8' }, { id: 'links', l: 'Links', i: '🔗', c: '#00897B' },
-  { id: 'logs', l: 'Logs', i: '📊', c: '#00897B' }, { id: 'geosfera', l: 'Geosfera', i: '🌍', c: '#0F9D58' },
+  { id: 'editais', l: 'Editais', i: '⚖', c: '#2563EB' }, { id: 'concursos', l: 'Concursos', i: '🎯', c: '#7C3AED' },
+  { id: 'prontuario', l: 'Prontuário', i: '📋', c: '#4F46E5' }, { id: 'mapamental', l: 'Mapa Mental', i: '🧠', c: '#6D28D9' },
+  { id: 'analisepdf', l: 'Análise PDF', i: '📄', c: '#DC2626' }, { id: 'ponto', l: 'Ponto', i: '⊙', c: '#EA580C' },
+  { id: 'saude', l: 'Saúde', i: '✚', c: '#059669' }, { id: 'wishlist', l: 'Wishlist', i: '🛒', c: '#D97706' },
+  { id: 'viagens', l: 'Viagens', i: '✈️', c: '#0284C7' }, { id: 'journal', l: 'Notas', i: '✦', c: '#2563EB' },
+  { id: 'media', l: 'Media', i: '▶', c: '#3B82F6' }, { id: 'gaming', l: 'Gaming', i: '🎮', c: '#9333EA' },
+  { id: 'agenda', l: 'Agenda', i: '📅', c: '#0891B2' }, { id: 'links', l: 'Links', i: '🔗', c: '#0D9488' },
+  { id: 'logs', l: 'Logs', i: '📊', c: '#0F766E' }, { id: 'geosfera', l: 'Geosfera', i: '🌍', c: '#16A34A' },
+  { id: 'financeiro', l: 'Financeiro', i: '◎', c: '#15803D' },
 ]
 function AtalhosCard({ onNavigate }: any) {
   return (
     <CardShell icon="▦" title="Acesso Rápido" color="#5b5bd6">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(82px, 1fr))', gap: 8 }}>
         {ATALHOS.map(a => (
-          <button key={a.id} onClick={() => onNavigate(a.id)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, padding: '12px 6px', borderRadius: 12, border: `1px solid ${a.c}22`, background: `${a.c}0a`, color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all .15s' }}
-            onMouseEnter={e => { e.currentTarget.style.background = `${a.c}1a`; e.currentTarget.style.transform = 'translateY(-2px)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = `${a.c}0a`; e.currentTarget.style.transform = 'none' }}>
+          <button key={a.id} onClick={() => onNavigate(a.id)}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, padding: '12px 6px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', transition: 'all .16s' }}
+            onMouseEnter={e => { const el = e.currentTarget; el.style.background = `${a.c}1f`; el.style.borderColor = a.c; el.style.color = a.c; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = `0 6px 16px ${a.c}33` }}
+            onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'var(--surface)'; el.style.borderColor = 'var(--border)'; el.style.color = 'var(--text-muted)'; el.style.transform = 'none'; el.style.boxShadow = 'none' }}>
             <span style={{ fontSize: '1.3rem' }}>{a.i}</span>
             <span style={{ fontSize: '0.64rem', fontWeight: 600, textAlign: 'center' }}>{a.l}</span>
           </button>
@@ -395,7 +430,7 @@ const REGISTRY: Record<string, any> = {
   'viagens-kpi':       { label: 'Viagens (KPI)',       icon: '✈️', kind: 'kpi', w: 3, h: 1, render: (p: any) => <ViagensKpi {...p} /> },
   'pdf-kpi':           { label: 'Análise PDF (KPI)',   icon: '📄', kind: 'kpi', w: 3, h: 1, render: (p: any) => <PdfKpi {...p} /> },
   'mapas-kpi':         { label: 'Mapas Mentais (KPI)', icon: '🧠', kind: 'kpi', w: 3, h: 1, render: (p: any) => <MapasKpi {...p} /> },
-  'agu-disciplinas':   { label: 'AGU · Disciplinas',   icon: '⚖', kind: 'detail', w: 4, h: 3, render: (p: any) => <AguDisciplinas {...p} /> },
+  'agu-disciplinas':   { label: 'Editais (disciplinas)', icon: '⚖', kind: 'detail', w: 4, h: 3, render: (p: any) => <EditaisCard {...p} /> },
   'agu-revisoes':      { label: 'Revisões AGU',        icon: '🔔', kind: 'detail', w: 4, h: 3, render: (p: any) => <AguRevisoes {...p} /> },
   'prontuario-prazos': { label: 'Prontuário · Prazos', icon: '📋', kind: 'detail', w: 4, h: 3, render: (p: any) => <ProntuarioPrazos {...p} /> },
   'concursos-lista':   { label: 'Próximos Concursos',  icon: '🎯', kind: 'detail', w: 4, h: 2, render: (p: any) => <ConcursosLista {...p} /> },

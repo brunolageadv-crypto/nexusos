@@ -1,5 +1,6 @@
 import React from 'react'
 import PainelChecklistDia from './ChecklistDia'
+import { PIADAS } from './piadas'
 import PainelArcade from './Arcade'
 import PainelGeosfera from './GeosferaCard'
 import VisaoGeral from './VisaoGeral'
@@ -1151,290 +1152,96 @@ function useLocationInfo() {
 }
 
 
-// ─── 365 Frases Motivacionais ─────────────────────────────────────────────────
-const FRASES_MOTIVACIONAIS = [
-  { texto: "A mente é tudo. O que você pensa, você se torna.", autor: "Buda" },
-  { texto: "Você mesmo, tanto quanto qualquer pessoa no universo inteiro, merece seu amor e afeição.", autor: "Buda" },
-  { texto: "A paz vem de dentro. Não a procure fora.", autor: "Buda" },
-  { texto: "Três coisas não podem ser escondidas por muito tempo: o sol, a lua e a verdade.", autor: "Buda" },
-  { texto: "O segredo da saúde da mente e do corpo é não lamentar o passado, não se preocupar com o futuro, mas viver o presente com sabedoria.", autor: "Buda" },
-  { texto: "Se você iluminar o caminho de outro, também iluminará o seu.", autor: "Buda" },
-  { texto: "A raiva é como segurar uma brasa em chamas com a intenção de jogá-la em alguém; é você quem se queima.", autor: "Buda" },
-  { texto: "Trabalhe sua própria salvação. Não dependa de outros.", autor: "Buda" },
-  { texto: "Nada é permanente. Tudo está sempre mudando.", autor: "Buda" },
-  { texto: "O sofrimento é opcional quando se compreende que ele nasce do apego.", autor: "Buda" },
-  { texto: "Conhece-te a ti mesmo.", autor: "Sócrates" },
-  { texto: "Uma vida não examinada não vale a pena ser vivida.", autor: "Sócrates" },
-  { texto: "Sei que nada sei, e é nisso que me supero aos demais.", autor: "Sócrates" },
-  { texto: "Seja a mudança que você quer ver no mundo.", autor: "Mahatma Gandhi" },
-  { texto: "Viva como se fosse morrer amanhã. Aprenda como se fosse viver para sempre.", autor: "Mahatma Gandhi" },
-  { texto: "A fraqueza nunca é útil. Somente a força pode servir.", autor: "Mahatma Gandhi" },
-  { texto: "O homem se torna o que pensa durante o dia todo.", autor: "Ralph Waldo Emerson" },
-  { texto: "Não vá aonde o caminho possa levar; vá onde não há caminho e deixe um rastro.", autor: "Ralph Waldo Emerson" },
-  { texto: "O que está atrás de nós e o que está à nossa frente são questões pequenas em comparação ao que está dentro de nós.", autor: "Ralph Waldo Emerson" },
-  { texto: "A vida não é medida pelo número de respirações que tomamos, mas pelos momentos que nos tiram o fôlego.", autor: "Maya Angelou" },
-  { texto: "Você pode encontrar muitas derrotas, mas não deve ser derrotado.", autor: "Maya Angelou" },
-  { texto: "Faça o melhor que puder até saber melhor. Quando souber melhor, faça melhor.", autor: "Maya Angelou" },
-  { texto: "A grandeza de um homem não está em quanto dinheiro ele tem, mas em sua integridade e na sua capacidade de afetar os ao seu redor.", autor: "Bob Marley" },
-  { texto: "Emancipate yourselves from mental slavery. None but ourselves can free our minds.", autor: "Bob Marley" },
-  { texto: "O único modo de fazer um excelente trabalho é amar o que você faz.", autor: "Steve Jobs" },
-  { texto: "Seu tempo é limitado. Não o desperdice vivendo a vida de outra pessoa.", autor: "Steve Jobs" },
-  { texto: "Criatividade é conectar coisas.", autor: "Steve Jobs" },
-  { texto: "A imaginação é mais importante que o conhecimento.", autor: "Albert Einstein" },
-  { texto: "Insanidade é fazer a mesma coisa repetidamente esperando resultados diferentes.", autor: "Albert Einstein" },
-  { texto: "Na vida há dois caminhos: aceitar as condições em que ela se encontra, ou aceitar a responsabilidade de mudá-las.", autor: "Denis Waitley" },
-  { texto: "Tente ser arco-íris na nuvem de alguém.", autor: "Maya Angelou" },
-  { texto: "Se você quer ir rápido, vá sozinho. Se quer ir longe, vá acompanhado.", autor: "Provérbio Africano" },
-  { texto: "A dor é inevitável. O sofrimento é opcional.", autor: "Haruki Murakami" },
-  { texto: "Não espere pela inspiração. Ela vem enquanto se trabalha.", autor: "Henri Matisse" },
-  { texto: "Não é o mais forte que sobrevive, nem o mais inteligente, mas o que melhor se adapta às mudanças.", autor: "Charles Darwin" },
-  { texto: "O sucesso é a soma de pequenos esforços repetidos dia após dia.", autor: "Robert Collier" },
-  { texto: "Disciplina é a ponte entre objetivos e realizações.", autor: "Jim Rohn" },
-  { texto: "Você nunca fracassará se nunca tentar nada novo.", autor: "Albert Einstein" },
-  { texto: "O pessimista vê dificuldade em cada oportunidade. O otimista vê oportunidade em cada dificuldade.", autor: "Winston Churchill" },
-  { texto: "O fracasso é apenas a oportunidade de começar novamente com mais inteligência.", autor: "Henry Ford" },
-  { texto: "A jornada de mil milhas começa com um único passo.", autor: "Lao Tzu" },
-  { texto: "Conhecer os outros é sabedoria, conhecer a si mesmo é iluminação.", autor: "Lao Tzu" },
-  { texto: "Quem supera os outros tem força; quem supera a si mesmo é verdadeiramente poderoso.", autor: "Lao Tzu" },
-  { texto: "A natureza não tem pressa, e mesmo assim realiza tudo.", autor: "Lao Tzu" },
-  { texto: "Agir sem agir é o caminho do sábio.", autor: "Lao Tzu" },
-  { texto: "Quando percebo que não posso mais mudar uma situação, sou desafiado a mudar a mim mesmo.", autor: "Viktor Frankl" },
-  { texto: "Entre o estímulo e a resposta há um espaço. Nesse espaço está o nosso poder de escolha.", autor: "Viktor Frankl" },
-  { texto: "Aquele que tem um 'porquê' para viver pode suportar quase qualquer 'como'.", autor: "Friedrich Nietzsche" },
-  { texto: "O que não me mata, me fortalece.", autor: "Friedrich Nietzsche" },
-  { texto: "Sem música, a vida seria um erro.", autor: "Friedrich Nietzsche" },
-  { texto: "Torna-te quem és.", autor: "Friedrich Nietzsche" },
-  { texto: "Não se preocupe com o que você não pode controlar. Concentre-se no que está em seu poder.", autor: "Marco Aurélio" },
-  { texto: "A felicidade da sua vida depende da qualidade de seus pensamentos.", autor: "Marco Aurélio" },
-  { texto: "Você tem poder sobre sua mente, não sobre eventos externos. Perceba isso e encontrará a força.", autor: "Marco Aurélio" },
-  { texto: "As coisas em si mesmas não nos perturbam, mas as opiniões que temos sobre elas.", autor: "Epicteto" },
-  { texto: "Não aspire que as coisas aconteçam do jeito que você quer; ao contrário, deseje que as coisas aconteçam do jeito que acontecem e você será feliz.", autor: "Epicteto" },
-  { texto: "Liberdade não é alcançada por satisfazer desejos, mas por eliminá-los.", autor: "Epicteto" },
-  { texto: "Nenhum vento é favorável para o barco que não sabe para onde vai.", autor: "Sêneca" },
-  { texto: "Enquanto adiamos, a vida passa.", autor: "Sêneca" },
-  { texto: "Eles podem porque acreditam que podem.", autor: "Virgílio" },
-  { texto: "Aprende, como se fosse viver para sempre; vive, como se fosse morrer amanhã.", autor: "Isidoro de Sevilha" },
-  { texto: "A gratidão é a memória do coração.", autor: "Jean-Baptiste Massieu" },
-  { texto: "Comece onde você está. Use o que você tem. Faça o que você pode.", autor: "Arthur Ashe" },
-  { texto: "O único lugar onde sucesso vem antes de trabalho é no dicionário.", autor: "Vidal Sassoon" },
-  { texto: "Acredite que você pode e você já está na metade do caminho.", autor: "Theodore Roosevelt" },
-  { texto: "Faça o que você puder, com o que você tem, onde você estiver.", autor: "Theodore Roosevelt" },
-  { texto: "A persistência é o caminho do êxito.", autor: "Charles Chaplin" },
-  { texto: "A vida é o que acontece enquanto você está ocupado fazendo outros planos.", autor: "John Lennon" },
-  { texto: "Imagine all the people living life in peace.", autor: "John Lennon" },
-  { texto: "No final, o amor que você recebe é igual ao amor que você dá.", autor: "Paul McCartney" },
-  { texto: "A simplicidade é a sofisticação máxima.", autor: "Leonardo da Vinci" },
-  { texto: "O conhecimento é a asa mais poderosa que existe.", autor: "William Shakespeare" },
-  { texto: "Sermos humanos é sermos capazes de escolher.", autor: "Jean-Paul Sartre" },
-  { texto: "O inferno são os outros.", autor: "Jean-Paul Sartre" },
-  { texto: "A existência precede a essência.", autor: "Jean-Paul Sartre" },
-  { texto: "Penso, logo existo.", autor: "René Descartes" },
-  { texto: "Dar às pessoas poder para construir comunidade e se aproximar uns dos outros.", autor: "Mark Zuckerberg" },
-  { texto: "O segredo do sucesso é fazer do comum o extraordinário.", autor: "John D. Rockefeller" },
-  { texto: "Não conte os dias. Faça os dias contarem.", autor: "Muhammad Ali" },
-  { texto: "Impossível é apenas uma grande palavra usada por pessoas pequenas.", autor: "Muhammad Ali" },
-  { texto: "Flutue como uma borboleta, pique como uma abelha.", autor: "Muhammad Ali" },
-  { texto: "A fé é dar o primeiro passo mesmo quando você não vê toda a escada.", autor: "Martin Luther King Jr." },
-  { texto: "Você não precisa ver toda a escada, apenas dê o primeiro passo.", autor: "Martin Luther King Jr." },
-  { texto: "Se você não pode voar, então corra. Se não puder correr, então ande. Se não puder andar, engatinhe. Mas faça o que fizer, continue se movendo.", autor: "Martin Luther King Jr." },
-  { texto: "Sucesso não é final, fracasso não é fatal: é a coragem de continuar que conta.", autor: "Winston Churchill" },
-  { texto: "Nunca, nunca, nunca desista.", autor: "Winston Churchill" },
-  { texto: "Força não vem de capacidade física. Vem de uma vontade indomável.", autor: "Mahatma Gandhi" },
-  { texto: "O melhor momento para plantar uma árvore foi há vinte anos. O segundo melhor momento é agora.", autor: "Provérbio Chinês" },
-  { texto: "Diga-me e eu esqueço. Ensine-me e eu me lembro. Envolva-me e eu aprendo.", autor: "Benjamin Franklin" },
-  { texto: "Dinheiro não compra felicidade, mas a miséria também não.", autor: "Benjamin Franklin" },
-  { texto: "Um investimento em conhecimento sempre paga o melhor juro.", autor: "Benjamin Franklin" },
-  { texto: "Por mais longa que seja a caminhada, o mais importante é dar o primeiro passo.", autor: "Vinícius de Moraes" },
-  { texto: "Felicidade não é a ausência de problemas, mas a habilidade de lidar com eles.", autor: "Steve Maraboli" },
-  { texto: "Sua vida não fica melhor por acaso. Ela fica melhor por mudança.", autor: "Jim Rohn" },
-  { texto: "O sucesso é fazer o ordinário de maneira extraordinária.", autor: "John D. Rockefeller" },
-  { texto: "Seja você mesmo; todos os outros já foram tomados.", autor: "Oscar Wilde" },
-  { texto: "Só há uma coisa pior do que ser falado: não ser falado.", autor: "Oscar Wilde" },
-  { texto: "A experiência é o nome que todos dão aos seus erros.", autor: "Oscar Wilde" },
-  { texto: "A única maneira de lidar com um mundo não livre é se tornar tão absolutamente livre que sua existência seja um ato de rebelião.", autor: "Albert Camus" },
-  { texto: "No meio do inverno, finalmente aprendi que havia dentro de mim um verão invencível.", autor: "Albert Camus" },
-  { texto: "Não deves esperar que o mundo te dê um significado. Tu precisas criá-lo.", autor: "Albert Camus" },
-  { texto: "Tudo que eu precisava saber sobre como viver e o que fazer e como ser, eu aprendi no jardim de infância.", autor: "Robert Fulghum" },
-  { texto: "O único modo de se livrar de um dragão é ter o seu.", autor: "Ursula K. Le Guin" },
-  { texto: "Você pode desenhar um círculo de luz na escuridão ou dançar na luz que os outros fazem.", autor: "Ursula K. Le Guin" },
-  { texto: "A vida é o que acontece enquanto fazemos outros planos.", autor: "Allen Saunders" },
-  { texto: "Quando uma porta se fecha, outra se abre, mas frequentemente olhamos tanto para a fechada que não vemos a que foi aberta para nós.", autor: "Alexander Graham Bell" },
-  { texto: "A oportunidade dança com aqueles que já estão na pista de dança.", autor: "H. Jackson Brown Jr." },
-  { texto: "Você miss 100% dos arremessos que não faz.", autor: "Wayne Gretzky" },
-  { texto: "Seja gentil, pois cada pessoa que você encontra está travando uma batalha difícil.", autor: "Ian Maclaren" },
-  { texto: "Não há exercício melhor para o coração do que alcançar as mãos e levantar as pessoas.", autor: "John Holmes" },
-  { texto: "Pessoas inspiradoras não ficam em cima do muro; elas vivem de acordo com seus valores.", autor: "Brené Brown" },
-  { texto: "A vulnerabilidade não é fraqueza. É nossa maior medida de coragem.", autor: "Brené Brown" },
-  { texto: "Você é imperfeito, você é conectado à tudo. Isso é o que torna você belo.", autor: "Brené Brown" },
-  { texto: "Onde quer que você vá, vá com todo o seu coração.", autor: "Confúcio" },
-  { texto: "Quando você sabe o que quer, e quer com tudo o que há em você, encontrará uma maneira de consegui-lo.", autor: "Confúcio" },
-  { texto: "Escolha um emprego que você ame e não terá que trabalhar um único dia em sua vida.", autor: "Confúcio" },
-  { texto: "Nossa maior glória não é nunca cair, mas em nos levantar cada vez que caímos.", autor: "Confúcio" },
-  { texto: "O homem que move montanhas começa carregando pequenas pedras.", autor: "Confúcio" },
-  { texto: "A jornada de mil milhas começa com um passo.", autor: "Lao Tzu" },
-  { texto: "O objetivo da vida é viver em concordância com a natureza.", autor: "Zenão de Cítio" },
-  { texto: "A hora mais escura é a que precede o amanhecer.", autor: "Thomas Fuller" },
-  { texto: "Cada dia é uma nova oportunidade de mudar sua vida.", autor: "Unknown" },
-  { texto: "Sonhos não funcionam a menos que você trabalhe.", autor: "John C. Maxwell" },
-  { texto: "A única limitação é a que você aceita na sua mente.", autor: "Napoleon Hill" },
-  { texto: "Pense e enriqueça. A riqueza começa na mente.", autor: "Napoleon Hill" },
-  { texto: "Defina seus objetivos com clareza. Procure-os com paixão.", autor: "Napoleon Hill" },
-  { texto: "O sucesso é uma jornada, não um destino.", autor: "Arthur Ashe" },
-  { texto: "Cada conquista começa com a decisão de tentar.", autor: "Gail Devers" },
-  { texto: "A vida não é sobre encontrar a si mesmo. É sobre criar a si mesmo.", autor: "George Bernard Shaw" },
-  { texto: "O progresso é impossível sem mudança; aqueles que não podem mudar suas mentes não podem mudar nada.", autor: "George Bernard Shaw" },
-  { texto: "Você vê as coisas como são e pergunta 'por quê?'. Eu sonho com as coisas que nunca foram e pergunto 'por que não?'.", autor: "George Bernard Shaw" },
-  { texto: "A vida é muito curta para ser pequena.", autor: "Benjamin Disraeli" },
-  { texto: "O melhor tempo para se plantar uma semente foi há vinte anos; o segundo melhor tempo é agora.", autor: "Provérbio Chinês" },
-  { texto: "Seja grato pelo que você tem enquanto persegue tudo que quer.", autor: "Jim Rohn" },
-  { texto: "Trabalhe duro em silêncio. Deixe o sucesso fazer barulho.", autor: "Frank Ocean" },
-  { texto: "Acreditar em si mesmo é o primeiro segredo do sucesso.", autor: "Ralph Waldo Emerson" },
-  { texto: "A motivação nos impulsiona a começar; o hábito nos mantém em movimento.", autor: "Jim Ryun" },
-  { texto: "Nunca é tarde para ser o que você poderia ter sido.", autor: "George Eliot" },
-  { texto: "Grandes mentes discutem ideias. Mentes medianas discutem eventos. Mentes pequenas discutem pessoas.", autor: "Eleanor Roosevelt" },
-  { texto: "Ninguém pode fazer você se sentir inferior sem o seu consentimento.", autor: "Eleanor Roosevelt" },
-  { texto: "O futuro pertence àqueles que acreditam na beleza de seus sonhos.", autor: "Eleanor Roosevelt" },
-  { texto: "Seja a mudança que você deseja ver no mundo.", autor: "Mahatma Gandhi" },
-  { texto: "O fraco nunca pode perdoar. O perdão é o atributo dos fortes.", autor: "Mahatma Gandhi" },
-  { texto: "Primeiro eles te ignoram, depois riem de você, depois brigam com você, e então você vence.", autor: "Mahatma Gandhi" },
-  { texto: "Se você quer luz no fundo do túnel, precisa acender a tocha.", autor: "Louis Ferdinand Céline" },
-  { texto: "O caminho mais longo começa com o primeiro passo.", autor: "Lao Tzu" },
-  { texto: "Sem perseverança, não há força no mundo que resolva nada.", autor: "John D. Rockefeller" },
-  { texto: "Quando tudo parecer estar contra você, lembre-se que o avião decola contra o vento, não a favor.", autor: "Henry Ford" },
-  { texto: "Você não pode ir para trás e mudar o começo, mas você pode começar onde você está e mudar o final.", autor: "C.S. Lewis" },
-  { texto: "As dificuldades preparam pessoas comuns para destinos extraordinários.", autor: "C.S. Lewis" },
-  { texto: "Você tem um cérebro em sua cabeça. Você tem pés em seus sapatos. Você pode se dirigir em qualquer direção que escolher.", autor: "Dr. Seuss" },
-  { texto: "Por que ser ordinário quando você pode ser extraordinário?", autor: "Unknown" },
-  { texto: "A vida começa no fim da sua zona de conforto.", autor: "Neale Donald Walsch" },
-  { texto: "Se você está passando pelo inferno, continue andando.", autor: "Winston Churchill" },
-  { texto: "A maior glória em viver não está em nunca cair, mas em nos levantarmos cada vez que caímos.", autor: "Nelson Mandela" },
-  { texto: "Educação é a arma mais poderosa que você pode usar para mudar o mundo.", autor: "Nelson Mandela" },
-  { texto: "Tudo sempre parece impossível até que seja feito.", autor: "Nelson Mandela" },
-  { texto: "Sua atitude determina sua direção.", autor: "Unknown" },
-  { texto: "Você não precisa ser ótimo para começar, mas precisa começar para ser ótimo.", autor: "Zig Ziglar" },
-  { texto: "Não deixe que o medo do fracasso seja maior do que a empolgação do sucesso.", autor: "Robert Kiyosaki" },
-  { texto: "Não é sobre ter tempo. É sobre fazer tempo.", autor: "Unknown" },
-  { texto: "Cada expert já foi um dia iniciante.", autor: "Helen Hayes" },
-  { texto: "A arte de viver bem e a arte de morrer bem são uma só.", autor: "Epicuro" },
-  { texto: "Não adicione dias à sua vida; adicione vida aos seus dias.", autor: "William James" },
-  { texto: "A melhor forma de prever o futuro é criá-lo.", autor: "Abraham Lincoln" },
-  { texto: "Dê-me seis horas para cortar uma árvore e passarei as primeiras quatro afiando o machado.", autor: "Abraham Lincoln" },
-  { texto: "A maioria das pessoas é feliz na medida em que decide ser.", autor: "Abraham Lincoln" },
-  { texto: "Não importa quão devagar você vá, desde que não pare.", autor: "Confúcio" },
-  { texto: "A beleza está nos olhos de quem vê.", autor: "Margaret Wolfe Hungerford" },
-  { texto: "O sucesso geralmente vem para aqueles que estão muito ocupados para procurá-lo.", autor: "Henry David Thoreau" },
-  { texto: "Vá confiante na direção dos seus sonhos. Viva a vida que você imaginou.", autor: "Henry David Thoreau" },
-  { texto: "Eu fui para os bosques porque queria viver deliberadamente.", autor: "Henry David Thoreau" },
-  { texto: "Uma vida bem vivida é a melhor vingança.", autor: "George Herbert" },
-  { texto: "O amor cura as pessoas — tanto aquelas que o dão quanto as que o recebem.", autor: "Karl Menninger" },
-  { texto: "Na escuridão mais profunda, a mais tênue luz brilha mais.", autor: "Unknown" },
-  { texto: "Trate as pessoas como se elas fossem o que poderiam ser, e você as ajudará a se tornarem o que podem ser.", autor: "Johann Wolfgang von Goethe" },
-  { texto: "Pense antes de agir, age depois de pensar.", autor: "Goethe" },
-  { texto: "Duas almas habitam em meu peito.", autor: "Johann Wolfgang von Goethe" },
-  { texto: "Há apenas um caminho para o sucesso: ser capaz de gastar sua vida à sua própria maneira.", autor: "Christopher Morley" },
-  { texto: "O único verdadeiro fracasso é parar de tentar.", autor: "Unknown" },
-  { texto: "Quanto mais você lê, mais coisas você sabe. Quanto mais você aprende, mais lugares você vai.", autor: "Dr. Seuss" },
-  { texto: "Onde há amor, há vida.", autor: "Mahatma Gandhi" },
-  { texto: "Não é a montanha que conquistamos, mas a nós mesmos.", autor: "Edmund Hillary" },
-  { texto: "O prazer mais nobre é a alegria de compreender.", autor: "Leonardo da Vinci" },
-  { texto: "A criatividade é a inteligência se divertindo.", autor: "Albert Einstein" },
-  { texto: "A lógica leva de A a B. A imaginação leva a qualquer lugar.", autor: "Albert Einstein" },
-  { texto: "Se você não pode explicar algo de forma simples, não o compreende suficientemente.", autor: "Albert Einstein" },
-  { texto: "Tente não se tornar um homem de sucesso, mas um homem de valor.", autor: "Albert Einstein" },
-  { texto: "O momento presente sempre será.", autor: "Eckhart Tolle" },
-  { texto: "Aceite, então aja. O que quer que o momento presente contenha, aceite-o como se você o tivesse escolhido.", autor: "Eckhart Tolle" },
-  { texto: "A qualidade da sua consciência neste momento é o que molda o futuro.", autor: "Eckhart Tolle" },
-  { texto: "Você não pode lutar contra o presente. Quando você o faz, você está brigando com o universo inteiro.", autor: "Eckhart Tolle" },
-  { texto: "Para realizar o extraordinário, você precisa começar a acreditar que é possível.", autor: "Nick Vujicic" },
-  { texto: "Se você não pode resolver um problema, então há um problema mais fácil que você pode resolver: encontre-o.", autor: "George Polya" },
-  { texto: "Não há secreto para o sucesso. É o resultado de preparação, trabalho duro e aprender com o fracasso.", autor: "Colin Powell" },
-  { texto: "Sempre há luz. Se apenas tivermos coragem suficiente para vê-la. Se apenas tivermos coragem suficiente para ser ela.", autor: "Amanda Gorman" },
-  { texto: "Pequenas atitudes de gentileza, e palavras de amor tornam a terra um paraíso.", autor: "Julia Carney" },
-  { texto: "Toda criança é um artista. O problema é como permanecer um artista quando crescemos.", autor: "Pablo Picasso" },
-  { texto: "A inspiração existe, mas ela precisa te encontrar trabalhando.", autor: "Pablo Picasso" },
-  { texto: "Aprendi que as pessoas vão esquecer o que você disse, vão esquecer o que você fez, mas nunca vão esquecer como você as fez sentir.", autor: "Maya Angelou" },
-  { texto: "Quando sabemos melhor, fazemos melhor.", autor: "Maya Angelou" },
-  { texto: "A coragem não é ausência de medo, mas o julgamento de que algo mais é importante.", autor: "Ambrose Redmoon" },
-  { texto: "O coração tem razões que a própria razão desconhece.", autor: "Blaise Pascal" },
-  { texto: "O silêncio é a mais perfeita expressão do desprezo.", autor: "George Bernard Shaw" },
-  { texto: "Não recue perante nada; resolva de antemão não recuar diante de nada.", autor: "Jean-Paul Sartre" },
-  { texto: "Ser grato por pouco é a melhor maneira de ser abençoado por muito.", autor: "Unknown" },
-  { texto: "Se você quer ser feliz, seja.", autor: "Leon Tolstoy" },
-  { texto: "Há apenas um canto do universo que você pode ter certeza de melhorar, e é você mesmo.", autor: "Aldous Huxley" },
-  { texto: "A experiência é não o que acontece com um homem; é o que um homem faz com o que lhe acontece.", autor: "Aldous Huxley" },
-  { texto: "A mente que se abre a uma nova ideia jamais voltará ao seu tamanho original.", autor: "Albert Einstein" },
-  { texto: "O que você pensa, você fala. O que você fala, você faz. O que você faz, você se torna.", autor: "Mahatma Gandhi" },
-  { texto: "A vida é movimento. Viva, não apenas exista.", autor: "Unknown" },
-  { texto: "Cada amanhecer é uma nova oportunidade de reescrever a história.", autor: "Unknown" },
-  { texto: "Quando o estudante está pronto, o professor aparece.", autor: "Provérbio Budista" },
-  { texto: "O melhor presente que você pode dar a alguém é sua atenção plena.", autor: "Jim Rohn" },
-  { texto: "Você não pode controlar o vento, mas pode ajustar suas velas.", autor: "Dolly Parton" },
-  { texto: "A sabedoria é saber o que ignorar.", autor: "William James" },
-  { texto: "Não me julgo pelas minhas tentativas fracassadas, mas pelas vezes que me levantei.", autor: "Abraham Lincoln" },
-  { texto: "O único caminho para sair é atravessar.", autor: "Robert Frost" },
-  { texto: "Dois caminhos divergiram em uma floresta, e eu tomei o menos percorrido.", autor: "Robert Frost" },
-  { texto: "Antes de curar alguém, pergunte se está disposto a abandonar as coisas que o deixaram doente.", autor: "Hipócrates" },
-  { texto: "O melhor de nós é despertado pelas exigências que colocamos em nós mesmos.", autor: "Oscar Wilde" },
-  { texto: "A felicidade não é algo pronto. Vem de suas próprias ações.", autor: "Dalai Lama" },
-  { texto: "Se você quer que os outros sejam felizes, pratique a compaixão. Se você quer ser feliz, pratique a compaixão.", autor: "Dalai Lama" },
-  { texto: "Minha religião é muito simples. Minha religião é gentileza.", autor: "Dalai Lama" },
-  { texto: "Lembre-se que às vezes não conseguir o que você quer é um maravilhoso golpe de sorte.", autor: "Dalai Lama" },
-  { texto: "O objetivo não é ser perfeito ao final, mas ser melhor do que ontem.", autor: "Simon Sinek" },
-  { texto: "Trabalhe para ser orgulhoso de si mesmo, não para impressionar os outros.", autor: "Unknown" },
-  { texto: "Quanto mais você agradecer pelo que tem, mais você terá a agradecer.", autor: "Oprah Winfrey" },
-  { texto: "Você pode ter o que quiser — se souber abandonar a crença de que não pode tê-lo.", autor: "Robert Anthony" },
-  { texto: "O problema não é o problema. O problema é sua atitude diante do problema.", autor: "Jack Sparrow / Unknown" },
-  { texto: "A maior aventura que você pode ter é viver a vida dos seus sonhos.", autor: "Oprah Winfrey" },
-  { texto: "O sucesso não é sorte; é o resultado de ação combinada com preparação.", autor: "Seneca" },
-  { texto: "Faça hoje o que os outros não vão fazer; amanhã, você terá o que os outros não têm.", autor: "Jerry Rice" },
-  { texto: "Virtude não é um ato, mas um hábito.", autor: "Aristóteles" },
-  { texto: "Somos o que repetidamente fazemos. A excelência, portanto, não é um ato, mas um hábito.", autor: "Aristóteles" },
-  { texto: "A raiz do sofrimento é o apego.", autor: "Buda" },
-  { texto: "Felicidade não é ter tudo. É apreciar o que você tem.", autor: "Unknown" },
-  { texto: "Quanto mais profunda a noite, mais perto o amanhecer.", autor: "Mao Tsé-Tung" },
-  { texto: "Se você não tem inimigos, é sinal de que você nunca se posicionou sobre nada.", autor: "Winston Churchill" },
-  { texto: "Não tenha medo de crescer devagar. Tenha medo de ficar parado.", autor: "Provérbio Chinês" },
-  { texto: "A magia acontece fora da sua zona de conforto.", autor: "Unknown" },
-  { texto: "O que está escrito, está escrito. Mas o que será escrito ainda depende de você.", autor: "Unknown" },
-  { texto: "A chuva de amanhã começa com uma única gota hoje.", autor: "Unknown" },
-  { texto: "Não existe fracasso, apenas feedback.", autor: "Robert Allen" },
-  { texto: "A única pessoa que você deve ser melhor é a que você era ontem.", autor: "Unknown" },
-  { texto: "Viver é a coisa mais rara do mundo. A maioria das pessoas existe, simplesmente.", autor: "Oscar Wilde" },
-  { texto: "O pessimista se queixa do vento. O otimista espera que ele mude. O realista ajusta as velas.", autor: "William Arthur Ward" },
-  { texto: "O sucesso não consiste em nunca cometer erros, mas nunca cometer o mesmo erro pela segunda vez.", autor: "George Bernard Shaw" },
-  { texto: "A vida fica mais fácil quando você aprende a aceitar uma desculpa que nunca recebeu.", autor: "R. Brault" },
-  { texto: "Cada dia é uma oportunidade de melhorar quem você foi ontem.", autor: "Unknown" },
-  { texto: "O que você faz hoje pode melhorar todos os seus amanhãs.", autor: "Ralph Marston" },
-  { texto: "A vida não é sobre esperar a tempestade passar, mas aprender a dançar na chuva.", autor: "Vivian Greene" },
-  { texto: "Seja gentil consigo mesmo. Você está fazendo o melhor que pode.", autor: "Unknown" },
-  { texto: "O que você foca, cresce.", autor: "Unknown" },
-  { texto: "Sua mente é um jardim. Seus pensamentos são as sementes. Você pode plantar flores ou ervas daninhas.", autor: "Unknown" },
-  { texto: "Não importa o quão lento você vá, desde que não pare.", autor: "Confúcio" },
-  { texto: "A vida é uma aventura ousada ou não é nada.", autor: "Helen Keller" },
-  { texto: "O caráter não pode ser desenvolvido em quietude e tranquilidade. Somente com a prova e o sofrimento pode a alma ser fortalecida.", autor: "Helen Keller" },
-  { texto: "Otimismo é a fé que leva à conquista.", autor: "Helen Keller" },
-  { texto: "Sozinhos podemos fazer tão pouco; juntos podemos fazer tanto.", autor: "Helen Keller" },
-  { texto: "Mova-se com a certeza de quem conhece o destino.", autor: "Unknown" },
-  { texto: "Você é a soma total de tudo que você já viveu, viu, leu, ouviu, sentiu.", autor: "Maya Angelou" },
-]
+
+/* ── Controle de água interativo (grava em users/{uid}/saude/{data}, integrado à aba Saúde) ── */
+function AguaControle({ cardSty, labelSty }: any) {
+  const uid = useUid()
+  const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+  const [reg, setReg] = useState<any>(null)
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(doc(db, 'users', uid, 'saude', hoje), s => setReg(s.exists() ? s.data() : null))
+  }, [uid, hoje])
+  const agua = reg?.agua ?? 0
+  const meta = reg?.metaAgua ?? 2000
+  const pct = Math.min(Math.round((agua / Math.max(meta, 1)) * 100), 100)
+  const cor = '#06b6d4'
+  const add = async (ml: number) => {
+    if (!uid) return
+    const novo = Math.max(0, Math.min(agua + ml, 6000))
+    if (reg) await setDoc(doc(db, 'users', uid, 'saude', hoje), { agua: novo }, { merge: true })
+    else await setDoc(doc(db, 'users', uid, 'saude', hoje), {
+      id: Math.random().toString(36).slice(2, 10), data: hoje, agua: novo, metaAgua: 2000,
+      sono: { inicio: '', fim: '', qualidade: 3 }, humor: 3, energia: 3,
+      treino: { realizado: false, tipo: '', duracao: 0 }, peso: 0, sintomas: [], notas: '', criadoEm: Date.now(),
+    })
+  }
+  const setMeta = async (m: number) => {
+    if (!uid) return
+    const mm = Math.max(500, Math.min(m, 6000))
+    if (reg) await setDoc(doc(db, 'users', uid, 'saude', hoje), { metaAgua: mm }, { merge: true })
+    else { await add(0); await setDoc(doc(db, 'users', uid, 'saude', hoje), { metaAgua: mm }, { merge: true }) }
+  }
+  const L = (ml: number) => (ml / 1000).toFixed(ml % 1000 === 0 ? 0 : 1) + 'L'
+  return (
+    <div style={{ ...cardSty(cor), minWidth: 232 } as React.CSSProperties}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={labelSty}>💧 Controle de água interativo</div>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.1rem', color: cor }}>{L(agua)}</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 4, background: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg,#0891b2,${cor})`, borderRadius: 4, transition: 'width .5s', boxShadow: `0 0 8px ${cor}55` }} />
+      </div>
+      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {[250, 330, 500, 1000].map(ml => (
+          <button key={ml} onClick={() => add(ml)} title="Clique para adicionar"
+            style={{ flex: 1, minWidth: 48, padding: '5px 4px', borderRadius: 8, border: `1px solid ${cor}40`, background: `${cor}10`, color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.62rem', cursor: 'pointer' }}>
+            {ml >= 1000 ? '1.0L' : ml + 'ml'}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Meta diária: {L(meta)}</span>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button onClick={() => add(-250)} title="Remover 250ml" style={miniBtn(cor)}>−</button>
+          <button onClick={() => setMeta(meta - 250)} title="Diminuir meta" style={miniBtn('#94a3b8')}>meta −</button>
+          <button onClick={() => setMeta(meta + 250)} title="Aumentar meta" style={miniBtn('#94a3b8')}>meta +</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+const miniBtn = (cor: string): React.CSSProperties => ({ padding: '3px 7px', borderRadius: 7, border: `1px solid ${cor}40`, background: 'transparent', color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.6rem', cursor: 'pointer' })
+
+/* ── Piada do momento (popup expandido ao passar o mouse) ── */
+function PiadaCard({ cardSty, labelSty }: any) {
+  const [idx, setIdx] = useState(() => Math.floor(Math.random() * PIADAS.length))
+  const [open, setOpen] = useState(false)
+  useEffect(() => { const t = setInterval(() => setIdx(i => (i + 1) % PIADAS.length), 35000); return () => clearInterval(t) }, [])
+  const piada = PIADAS[idx]
+  return (
+    <div onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
+      onClick={() => setIdx(i => (i + 1) % PIADAS.length)}
+      style={{ ...cardSty('#8b5cf6'), flex: 1, minWidth: 280, position: 'relative', cursor: 'pointer' } as React.CSSProperties}>
+      <div style={labelSty}>😄 Piada do momento</div>
+      <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {piada}
+      </div>
+      <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>passe o mouse para ler · clique para a próxima</div>
+      {open && (
+        <div style={{ position: 'absolute', bottom: '108%', left: 0, right: 0, background: 'var(--card-bg)', border: '1px solid #8b5cf640', borderRadius: 14, padding: '14px 16px', boxShadow: '0 12px 32px rgba(0,0,0,0.28)', zIndex: 80 }}>
+          <div style={{ fontSize: '0.62rem', color: '#a78bfa', fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>😄 Piada do momento</div>
+          <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.6, fontWeight: 500 }}>{piada}</div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 function BarraInferior() {
   const loc = useLocationInfo()
   const [hora, setHora] = useState(new Date())
-  const [fraseIdx, setFraseIdx] = useState(() => Math.floor(Math.random() * FRASES_MOTIVACIONAIS.length))
-  const [fraseVisible, setFraseVisible] = useState(true)
-
   useEffect(() => { const t = setInterval(() => setHora(new Date()), 1000); return () => clearInterval(t) }, [])
-  useEffect(() => {
-    const t = setInterval(() => {
-      setFraseVisible(false)
-      setTimeout(() => {
-        setFraseIdx(i => (i + 1) % FRASES_MOTIVACIONAIS.length)
-        setFraseVisible(true)
-      }, 400)
-    }, 60000)
-    return () => clearInterval(t)
-  }, [])
 
   const DIAS_PT = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado']
   const DIAS_SHORT = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
@@ -1536,20 +1343,10 @@ function BarraInferior() {
             </div>
           )
         })()}
-        {/* Frase motivacional */}
-        <div style={{ ...cardSty('#8b5cf6'), flex:1, minWidth:300 } as React.CSSProperties}>
-          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-            <div style={labelSty}>✦ Pensamento do momento</div>
-          </div>
-          <div style={{ opacity: fraseVisible ? 1 : 0, transition:'opacity 0.4s ease', flex:1, display:'flex', flexDirection:'column', justifyContent:'space-between', gap:6 }}>
-            <div style={{ fontSize:'0.78rem', color:'var(--text-primary)', fontWeight:500, lineHeight:1.6, fontStyle:'italic' }}>
-              "{FRASES_MOTIVACIONAIS[fraseIdx]?.texto}"
-            </div>
-            <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)', fontWeight:700 }}>
-              — {FRASES_MOTIVACIONAIS[fraseIdx]?.autor}
-            </div>
-          </div>
-        </div>
+        {/* Controle de água interativo (integrado à aba Saúde) */}
+        <AguaControle cardSty={cardSty} labelSty={labelSty} />
+        {/* Piada do momento */}
+        <PiadaCard cardSty={cardSty} labelSty={labelSty} />
 
       </div>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
