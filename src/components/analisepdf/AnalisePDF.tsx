@@ -1,0 +1,1109 @@
+// @ts-nocheck
+/* ════════════════════════════════════════════════════════════════════
+   NEXUS · ABA "ANÁLISE DE PDF"
+   --------------------------------------------------------------------
+   • Coloque este arquivo em: src/components/analisepdf/AnalisePDF.tsx
+   • Wire no App.tsx (3 linhas — ver instruções na entrega).
+   • Sem dependências novas no package.json: PDF.js, jsPDF e html2canvas
+     são carregados sob demanda via CDN (mesmos CDNs já usados no
+     MapaMental).
+   • @ts-nocheck mantém o motor imperativo (PDF.js / contentEditable)
+     fora do type-check estrito do projeto.
+
+   ARQUITETURA
+     ┌──────────────────────────────────────────────┬───────────────┐
+     │  VISUALIZADOR DE PDF (topo)                   │   ÁRVORE      │
+     │  · marcação (highlight / sublinhado)          │   pastas /    │
+     │  · zoom · ajustar largura/página              │   subpastas   │
+     │  · busca interna (Ctrl+F)                     │   + anotações │
+     │  · índice lateral (outline do PDF)            │   (Firestore) │
+     ├──────────────────────────────────────────────┤               │
+     │  EDITOR DE ANOTAÇÕES (rodapé)                 │               │
+     │  · rich text · listas · toggle (active recall)│               │
+     │  · exportar PDF                               │               │
+     └──────────────────────────────────────────────┴───────────────┘
+
+   PERSISTÊNCIA (Firestore)
+     · users/{uid}/pdfFolders/{id}  -> { id, name, parentId }
+     · users/{uid}/pdfNotes/{id}    -> { id, folderId, title, html, ... }
+     · O PDF NUNCA é salvo (economia de armazenamento). Apenas as
+       anotações do editor inferior são persistidas. As marcações sobre
+       o PDF vivem somente na sessão atual.
+   ════════════════════════════════════════════════════════════════════ */
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
+import { db } from '../../lib/firebase'
+import { useUid } from '../../hooks/useUid'
+
+/* remove chaves undefined antes de gravar no Firestore (padrão Nexus) */
+function clean<T extends object>(obj: T): T {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T
+}
+const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
+
+/* ─────────────── carregadores de libs externas (CDN sob demanda) ─────────────── */
+const CDN = {
+  pdf:    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+  worker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+  jspdf:  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  h2c:    'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+}
+function loadScript(src: string) {
+  return new Promise<void>((res, rej) => {
+    if ([...document.scripts].some(s => s.src === src)) return res()
+    const s = document.createElement('script'); s.src = src; s.async = true
+    s.onload = () => res(); s.onerror = () => rej(new Error('Falha ao carregar ' + src))
+    document.head.appendChild(s)
+  })
+}
+async function ensurePdfjs() {
+  if (!(window as any).pdfjsLib) await loadScript(CDN.pdf)
+  const lib = (window as any).pdfjsLib
+  if (lib && !lib.GlobalWorkerOptions.workerSrc) lib.GlobalWorkerOptions.workerSrc = CDN.worker
+  return lib
+}
+async function ensureExportLibs() {
+  if (!(window as any).html2canvas) await loadScript(CDN.h2c)
+  if (!((window as any).jspdf && (window as any).jspdf.jsPDF)) await loadScript(CDN.jspdf)
+}
+
+/* ─────────────────────────── CSS escopado (.pdfa-app) ─────────────────────────── */
+const PDFA_CSS = `
+.pdfa-app{
+  --pa-accent: var(--accent, #1A73E8);
+  --pa-bg: var(--bg-1, #f6f7fa);
+  --pa-panel: var(--card-bg, #fff);
+  --pa-border: var(--border, #e8eaed);
+  --pa-border-md: var(--border-md, #dadce0);
+  --pa-text: var(--text-primary, #202124);
+  --pa-dim: var(--text-muted, #5f6368);
+  --pa-faint: var(--text-subtle, #9aa0a6);
+  --pa-hover: var(--bg-hover, #f1f3f4);
+  --pa-shadow: var(--shadow-lg, 0 4px 16px rgba(60,64,67,.14));
+  --pa-radius: 12px;
+  position:relative; width:100%; height:100%; min-height:84vh;
+  display:flex; gap:10px; font-family:var(--font-body,'Inter',sans-serif);
+  color:var(--pa-text); background:transparent;
+}
+.pdfa-app *{ box-sizing:border-box }
+
+/* coluna principal (PDF + editor) */
+.pdfa-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; }
+
+/* ───── barra de ferramentas geral ───── */
+.pdfa-bar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  background:var(--pa-panel); border:1px solid var(--pa-border); border-radius:var(--pa-radius);
+  padding:8px 10px; box-shadow:var(--shadow-sm,0 1px 3px rgba(60,64,67,.1)); }
+.pdfa-bar .sep{ width:1px; height:22px; background:var(--pa-border); margin:0 2px; }
+.pdfa-bar .grow{ flex:1 }
+.pdfa-btn{ display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+  border:1px solid var(--pa-border); background:transparent; color:var(--pa-dim);
+  font:inherit; font-size:.78rem; font-weight:600; padding:7px 11px; border-radius:9px;
+  transition:.15s; white-space:nowrap; }
+.pdfa-btn:hover{ background:var(--pa-hover); color:var(--pa-text); border-color:var(--pa-border-md); }
+.pdfa-btn.on{ background:var(--pa-accent); color:#fff; border-color:transparent; }
+.pdfa-btn.primary{ background:var(--pa-accent); color:#fff; border-color:transparent; }
+.pdfa-btn.primary:hover{ filter:brightness(1.06); color:#fff; }
+.pdfa-btn.icon{ padding:7px 9px; }
+.pdfa-btn[disabled]{ opacity:.4; cursor:not-allowed; }
+.pdfa-title{ font-family:var(--font-display,'DM Sans',sans-serif); font-weight:800;
+  font-size:.95rem; letter-spacing:-.01em; display:flex; align-items:center; gap:8px; }
+.pdfa-zoom-val{ font-family:var(--font-mono,monospace); font-size:.72rem; color:var(--pa-faint);
+  min-width:42px; text-align:center; }
+
+/* swatches de cor de marcação */
+.pdfa-swatch{ width:20px; height:20px; border-radius:6px; cursor:pointer; border:2px solid transparent;
+  transition:.12s; }
+.pdfa-swatch:hover{ transform:scale(1.12); }
+.pdfa-swatch.on{ border-color:var(--pa-text); box-shadow:0 0 0 2px var(--pa-panel) inset; }
+
+/* campo de busca */
+.pdfa-search{ display:flex; align-items:center; gap:6px; background:var(--input-bg,#fff);
+  border:1px solid var(--pa-border-md); border-radius:9px; padding:4px 6px 4px 10px; }
+.pdfa-search input{ border:0; background:transparent; color:var(--pa-text); font:inherit;
+  font-size:.8rem; outline:none; width:190px; }
+.pdfa-search .cnt{ font-family:var(--font-mono,monospace); font-size:.68rem; color:var(--pa-faint);
+  white-space:nowrap; }
+.pdfa-search button{ border:0; background:transparent; cursor:pointer; color:var(--pa-dim);
+  padding:3px 5px; border-radius:6px; font-size:.78rem; }
+.pdfa-search button:hover{ background:var(--pa-hover); color:var(--pa-text); }
+
+/* ───── área central com índice + visualizador ───── */
+.pdfa-viewer-wrap{ flex:1; min-height:0; display:flex; gap:10px; }
+.pdfa-viewer-wrap.collapsed{ display:none; }
+
+/* índice lateral (outline) */
+.pdfa-outline{ width:230px; flex-shrink:0; background:var(--pa-panel); border:1px solid var(--pa-border);
+  border-radius:var(--pa-radius); display:flex; flex-direction:column; overflow:hidden;
+  transition:margin-left .26s cubic-bezier(.4,.16,.2,1); }
+.pdfa-outline.hide{ margin-left:calc(-240px - 10px); }
+.pdfa-outline h4{ margin:0; padding:11px 13px; font-size:.7rem; font-weight:800; letter-spacing:.06em;
+  text-transform:uppercase; color:var(--pa-faint); border-bottom:1px solid var(--pa-border);
+  display:flex; align-items:center; justify-content:space-between; }
+.pdfa-outline-list{ flex:1; overflow-y:auto; padding:6px; }
+.pdfa-out-item{ display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:8px;
+  cursor:pointer; font-size:.78rem; color:var(--pa-dim); line-height:1.3; }
+.pdfa-out-item:hover{ background:var(--pa-hover); color:var(--pa-text); }
+.pdfa-out-item .tw{ width:12px; flex-shrink:0; font-size:.6rem; color:var(--pa-faint);
+  transition:transform .2s; }
+.pdfa-out-item.open > .tw{ transform:rotate(90deg); }
+.pdfa-out-item .lbl{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdfa-out-children{ margin-left:12px; border-left:1px solid var(--pa-border); padding-left:3px; }
+.pdfa-out-empty{ padding:18px 14px; font-size:.76rem; color:var(--pa-faint); text-align:center; }
+
+/* visualizador (scroll de páginas) */
+.pdfa-viewer{ flex:1; min-width:0; background:var(--pa-bg); border:1px solid var(--pa-border);
+  border-radius:var(--pa-radius); overflow:auto; position:relative; }
+.pdfa-pages{ display:flex; flex-direction:column; align-items:center; gap:16px; padding:18px; }
+.pdfa-page{ position:relative; background:#fff; box-shadow:var(--pa-shadow); border-radius:2px;
+  flex-shrink:0; }
+.pdfa-page canvas{ display:block; border-radius:2px; }
+.pdfa-page .num{ position:absolute; top:6px; right:8px; font:600 .6rem var(--font-mono,monospace);
+  color:rgba(0,0,0,.32); background:rgba(255,255,255,.7); padding:1px 6px; border-radius:6px;
+  pointer-events:none; z-index:4; }
+
+/* camada de texto (seleção / busca) */
+.pdfa-textlayer{ position:absolute; inset:0; overflow:hidden; line-height:1; z-index:2;
+  opacity:1; -webkit-user-select:text; user-select:text; }
+.pdfa-textlayer > span{ position:absolute; color:transparent; white-space:pre; cursor:text;
+  transform-origin:0 0; }
+.pdfa-textlayer ::selection{ background:rgba(26,115,232,.32); }
+.pdfa-textlayer .pa-hit{ background:rgba(253,214,99,.55); border-radius:2px; color:transparent; }
+.pdfa-textlayer .pa-hit.cur{ background:rgba(242,139,130,.75); box-shadow:0 0 0 1px rgba(242,139,130,.9); }
+
+/* camada de marcações (highlight/underline — sessão) */
+.pdfa-marklayer{ position:absolute; inset:0; z-index:1; pointer-events:none; }
+.pdfa-marklayer .mk{ position:absolute; border-radius:2px; }
+
+/* estado vazio do visualizador */
+.pdfa-empty{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:14px; color:var(--pa-faint); text-align:center; padding:40px; }
+.pdfa-empty .big{ font-size:2.6rem; opacity:.55; }
+.pdfa-empty b{ color:var(--pa-text); font-size:1.02rem; font-weight:700;
+  font-family:var(--font-display,'DM Sans',sans-serif); }
+.pdfa-empty span{ font-size:.84rem; max-width:340px; line-height:1.5; }
+
+/* divisor arrastável */
+.pdfa-divider{ height:8px; flex-shrink:0; cursor:row-resize; display:flex; align-items:center;
+  justify-content:center; }
+.pdfa-divider::before{ content:''; width:46px; height:4px; border-radius:4px; background:var(--pa-border-md);
+  transition:.15s; }
+.pdfa-divider:hover::before{ background:var(--pa-accent); width:70px; }
+
+/* ───── editor inferior ───── */
+.pdfa-editor-box{ display:flex; flex-direction:column; background:var(--pa-panel);
+  border:1px solid var(--pa-border); border-radius:var(--pa-radius); overflow:hidden;
+  box-shadow:var(--shadow-sm,0 1px 3px rgba(60,64,67,.1)); min-height:0; }
+.pdfa-editor-box.fullnote{ flex:1; }
+.pdfa-etoolbar{ display:flex; align-items:center; gap:4px; flex-wrap:wrap; padding:7px 9px;
+  border-bottom:1px solid var(--pa-border); background:var(--pa-panel); }
+.pdfa-etoolbar .sep{ width:1px; height:20px; background:var(--pa-border); margin:0 3px; }
+.pdfa-tbtn{ min-width:30px; height:30px; padding:0 8px; border:1px solid transparent; background:transparent;
+  border-radius:8px; cursor:pointer; color:var(--pa-dim); font-size:.84rem; font-weight:700;
+  display:inline-flex; align-items:center; justify-content:center; gap:5px; transition:.13s; }
+.pdfa-tbtn:hover{ background:var(--pa-hover); color:var(--pa-text); }
+.pdfa-tbtn.wide{ font-size:.74rem; font-weight:600; }
+.pdfa-note-title{ flex:1; min-width:120px; border:0; background:transparent; outline:none;
+  font:700 .92rem var(--font-display,'DM Sans',sans-serif); color:var(--pa-text); padding:0 6px; }
+.pdfa-save-state{ font-size:.68rem; color:var(--pa-faint); font-family:var(--font-mono,monospace);
+  white-space:nowrap; }
+
+.pdfa-editor{ flex:1; min-height:120px; overflow-y:auto; padding:18px 22px; outline:none;
+  font-size:.92rem; line-height:1.65; color:var(--pa-text); }
+.pdfa-editor:empty::before{ content:attr(data-ph); color:var(--pa-faint); }
+.pdfa-editor h2{ font-family:var(--font-display,'DM Sans',sans-serif); font-size:1.25rem;
+  font-weight:800; margin:.9em 0 .35em; }
+.pdfa-editor h3{ font-family:var(--font-display,'DM Sans',sans-serif); font-size:1.05rem;
+  font-weight:700; margin:.8em 0 .3em; }
+.pdfa-editor p{ margin:.4em 0; }
+.pdfa-editor ul,.pdfa-editor ol{ margin:.4em 0; padding-left:1.6em; }
+.pdfa-editor li{ margin:.18em 0; }
+.pdfa-editor blockquote{ margin:.6em 0; padding:.3em 1em; border-left:3px solid var(--pa-accent);
+  color:var(--pa-dim); background:var(--surface,rgba(26,115,232,.05)); border-radius:0 8px 8px 0; }
+.pdfa-editor a{ color:var(--pa-accent); }
+.pdfa-editor hr{ border:0; border-top:1px solid var(--pa-border); margin:1em 0; }
+
+/* toggle list (active recall) */
+.pdfa-editor details.pa-toggle{ margin:.5em 0; border:1px solid var(--pa-border-md); border-radius:10px;
+  background:var(--pa-bg); overflow:hidden; }
+.pdfa-editor details.pa-toggle > summary{ cursor:pointer; padding:9px 12px 9px 30px; position:relative;
+  font-weight:600; color:var(--pa-text); list-style:none; user-select:none; }
+.pdfa-editor details.pa-toggle > summary::-webkit-details-marker{ display:none; }
+.pdfa-editor details.pa-toggle > summary::before{ content:'▸'; position:absolute; left:11px; top:9px;
+  color:var(--pa-accent); transition:transform .18s; font-size:.85em; }
+.pdfa-editor details.pa-toggle[open] > summary::before{ transform:rotate(90deg); }
+.pdfa-editor details.pa-toggle > summary::after{ content:'resposta oculta'; position:absolute; right:12px;
+  top:10px; font:600 .62rem var(--font-mono,monospace); color:var(--pa-faint); letter-spacing:.04em;
+  text-transform:uppercase; opacity:.8; }
+.pdfa-editor details.pa-toggle[open] > summary::after{ content:''; }
+.pdfa-editor details.pa-toggle > .pa-toggle-body{ padding:4px 14px 12px 30px; border-top:1px solid var(--pa-border);
+  color:var(--pa-text); }
+.pdfa-editor mark{ background:rgba(253,214,99,.6); border-radius:3px; padding:0 2px; color:inherit; }
+
+/* ───── árvore (coluna direita) — espelha o Mapa Mental ───── */
+.pdfa-side{ width:262px; flex-shrink:0; background:var(--pa-panel); border:1px solid var(--pa-border);
+  border-radius:var(--pa-radius); display:flex; flex-direction:column; overflow:hidden;
+  transition:margin-right .26s cubic-bezier(.4,.16,.2,1); box-shadow:var(--shadow-sm,0 1px 3px rgba(60,64,67,.1)); }
+.pdfa-side.hide{ margin-right:calc(-272px - 10px); }
+.pdfa-side-head{ padding:13px 14px; border-bottom:1px solid var(--pa-border); }
+.pdfa-side-head .ttl{ font:800 .82rem var(--font-display,'DM Sans',sans-serif); display:flex;
+  align-items:center; gap:7px; }
+.pdfa-side-head .sub{ font-size:.66rem; color:var(--pa-faint); margin-top:2px; }
+.pdfa-side-actions{ display:flex; gap:7px; margin-top:11px; }
+.pdfa-side-actions .pdfa-btn{ flex:1; justify-content:center; padding:7px; font-size:.72rem; }
+.pdfa-tree{ flex:1; overflow-y:auto; padding:8px 7px 16px; }
+.pdfa-row{ display:flex; align-items:center; gap:6px; padding:6px 7px; border-radius:8px; cursor:pointer;
+  font-size:.8rem; color:var(--pa-dim); user-select:none; transition:background .15s,color .15s; }
+.pdfa-row:hover{ background:var(--pa-hover); color:var(--pa-text); }
+.pdfa-row.active{ background:var(--surface,rgba(26,115,232,.08)); color:var(--pa-text); font-weight:600; }
+.pdfa-row.drop-target{ outline:2px dashed var(--pa-accent); outline-offset:-2px; }
+.pdfa-row .tw{ width:13px; flex-shrink:0; text-align:center; font-size:.62rem; color:var(--pa-faint);
+  transition:transform .2s; }
+.pdfa-row.open > .tw{ transform:rotate(90deg); }
+.pdfa-row .ico{ width:16px; flex-shrink:0; text-align:center; opacity:.9; }
+.pdfa-row .lbl{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdfa-row .mini{ opacity:0; font-size:.72rem; padding:2px 4px; border-radius:6px; color:var(--pa-faint);
+  transition:.13s; }
+.pdfa-row:hover .mini{ opacity:1; } .pdfa-row .mini:hover{ background:var(--pa-border-md); color:var(--pa-text); }
+.pdfa-row input.rename{ flex:1; background:var(--input-bg,#fff); border:1px solid var(--pa-accent);
+  color:var(--pa-text); border-radius:6px; padding:2px 6px; font:inherit; font-size:.8rem; outline:none; }
+.pdfa-children{ margin-left:13px; border-left:1px solid var(--pa-border); padding-left:4px; }
+.pdfa-tree-empty{ padding:20px 12px; font-size:.76rem; color:var(--pa-faint); text-align:center; line-height:1.5; }
+
+/* overlay de progresso (exportação) */
+.pdfa-overlay{ position:absolute; inset:0; background:rgba(0,0,0,.45); display:none; align-items:center;
+  justify-content:center; z-index:50; backdrop-filter:blur(2px); border-radius:var(--pa-radius); }
+.pdfa-overlay.show{ display:flex; }
+.pdfa-overlay .card{ background:var(--pa-panel); color:var(--pa-text); padding:18px 26px; border-radius:12px;
+  box-shadow:var(--pa-shadow); font-size:.86rem; font-weight:600; display:flex; align-items:center; gap:12px; }
+.pdfa-spin{ width:18px; height:18px; border:2.5px solid var(--pa-border); border-top-color:var(--pa-accent);
+  border-radius:50%; animation:pdfaSpin .8s linear infinite; }
+@keyframes pdfaSpin{ to{ transform:rotate(360deg) } }
+
+/* toast */
+.pdfa-toast{ position:absolute; bottom:18px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:var(--pa-text); color:var(--pa-panel); padding:10px 16px; border-radius:10px; font-size:.8rem;
+  font-weight:600; box-shadow:var(--pa-shadow); opacity:0; pointer-events:none; transition:.25s; z-index:60; }
+.pdfa-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* responsivo: some com colunas auxiliares em telas estreitas */
+@media (max-width:1080px){
+  .pdfa-side{ display:none; } .pdfa-outline{ display:none; }
+}
+`
+
+/* ───────────────────────────── helpers de UI ───────────────────────────── */
+const HILITE_COLORS = ['#FDD663', '#81C995', '#8AB4F8', '#F28B82', '#D7AEFB', '#FCAD70']
+
+function escapeHtml(s = '') {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+}
+
+/* ════════════════════════════════════════════════════════════════════════ */
+export default function AnalisePDF() {
+  const uid = useUid()
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  /* ── persistência (Firestore) ── */
+  const [folders, setFolders] = useState<any[]>([])
+  const [notes, setNotes] = useState<any[]>([])
+
+  /* ── estado do PDF (somente sessão) ── */
+  const [pdfName, setPdfName] = useState<string | null>(null)
+  const [numPages, setNumPages] = useState(0)
+  const [scale, setScale] = useState(1.15)
+  const [outline, setOutline] = useState<any[]>([])
+  const [showOutline, setShowOutline] = useState(true)
+  const [showSide, setShowSide] = useState(true)
+  const [pdfCollapsed, setPdfCollapsed] = useState(false)
+
+  /* ── marcação ── */
+  const [markColor, setMarkColor] = useState(HILITE_COLORS[0])
+  const [markMode, setMarkMode] = useState<'highlight' | 'underline'>('highlight')
+
+  /* ── busca ── */
+  const [query, setQuery] = useState('')
+  const [hitInfo, setHitInfo] = useState({ cur: 0, total: 0 })
+
+  /* ── editor / nota corrente ── */
+  const [noteId, setNoteId] = useState<string | null>(null)
+  const [noteTitle, setNoteTitle] = useState('')
+  const [noteFolderId, setNoteFolderId] = useState<string | null>(null)
+  const [saveState, setSaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved'>('idle')
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [splitRatio, setSplitRatio] = useState(0.6)        // fração da altura para o PDF
+
+  /* refs imperativos */
+  const pdfDocRef = useRef<any>(null)
+  const pdfjsRef = useRef<any>(null)
+  const pagesHostRef = useRef<HTMLDivElement>(null)
+  const viewerRef = useRef<HTMLDivElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
+  const pageMetaRef = useRef<any[]>([])          // [{pageNum, w, h (escala 1)}]
+  const pageElsRef = useRef<Record<number, HTMLElement>>({})
+  const renderedScaleRef = useRef<Record<number, number>>({})
+  const textCacheRef = useRef<Record<number, any>>({})    // textContent por página
+  const marksRef = useRef<Record<number, any[]>>({})      // marcações por página (coord. escala 1)
+  const ioRef = useRef<IntersectionObserver | null>(null)
+  const visiblePagesRef = useRef<Set<number>>(new Set())
+  const hitsRef = useRef<any[]>([])
+  const curHitRef = useRef(0)
+  const saveTimerRef = useRef<any>(null)
+  const scaleRef = useRef(scale)
+  scaleRef.current = scale
+
+  const viewMode = pdfName && !pdfCollapsed ? 'split' : 'note'   // split = PDF+editor | note = editor cheio
+
+  /* injeta CSS uma vez */
+  useEffect(() => {
+    if (!document.getElementById('pdfa-styles')) {
+      const st = document.createElement('style'); st.id = 'pdfa-styles'; st.textContent = PDFA_CSS
+      document.head.appendChild(st)
+    }
+  }, [])
+
+  /* ── assinaturas Firestore ── */
+  useEffect(() => {
+    if (!uid) return
+    const u1 = onSnapshot(collection(db, 'users', uid, 'pdfFolders'),
+      s => setFolders(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+    const u2 = onSnapshot(collection(db, 'users', uid, 'pdfNotes'),
+      s => setNotes(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+    return () => { u1(); u2() }
+  }, [uid])
+
+  /* ── TOAST ── */
+  const toastRef = useRef<HTMLDivElement>(null)
+  const toastT = useRef<any>(null)
+  const toast = useCallback((msg: string) => {
+    const el = toastRef.current; if (!el) return
+    el.textContent = msg; el.classList.add('show')
+    clearTimeout(toastT.current); toastT.current = setTimeout(() => el.classList.remove('show'), 2600)
+  }, [])
+
+  /* ════════════════════ PDF: importar / renderizar ════════════════════ */
+  const importPdf = useCallback(async (file: File) => {
+    if (!file) return
+    try {
+      const lib = await ensurePdfjs(); pdfjsRef.current = lib
+      const buf = await file.arrayBuffer()
+      const task = lib.getDocument({ data: buf })
+      const pdf = await task.promise
+      // limpa estado anterior
+      pdfDocRef.current = pdf
+      pageElsRef.current = {}; renderedScaleRef.current = {}; textCacheRef.current = {}
+      marksRef.current = {}; hitsRef.current = []; curHitRef.current = 0
+      setHitInfo({ cur: 0, total: 0 }); setQuery('')
+      setNumPages(pdf.numPages); setPdfName(file.name.replace(/\.pdf$/i, '')); setPdfCollapsed(false)
+
+      // metadados (tamanho de cada página em escala 1) para placeholders
+      const metas: any[] = []
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const pg = await pdf.getPage(i)
+        const vp = pg.getViewport({ scale: 1 })
+        metas.push({ pageNum: i, w: vp.width, h: vp.height })
+      }
+      pageMetaRef.current = metas
+
+      // outline / índice
+      try {
+        const ol = await pdf.getOutline()
+        setOutline(ol || [])
+      } catch { setOutline([]) }
+
+      // monta placeholders e dá fit-width inicial
+      requestAnimationFrame(() => { buildPagePlaceholders(); fitWidth() })
+      toast('PDF carregado — ' + pdf.numPages + ' páginas')
+    } catch (err) {
+      console.error('[AnalisePDF] erro ao abrir PDF:', err)
+      toast('Não foi possível abrir o PDF')
+    }
+  }, [toast])
+
+  /* cria os contêineres de página com a altura correta e liga o observer */
+  const buildPagePlaceholders = useCallback(() => {
+    const host = pagesHostRef.current; if (!host) return
+    host.innerHTML = ''
+    pageElsRef.current = {}; renderedScaleRef.current = {}
+    const sc = scaleRef.current
+    if (ioRef.current) ioRef.current.disconnect()
+    ioRef.current = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        const pn = Number((e.target as HTMLElement).dataset.page)
+        if (e.isIntersecting) { visiblePagesRef.current.add(pn); renderPage(pn) }
+        else visiblePagesRef.current.delete(pn)
+      }
+    }, { root: viewerRef.current, rootMargin: '600px 0px' })
+
+    for (const m of pageMetaRef.current) {
+      const pageEl = document.createElement('div')
+      pageEl.className = 'pdfa-page'; pageEl.dataset.page = String(m.pageNum)
+      pageEl.style.width = (m.w * sc) + 'px'; pageEl.style.height = (m.h * sc) + 'px'
+      const num = document.createElement('div'); num.className = 'num'; num.textContent = String(m.pageNum)
+      pageEl.appendChild(num)
+      host.appendChild(pageEl)
+      pageElsRef.current[m.pageNum] = pageEl
+      ioRef.current.observe(pageEl)
+    }
+  }, [])
+
+  /* renderiza canvas + camada de texto + marcações de uma página */
+  const renderPage = useCallback(async (pn: number) => {
+    const pdf = pdfDocRef.current, lib = pdfjsRef.current; if (!pdf || !lib) return
+    const sc = scaleRef.current
+    if (renderedScaleRef.current[pn] === sc) return            // já renderizada nesta escala
+    const pageEl = pageElsRef.current[pn]; if (!pageEl) return
+    renderedScaleRef.current[pn] = sc                          // trava p/ evitar corrida
+    try {
+      const page = await pdf.getPage(pn)
+      const vp = page.getViewport({ scale: sc })
+      pageEl.style.width = vp.width + 'px'; pageEl.style.height = vp.height + 'px'
+
+      // canvas
+      let canvas = pageEl.querySelector('canvas') as HTMLCanvasElement
+      if (!canvas) { canvas = document.createElement('canvas'); pageEl.insertBefore(canvas, pageEl.firstChild) }
+      const ratio = window.devicePixelRatio || 1
+      canvas.width = Math.floor(vp.width * ratio); canvas.height = Math.floor(vp.height * ratio)
+      canvas.style.width = vp.width + 'px'; canvas.style.height = vp.height + 'px'
+      const ctx = canvas.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+      await page.render({ canvasContext: ctx, viewport: vp }).promise
+
+      // camada de texto
+      let tl = pageEl.querySelector('.pdfa-textlayer') as HTMLElement
+      if (!tl) { tl = document.createElement('div'); tl.className = 'pdfa-textlayer'; pageEl.appendChild(tl) }
+      tl.innerHTML = ''; tl.style.width = vp.width + 'px'; tl.style.height = vp.height + 'px'
+      tl.style.setProperty('--scale-factor', String(sc))
+      const tc = textCacheRef.current[pn] || await page.getTextContent()
+      textCacheRef.current[pn] = tc
+      try {
+        const t = lib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs: [] })
+        await (t.promise || t)
+      } catch {
+        try { const t2 = lib.renderTextLayer({ textContent: tc, container: tl, viewport: vp, textDivs: [] }); await (t2.promise || t2) }
+        catch (e) { /* sem camada de texto p/ esta versão */ }
+      }
+      // re-aplica busca nas spans recém criadas
+      applySearchToPage(pn)
+      // camada de marcações
+      drawMarks(pn)
+    } catch (err) {
+      renderedScaleRef.current[pn] = -1   // libera p/ tentar de novo
+      console.warn('[AnalisePDF] render página', pn, err)
+    }
+  }, [])
+
+  /* redesenha marcações de uma página (coordenadas guardadas em escala 1) */
+  const drawMarks = useCallback((pn: number) => {
+    const pageEl = pageElsRef.current[pn]; if (!pageEl) return
+    let ml = pageEl.querySelector('.pdfa-marklayer') as HTMLElement
+    if (!ml) { ml = document.createElement('div'); ml.className = 'pdfa-marklayer'; pageEl.appendChild(ml) }
+    ml.innerHTML = ''
+    const sc = scaleRef.current
+    for (const mk of (marksRef.current[pn] || [])) {
+      const d = document.createElement('div'); d.className = 'mk'
+      d.style.left = (mk.x * sc) + 'px'; d.style.top = (mk.y * sc) + 'px'
+      d.style.width = (mk.w * sc) + 'px'; d.style.height = (mk.h * sc) + 'px'
+      if (mk.type === 'underline') {
+        d.style.background = 'transparent'
+        d.style.borderBottom = Math.max(2, 2.2 * sc) + 'px solid ' + mk.color
+      } else {
+        d.style.background = mk.color; d.style.opacity = '0.4'; d.style.mixBlendMode = 'multiply'
+      }
+      ml.appendChild(d)
+    }
+  }, [])
+
+  /* ── zoom / enquadramento ── */
+  const applyScale = useCallback((next: number) => {
+    const sc = Math.min(3.2, Math.max(0.4, next))
+    scaleRef.current = sc; setScale(sc)
+    // redimensiona placeholders e re-renderiza páginas visíveis
+    for (const m of pageMetaRef.current) {
+      const el = pageElsRef.current[m.pageNum]
+      if (el) { el.style.width = (m.w * sc) + 'px'; el.style.height = (m.h * sc) + 'px' }
+      renderedScaleRef.current[m.pageNum] = renderedScaleRef.current[m.pageNum] === sc ? sc : -1
+    }
+    requestAnimationFrame(() => { visiblePagesRef.current.forEach(pn => renderPage(pn)) })
+  }, [renderPage])
+
+  const fitWidth = useCallback(() => {
+    const vw = viewerRef.current?.clientWidth || 800
+    const pw = pageMetaRef.current[0]?.w || 600
+    applyScale((vw - 56) / pw)
+  }, [applyScale])
+  const fitPage = useCallback(() => {
+    const vw = viewerRef.current?.clientWidth || 800, vh = viewerRef.current?.clientHeight || 600
+    const m = pageMetaRef.current[0]; if (!m) return
+    applyScale(Math.min((vw - 56) / m.w, (vh - 56) / m.h))
+  }, [applyScale])
+
+  /* ════════════════════ marcação por seleção ════════════════════ */
+  const applyMarkup = useCallback((type: 'highlight' | 'underline') => {
+    const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) { toast('Selecione um trecho no PDF'); return }
+    const range = sel.getRangeAt(0)
+    const sc = scaleRef.current
+    const rects = range.getClientRects()
+    let added = 0
+    for (const r of rects) {
+      if (r.width < 1 || r.height < 1) continue
+      // descobre a qual página o retângulo pertence
+      for (const m of pageMetaRef.current) {
+        const pageEl = pageElsRef.current[m.pageNum]; if (!pageEl) continue
+        const pr = pageEl.getBoundingClientRect()
+        const cx = r.left + r.width / 2, cy = r.top + r.height / 2
+        if (cx >= pr.left && cx <= pr.right && cy >= pr.top && cy <= pr.bottom) {
+          const x = (r.left - pr.left) / sc, y = (r.top - pr.top) / sc
+          const w = r.width / sc, h = r.height / sc
+          marksRef.current[m.pageNum] = marksRef.current[m.pageNum] || []
+          marksRef.current[m.pageNum].push({ x, y, w, h, color: markColor, type })
+          drawMarks(m.pageNum); added++
+          break
+        }
+      }
+    }
+    sel.removeAllRanges()
+    if (added) toast(type === 'underline' ? 'Trecho sublinhado' : 'Trecho destacado')
+  }, [markColor, drawMarks, toast])
+
+  const clearMarks = useCallback(() => {
+    marksRef.current = {}
+    Object.keys(pageElsRef.current).forEach(pn => drawMarks(Number(pn)))
+    toast('Marcações removidas')
+  }, [drawMarks, toast])
+
+  /* ════════════════════ busca interna ════════════════════ */
+  const applySearchToPage = useCallback((pn: number) => {
+    const pageEl = pageElsRef.current[pn]; if (!pageEl) return
+    const tl = pageEl.querySelector('.pdfa-textlayer'); if (!tl) return
+    const q = query.trim().toLowerCase()
+    tl.querySelectorAll('span.pa-hit').forEach((s: any) => s.classList.remove('pa-hit', 'cur'))
+    if (!q) return
+    tl.querySelectorAll('span').forEach((s: any) => {
+      if (s.textContent && s.textContent.toLowerCase().includes(q)) s.classList.add('pa-hit')
+    })
+    // marca o hit corrente se estiver nesta página
+    const cur = hitsRef.current[curHitRef.current]
+    if (cur && cur.page === pn) {
+      const spans = tl.querySelectorAll('span.pa-hit')
+      const s = spans[cur.localIdx]; if (s) s.classList.add('cur')
+    }
+  }, [query])
+
+  const runSearch = useCallback(async (q: string) => {
+    const pdf = pdfDocRef.current; if (!pdf) return
+    const needle = q.trim().toLowerCase()
+    hitsRef.current = []; curHitRef.current = 0
+    if (!needle) { setHitInfo({ cur: 0, total: 0 }); Object.keys(pageElsRef.current).forEach(pn => applySearchToPage(Number(pn))); return }
+    // varre o texto de todas as páginas (usa cache, busca o que faltar)
+    for (let pn = 1; pn <= pdf.numPages; pn++) {
+      let tc = textCacheRef.current[pn]
+      if (!tc) { try { const pg = await pdf.getPage(pn); tc = await pg.getTextContent(); textCacheRef.current[pn] = tc } catch { continue } }
+      let local = 0
+      tc.items.forEach((it: any) => {
+        if (it.str && it.str.toLowerCase().includes(needle)) { hitsRef.current.push({ page: pn, localIdx: local }); local++ }
+        else if (it.str && it.str.trim()) { /* spans sem hit não entram no índice local de hits */ }
+      })
+      // localIdx precisa bater com a ordem das spans .pa-hit (somente spans que casam)
+    }
+    setHitInfo({ cur: hitsRef.current.length ? 1 : 0, total: hitsRef.current.length })
+    Object.keys(pageElsRef.current).forEach(pn => applySearchToPage(Number(pn)))
+    if (hitsRef.current.length) gotoHit(0)
+  }, [applySearchToPage])
+
+  const gotoHit = useCallback((idx: number) => {
+    const hits = hitsRef.current; if (!hits.length) return
+    const i = ((idx % hits.length) + hits.length) % hits.length
+    curHitRef.current = i; setHitInfo({ cur: i + 1, total: hits.length })
+    const hit = hits[i]
+    const pageEl = pageElsRef.current[hit.page]
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // garante render e marca o hit atual
+      renderPage(hit.page).then(() => {
+        Object.keys(pageElsRef.current).forEach(pn => applySearchToPage(Number(pn)))
+        const tl = pageEl.querySelector('.pdfa-textlayer')
+        const s = tl?.querySelectorAll('span.pa-hit')[hit.localIdx]
+        if (s) { s.scrollIntoView({ behavior: 'smooth', block: 'center' }) }
+      })
+    }
+  }, [renderPage, applySearchToPage])
+
+  /* dispara busca ao digitar (debounce curto) */
+  useEffect(() => {
+    const t = setTimeout(() => runSearch(query), 280)
+    return () => clearTimeout(t)
+  }, [query, runSearch])
+
+  /* ════════════════════ índice lateral (outline) ════════════════════ */
+  const gotoDest = useCallback(async (dest: any) => {
+    const pdf = pdfDocRef.current; if (!pdf || !dest) return
+    try {
+      const explicit = typeof dest === 'string' ? await pdf.getDestination(dest) : dest
+      if (!explicit) return
+      const ref = explicit[0]
+      const pageIndex = await pdf.getPageIndex(ref)
+      const pageEl = pageElsRef.current[pageIndex + 1]
+      if (pageEl) { pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); renderPage(pageIndex + 1) }
+    } catch (e) { console.warn('dest', e) }
+  }, [renderPage])
+
+  /* ════════════════════ EDITOR ════════════════════ */
+  const focusEditor = () => editorRef.current?.focus()
+  const exec = useCallback((cmd: string, val?: string) => {
+    focusEditor(); document.execCommand(cmd, false, val); markDirty()
+  }, [])
+
+  const insertToggle = useCallback(() => {
+    focusEditor()
+    const html = '<details class="pa-toggle" open><summary>Pergunta…</summary>' +
+      '<div class="pa-toggle-body">Resposta…</div></details><p><br></p>'
+    document.execCommand('insertHTML', false, html); markDirty()
+  }, [])
+
+  const setBlock = useCallback((tag: string) => { focusEditor(); document.execCommand('formatBlock', false, tag); markDirty() }, [])
+
+  /* dirty / autosave */
+  const markDirty = useCallback(() => {
+    setSaveState('dirty')
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => { void persistNote() }, 1200)
+  }, [])
+
+  const persistNote = useCallback(async () => {
+    if (!uid) return
+    const html = editorRef.current?.innerHTML || ''
+    const plain = (editorRef.current?.textContent || '').trim()
+    const title = noteTitle.trim()
+    if (!title && !plain) { setSaveState('idle'); return }   // nada a salvar
+    setSaveState('saving')
+    const id = noteId || newId()
+    if (!noteId) setNoteId(id)
+    const existing = notes.find(n => n.id === id)
+    try {
+      await setDoc(doc(db, 'users', uid, 'pdfNotes', id), clean({
+        id, folderId: noteFolderId ?? null,
+        title: title || 'Sem título',
+        html,
+        createdAt: existing?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+      }), { merge: true })
+      setSaveState('saved')
+      setTimeout(() => setSaveState(s => (s === 'saved' ? 'idle' : s)), 1600)
+    } catch (e) { console.error(e); setSaveState('dirty'); toast('Erro ao salvar anotação') }
+  }, [uid, noteId, noteTitle, noteFolderId, notes, toast])
+
+  const newNote = useCallback((folderId: string | null = null) => {
+    clearTimeout(saveTimerRef.current)
+    setNoteId(null); setNoteTitle(''); setNoteFolderId(folderId)
+    if (editorRef.current) editorRef.current.innerHTML = ''
+    setSaveState('idle'); setPdfCollapsed(false)
+    setTimeout(focusEditor, 60)
+  }, [])
+
+  const openNote = useCallback((n: any) => {
+    clearTimeout(saveTimerRef.current)
+    setNoteId(n.id); setNoteTitle(n.title || ''); setNoteFolderId(n.folderId ?? null)
+    if (editorRef.current) editorRef.current.innerHTML = n.html || ''
+    setSaveState('idle')
+    // sem PDF salvo -> ocupa a página inteira (requisito 4.b)
+    setPdfCollapsed(true)
+  }, [])
+
+  const deleteNote = useCallback(async (n: any) => {
+    if (!uid) return
+    if (!confirm('Excluir a anotação "' + (n.title || 'Sem título') + '"?')) return
+    await deleteDoc(doc(db, 'users', uid, 'pdfNotes', n.id))
+    if (noteId === n.id) newNote(null)
+    toast('Anotação excluída')
+  }, [uid, noteId, newNote, toast])
+
+  /* exportar anotação atual para PDF */
+  const exportNotePdf = useCallback(async () => {
+    const html = editorRef.current?.innerHTML?.trim()
+    if (!html) { toast('Nada para exportar'); return }
+    const ov = rootRef.current?.querySelector('.pdfa-overlay') as HTMLElement
+    ov?.classList.add('show')
+    try {
+      await ensureExportLibs()
+      const { jsPDF } = (window as any).jspdf
+      // monta um container limpo e legível para o PDF (com todos os toggles abertos)
+      const wrap = document.createElement('div')
+      wrap.style.cssText = 'position:fixed;left:-9999px;top:0;width:720px;padding:48px 56px;background:#fff;' +
+        'color:#202124;font-family:Inter,Arial,sans-serif;font-size:15px;line-height:1.7;'
+      const titleEl = document.createElement('h1')
+      titleEl.textContent = noteTitle.trim() || 'Anotações'
+      titleEl.style.cssText = 'font-family:"DM Sans",Arial,sans-serif;font-size:24px;margin:0 0 18px;font-weight:800;'
+      wrap.appendChild(titleEl)
+      const body = document.createElement('div'); body.innerHTML = html; wrap.appendChild(body)
+      // estilos inline mínimos para o html2canvas
+      body.querySelectorAll('details').forEach((d: any) => { d.open = true; d.style.border = '1px solid #dadce0'; d.style.borderRadius = '8px'; d.style.margin = '8px 0'; d.style.padding = '8px 12px' })
+      body.querySelectorAll('summary').forEach((s: any) => { s.style.fontWeight = '700'; s.style.listStyle = 'none' })
+      body.querySelectorAll('.pa-toggle-body').forEach((b: any) => { b.style.marginTop = '6px'; b.style.color = '#3c4043' })
+      body.querySelectorAll('mark').forEach((mk: any) => { mk.style.background = '#fdf0b5'; mk.style.padding = '0 2px' })
+      body.querySelectorAll('blockquote').forEach((q: any) => { q.style.borderLeft = '3px solid #1A73E8'; q.style.paddingLeft = '12px'; q.style.color = '#5f6368'; q.style.margin = '8px 0' })
+      document.body.appendChild(wrap)
+
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+      await pdf.html(wrap, {
+        margin: [40, 40, 48, 40], autoPaging: 'text',
+        html2canvas: { scale: 0.82, useCORS: true, backgroundColor: '#ffffff' },
+        width: 515, windowWidth: 720,
+      })
+      pdf.save((noteTitle.trim() || 'anotacoes').replace(/[^\w\-]+/g, '_').slice(0, 60) + '.pdf')
+      document.body.removeChild(wrap)
+      toast('PDF exportado')
+    } catch (e) {
+      console.error('[AnalisePDF] export', e); toast('Falha ao exportar PDF')
+    } finally { ov?.classList.remove('show') }
+  }, [noteTitle, toast])
+
+  /* ════════════════════ árvore (coluna direita) ════════════════════ */
+  const persistFolder = useCallback(async (f: any) => {
+    if (!uid) return
+    await setDoc(doc(db, 'users', uid, 'pdfFolders', f.id), clean(f), { merge: true })
+  }, [uid])
+
+  const addFolder = useCallback((parentId: string | null = null) => {
+    const f = { id: newId(), name: 'Nova pasta', parentId: parentId ?? null }
+    if (parentId) setExpanded(e => ({ ...e, [parentId]: true }))
+    void persistFolder(f)
+  }, [persistFolder])
+
+  const renameFolder = useCallback((f: any, name: string) => {
+    void persistFolder({ ...f, name: name || f.name })
+  }, [persistFolder])
+
+  const deleteFolder = useCallback(async (f: any) => {
+    if (!uid) return
+    // coleta descendentes
+    const all = new Set<string>([f.id])
+    let added = true
+    while (added) { added = false; folders.forEach(x => { if (x.parentId && all.has(x.parentId) && !all.has(x.id)) { all.add(x.id); added = true } }) }
+    const affectedNotes = notes.filter(n => n.folderId && all.has(n.folderId))
+    if (!confirm('Excluir a pasta "' + f.name + '"' + (affectedNotes.length ? ' e ' + affectedNotes.length + ' anotação(ões) dentro dela' : '') + '?')) return
+    for (const id of all) await deleteDoc(doc(db, 'users', uid, 'pdfFolders', id))
+    for (const n of affectedNotes) await deleteDoc(doc(db, 'users', uid, 'pdfNotes', n.id))
+    toast('Pasta excluída')
+  }, [uid, folders, notes, toast])
+
+  const moveItem = useCallback(async (drag: any, targetFolderId: string | null) => {
+    if (!uid || !drag) return
+    if (drag.type === 'note') {
+      const n = notes.find(x => x.id === drag.id); if (!n) return
+      await setDoc(doc(db, 'users', uid, 'pdfNotes', n.id), { folderId: targetFolderId ?? null }, { merge: true })
+      if (noteId === n.id) setNoteFolderId(targetFolderId ?? null)
+    } else if (drag.type === 'folder') {
+      if (drag.id === targetFolderId) return
+      // evita mover pasta p/ dentro de si mesma
+      let p = targetFolderId, guard = 0
+      while (p && guard++ < 100) { if (p === drag.id) return; p = folders.find(x => x.id === p)?.parentId ?? null }
+      await setDoc(doc(db, 'users', uid, 'pdfFolders', drag.id), { parentId: targetFolderId ?? null }, { merge: true })
+    }
+  }, [uid, notes, folders, noteId])
+
+  /* ── atalhos de teclado (escopados na aba) ── */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!rootRef.current?.isConnected) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        const inEditor = editorRef.current?.contains(document.activeElement)
+        if (pdfName && !inEditor) { e.preventDefault(); (rootRef.current.querySelector('.pdfa-search input') as HTMLInputElement)?.focus() }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        const inEditor = editorRef.current?.contains(document.activeElement)
+        if (inEditor) { e.preventDefault(); void persistNote() }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [pdfName, persistNote])
+
+  /* ── divisor arrastável (altura PDF x editor) ── */
+  const startDividerDrag = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    const main = rootRef.current?.querySelector('.pdfa-main') as HTMLElement; if (!main) return
+    const rect = main.getBoundingClientRect()
+    const move = (ev: PointerEvent) => {
+      const r = Math.min(0.82, Math.max(0.2, (ev.clientY - rect.top) / rect.height))
+      setSplitRatio(r)
+    }
+    const up = () => { document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up) }
+    document.addEventListener('pointermove', move); document.addEventListener('pointerup', up)
+  }, [])
+
+  /* cleanup geral */
+  useEffect(() => () => {
+    if (ioRef.current) ioRef.current.disconnect()
+    clearTimeout(saveTimerRef.current); clearTimeout(toastT.current)
+  }, [])
+
+  /* ─────────────────────────── render ─────────────────────────── */
+  return (
+    <div className="pdfa-app" ref={rootRef}>
+      {/* ════ COLUNA PRINCIPAL ════ */}
+      <div className="pdfa-main">
+
+        {/* barra superior do PDF */}
+        <div className="pdfa-bar">
+          <span className="pdfa-title">📄 {pdfName || 'Análise de PDF'}</span>
+          <button className="pdfa-btn icon" title={showOutline ? 'Ocultar índice' : 'Mostrar índice'}
+            onClick={() => setShowOutline(v => !v)} disabled={!pdfName}>☰</button>
+
+          <label className="pdfa-btn primary" style={{ cursor: 'pointer' }}>
+            ⤓ Importar PDF
+            <input type="file" accept="application/pdf" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.currentTarget.value = '' }} />
+          </label>
+
+          {pdfName && <>
+            <span className="sep" />
+            {/* marcação */}
+            <button className={'pdfa-btn ' + (markMode === 'highlight' ? 'on' : '')}
+              onClick={() => { setMarkMode('highlight'); applyMarkup('highlight') }} title="Destacar a seleção">🖍 Destacar</button>
+            <button className={'pdfa-btn ' + (markMode === 'underline' ? 'on' : '')}
+              onClick={() => { setMarkMode('underline'); applyMarkup('underline') }} title="Sublinhar a seleção">U̲ Sublinhar</button>
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              {HILITE_COLORS.map(c => (
+                <span key={c} className={'pdfa-swatch ' + (markColor === c ? 'on' : '')}
+                  style={{ background: c }} onClick={() => setMarkColor(c)} title="Cor da marcação" />
+              ))}
+            </div>
+            <button className="pdfa-btn icon" onClick={clearMarks} title="Limpar todas as marcações">🧹</button>
+
+            <span className="sep" />
+            {/* zoom */}
+            <button className="pdfa-btn icon" onClick={() => applyScale(scale / 1.15)} title="Reduzir">−</button>
+            <span className="pdfa-zoom-val">{Math.round(scale * 100)}%</span>
+            <button className="pdfa-btn icon" onClick={() => applyScale(scale * 1.15)} title="Ampliar">+</button>
+            <button className="pdfa-btn" onClick={fitWidth} title="Ajustar à largura">↔ Largura</button>
+            <button className="pdfa-btn" onClick={fitPage} title="Ajustar à página">⤢ Página</button>
+
+            <span className="sep" />
+            {/* busca */}
+            <div className="pdfa-search">
+              <span style={{ color: 'var(--pa-faint)', fontSize: '.8rem' }}>🔍</span>
+              <input placeholder="Buscar no PDF  (Ctrl+F)" value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); gotoHit(curHitRef.current + (e.shiftKey ? -1 : 1)) } }} />
+              {query && <span className="cnt">{hitInfo.total ? `${hitInfo.cur}/${hitInfo.total}` : '0'}</span>}
+              <button onClick={() => gotoHit(curHitRef.current - 1)} title="Anterior (Shift+Enter)">↑</button>
+              <button onClick={() => gotoHit(curHitRef.current + 1)} title="Próximo (Enter)">↓</button>
+            </div>
+            <span className="grow" />
+            <button className="pdfa-btn" onClick={() => setPdfCollapsed(v => !v)}
+              title={pdfCollapsed ? 'Mostrar PDF' : 'Editor em tela cheia'}>
+              {pdfCollapsed ? '▣ Ver PDF' : '⤡ Tela cheia (editor)'}
+            </button>
+          </>}
+
+          <span className="grow" />
+          <button className="pdfa-btn icon" title={showSide ? 'Ocultar pastas' : 'Mostrar pastas'}
+            onClick={() => setShowSide(v => !v)}>🗂</button>
+        </div>
+
+        {/* área PDF (índice + visualizador) — escondida em modo nota */}
+        <div className={'pdfa-viewer-wrap' + (viewMode === 'note' ? ' collapsed' : '')}
+          style={{ flex: `0 0 calc(${Math.round(splitRatio * 100)}% - 9px)` }}>
+          {/* índice lateral */}
+          <div className={'pdfa-outline' + (showOutline ? '' : ' hide')}>
+            <h4>Índice <span style={{ color: 'var(--pa-faint)', fontWeight: 600 }}>{numPages ? numPages + ' pág.' : ''}</span></h4>
+            <div className="pdfa-outline-list">
+              {outline.length === 0
+                ? <div className="pdfa-out-empty">Este PDF não possui índice (sumário) incorporado.</div>
+                : <OutlineTree items={outline} onGo={gotoDest} />}
+            </div>
+          </div>
+          {/* visualizador */}
+          <div className="pdfa-viewer" ref={viewerRef}>
+            {pdfName
+              ? <div className="pdfa-pages" ref={pagesHostRef} />
+              : <div className="pdfa-empty">
+                  <div className="big">📄</div>
+                  <b>Importe um PDF para começar</b>
+                  <span>O documento abre aqui em cima e você faz as anotações logo abaixo.
+                    O PDF não é salvo (economia de espaço) — apenas as suas anotações ficam guardadas.</span>
+                  <label className="pdfa-btn primary" style={{ cursor: 'pointer' }}>
+                    ⤓ Escolher arquivo
+                    <input type="file" accept="application/pdf" style={{ display: 'none' }}
+                      onChange={e => { const f = e.target.files?.[0]; if (f) importPdf(f); e.currentTarget.value = '' }} />
+                  </label>
+                </div>}
+          </div>
+        </div>
+
+        {/* divisor (só no modo split) */}
+        {viewMode === 'split' && <div className="pdfa-divider" onPointerDown={startDividerDrag} title="Arraste para redimensionar" />}
+
+        {/* EDITOR */}
+        <div className={'pdfa-editor-box' + (viewMode === 'note' ? ' fullnote' : '')}
+          style={viewMode === 'split' ? { flex: 1 } : undefined}>
+          <div className="pdfa-etoolbar">
+            <input className="pdfa-note-title" placeholder="Título da anotação…" value={noteTitle}
+              onChange={e => { setNoteTitle(e.target.value); markDirty() }} />
+            <span className="sep" />
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('bold')} title="Negrito (Ctrl+B)" style={{ fontWeight: 800 }}>B</button>
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('italic')} title="Itálico (Ctrl+I)" style={{ fontStyle: 'italic' }}>I</button>
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('underline')} title="Sublinhado" style={{ textDecoration: 'underline' }}>U</button>
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('hiliteColor', '#FDD663')} title="Realçar texto">🖍</button>
+            <span className="sep" />
+            <button className="pdfa-tbtn wide" onMouseDown={e => e.preventDefault()} onClick={() => setBlock('H2')} title="Título">H2</button>
+            <button className="pdfa-tbtn wide" onMouseDown={e => e.preventDefault()} onClick={() => setBlock('H3')} title="Subtítulo">H3</button>
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => setBlock('BLOCKQUOTE')} title="Citação">❝</button>
+            <span className="sep" />
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertUnorderedList')} title="Lista com marcadores">• ⃪</button>
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertOrderedList')} title="Lista numerada">1.</button>
+            <button className="pdfa-tbtn wide" onMouseDown={e => e.preventDefault()} onClick={insertToggle} title="Lista retrátil (active recall)">▸ Toggle</button>
+            <span className="sep" />
+            <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('removeFormat')} title="Limpar formatação">⌫</button>
+            <span className="grow" style={{ flex: 1 }} />
+            <span className="pdfa-save-state">
+              {saveState === 'saving' ? 'salvando…' : saveState === 'saved' ? '✓ salvo' : saveState === 'dirty' ? '• não salvo' : ''}
+            </span>
+            <button className="pdfa-tbtn wide" onClick={() => persistNote()} title="Salvar agora (Ctrl+S)">💾 Salvar</button>
+            <button className="pdfa-tbtn wide" onClick={exportNotePdf} title="Exportar anotações em PDF">⤓ PDF</button>
+          </div>
+          <div className="pdfa-editor" ref={editorRef} contentEditable suppressContentEditableWarning
+            data-ph="Escreva suas anotações, perguntas e respostas aqui. Use o botão ▸ Toggle para esconder respostas (active recall)…"
+            onInput={markDirty}
+            onKeyDown={e => {
+              // Tab dentro de listas indenta em vez de sair do editor
+              if (e.key === 'Tab') { e.preventDefault(); document.execCommand(e.shiftKey ? 'outdent' : 'indent') }
+            }} />
+        </div>
+      </div>
+
+      {/* ════ COLUNA DIREITA: PASTAS / ANOTAÇÕES ════ */}
+      <div className={'pdfa-side' + (showSide ? '' : ' hide')}>
+        <div className="pdfa-side-head">
+          <div className="ttl">🗂 Anotações</div>
+          <div className="sub">Organize em pastas — só as anotações são salvas</div>
+          <div className="pdfa-side-actions">
+            <button className="pdfa-btn primary" onClick={() => newNote(noteFolderId)}>＋ Anotação</button>
+            <button className="pdfa-btn" onClick={() => addFolder(null)}>＋ Pasta</button>
+          </div>
+        </div>
+        <div className="pdfa-tree"
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); const d = dragRef.current; dragRef.current = null; if (d) void moveItem(d, null) }}>
+          {folders.length === 0 && notes.filter(n => !n.folderId).length === 0
+            ? <div className="pdfa-tree-empty">Nenhuma anotação ainda.<br />Crie uma pasta ou comece a escrever abaixo — ela aparece aqui ao salvar.</div>
+            : <FolderTree
+                parentId={null} folders={folders} notes={notes} expanded={expanded}
+                activeNoteId={noteId}
+                onToggle={(id) => setExpanded(e => ({ ...e, [id]: !e[id] }))}
+                onOpenNote={openNote} onDeleteNote={deleteNote}
+                onAddFolder={addFolder} onRenameFolder={renameFolder} onDeleteFolder={deleteFolder}
+                onNewNoteIn={(fid) => newNote(fid)}
+                onRenameNote={async (n, title) => { if (uid) await setDoc(doc(db, 'users', uid, 'pdfNotes', n.id), { title: title || n.title }, { merge: true }) }}
+                onDragStart={(payload) => { dragRef.current = payload }}
+                onDropInto={(fid) => { const d = dragRef.current; dragRef.current = null; if (d) void moveItem(d, fid) }}
+              />}
+        </div>
+      </div>
+
+      {/* overlay de exportação + toast */}
+      <div className="pdfa-overlay"><div className="card"><span className="pdfa-spin" /> Gerando PDF…</div></div>
+      <div className="pdfa-toast" ref={toastRef} />
+    </div>
+  )
+}
+
+/* dragRef compartilhado (fora do componente para sobreviver a re-renders) */
+const dragRef = { current: null as any }
+
+/* ───────────────────────── índice (outline) recursivo ───────────────────────── */
+function OutlineTree({ items, onGo, depth = 0 }: any) {
+  const [open, setOpen] = useState<Record<number, boolean>>({})
+  return (
+    <>
+      {items.map((it: any, i: number) => {
+        const hasKids = it.items && it.items.length
+        const isOpen = open[i] ?? depth < 1
+        return (
+          <div key={i}>
+            <div className={'pdfa-out-item' + (isOpen ? ' open' : '')}
+              onClick={() => { if (hasKids) setOpen(o => ({ ...o, [i]: !isOpen })); onGo(it.dest) }}>
+              <span className="tw" style={{ visibility: hasKids ? 'visible' : 'hidden' }}>▶</span>
+              <span className="lbl" title={it.title}>{it.title || '—'}</span>
+            </div>
+            {hasKids && isOpen && <div className="pdfa-out-children"><OutlineTree items={it.items} onGo={onGo} depth={depth + 1} /></div>}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+/* ───────────────────────── árvore de pastas/anotações ───────────────────────── */
+function FolderTree(props: any) {
+  const { parentId, folders, notes, expanded, activeNoteId, onToggle, onOpenNote, onDeleteNote,
+    onAddFolder, onRenameFolder, onDeleteFolder, onNewNoteIn, onRenameNote, onDragStart, onDropInto } = props
+  const subFolders = folders.filter((f: any) => (f.parentId ?? null) === parentId).sort((a: any, b: any) => a.name.localeCompare(b.name))
+  const subNotes = notes.filter((n: any) => (n.folderId ?? null) === parentId).sort((a: any, b: any) => (a.title || '').localeCompare(b.title || ''))
+  return (
+    <>
+      {subFolders.map((f: any) => (
+        <FolderRow key={f.id} folder={f} {...props} />
+      ))}
+      {subNotes.map((n: any) => (
+        <NoteRow key={n.id} note={n} active={n.id === activeNoteId}
+          onOpen={() => onOpenNote(n)} onDelete={() => onDeleteNote(n)}
+          onRename={(t: string) => onRenameNote(n, t)}
+          onDragStart={() => onDragStart({ type: 'note', id: n.id })} />
+      ))}
+    </>
+  )
+}
+
+function FolderRow(props: any) {
+  const { folder: f, expanded, onToggle, onAddFolder, onRenameFolder, onDeleteFolder, onNewNoteIn, onDropInto, onDragStart } = props
+  const open = !!expanded[f.id]
+  const [renaming, setRenaming] = useState(false)
+  const [dropHover, setDropHover] = useState(false)
+  return (
+    <div>
+      <div className={'pdfa-row' + (open ? ' open' : '') + (dropHover ? ' drop-target' : '')}
+        draggable={!renaming}
+        onDragStart={e => { e.stopPropagation(); onDragStart({ type: 'folder', id: f.id }) }}
+        onDragOver={e => { e.preventDefault(); e.stopPropagation(); setDropHover(true) }}
+        onDragLeave={() => setDropHover(false)}
+        onDrop={e => { e.preventDefault(); e.stopPropagation(); setDropHover(false); onDropInto(f.id) }}
+        onClick={() => !renaming && onToggle(f.id)}>
+        <span className="tw">▶</span>
+        <span className="ico">📁</span>
+        {renaming
+          ? <input className="rename" autoFocus defaultValue={f.name}
+              onClick={e => e.stopPropagation()}
+              onBlur={e => { onRenameFolder(f, e.target.value.trim()); setRenaming(false) }}
+              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false) }} />
+          : <span className="lbl">{f.name}</span>}
+        <span className="mini" title="Nova anotação aqui" onClick={e => { e.stopPropagation(); onNewNoteIn(f.id) }}>＋▤</span>
+        <span className="mini" title="Nova subpasta" onClick={e => { e.stopPropagation(); onAddFolder(f.id) }}>＋📁</span>
+        <span className="mini" title="Renomear" onClick={e => { e.stopPropagation(); setRenaming(true) }}>✎</span>
+        <span className="mini" title="Excluir" onClick={e => { e.stopPropagation(); onDeleteFolder(f) }}>🗑</span>
+      </div>
+      {open && <div className="pdfa-children"><FolderTree {...props} parentId={f.id} /></div>}
+    </div>
+  )
+}
+
+function NoteRow({ note, active, onOpen, onDelete, onRename, onDragStart }: any) {
+  const [renaming, setRenaming] = useState(false)
+  return (
+    <div className={'pdfa-row' + (active ? ' active' : '')}
+      draggable={!renaming}
+      onDragStart={e => { e.stopPropagation(); onDragStart() }}
+      onClick={() => !renaming && onOpen()}>
+      <span className="tw" style={{ visibility: 'hidden' }}>▶</span>
+      <span className="ico">📝</span>
+      {renaming
+        ? <input className="rename" autoFocus defaultValue={note.title}
+            onClick={e => e.stopPropagation()}
+            onBlur={e => { onRename(e.target.value.trim()); setRenaming(false) }}
+            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false) }} />
+        : <span className="lbl">{note.title || 'Sem título'}</span>}
+      <span className="mini" title="Renomear" onClick={e => { e.stopPropagation(); setRenaming(true) }}>✎</span>
+      <span className="mini" title="Excluir" onClick={e => { e.stopPropagation(); onDelete() }}>🗑</span>
+    </div>
+  )
+}

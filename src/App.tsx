@@ -5,6 +5,7 @@ import { useAuth } from './hooks/useAuth'
 import LoginPage from './auth/LoginPage'
 import GestorEditais from './components/editais/GestorEditais'
 import MapaMental from './components/mapamental/MapaMental'
+import AnalisePDF from './components/analisepdf/AnalisePDF'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
 import PontoEletronico from './components/ponto/PontoEletronico'
@@ -95,6 +96,7 @@ const NAV = [
     { id: 'concursos',  label: 'Concursos',          icon: '🎯', svgIcon: null },
     { id: 'prontuario', label: 'Prontuário ADM',     icon: '📋', svgIcon: null },
     { id: 'mapamental', label: 'Mapa Mental',        icon: '🧠', svgIcon: null },
+    { id: 'analisepdf', label: 'Análise de PDF',     icon: '📄', svgIcon: null },
   ]},
   { section: 'FINANÇAS & VIDA', items: [
     { id: 'financeiro', label: 'Financeiro',         icon: '◎',  svgIcon: null },
@@ -244,6 +246,7 @@ function AppShell() {
           {active === 'ponto'      && <PontoEletronico />}
           {active === 'prontuario' && <ProntuarioADM />}
           {active === 'mapamental' && <MapaMental />}
+          {active === 'analisepdf' && <AnalisePDF />}
           {active === 'saude'      && <SaudeBemEstar />}
           {active === 'wishlist'   && <WishlistCompras />}
           {active === 'journal'    && <Diario onNavigate={setActive} />}
