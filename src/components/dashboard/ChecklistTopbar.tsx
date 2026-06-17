@@ -11,6 +11,7 @@
    • Compartilha as coleções do app: checklist_items / checklist_marcas
    ════════════════════════════════════════════════════════════════════ */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
@@ -45,6 +46,8 @@ export default function ChecklistTopbar() {
   const [novo, setNovo] = useState('')
   const [tipo, setTipo] = useState<Tipo>('diaria')
   const closeT = useRef<any>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState<{ top: number; right: number }>({ top: 56, right: 16 })
   const hoje = hojeISO()
 
   useEffect(() => {
@@ -101,14 +104,24 @@ export default function ChecklistTopbar() {
   }
   const remover = async (it: any) => { if (uid) await deleteDoc(doc(db, `users/${uid}/checklist_items`, it.id)) }
 
-  const enter = () => { clearTimeout(closeT.current); setOpen(true) }
+  const place = useCallback(() => {
+    const r = btnRef.current?.getBoundingClientRect()
+    if (r) setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) })
+  }, [])
+  const enter = () => { clearTimeout(closeT.current); place(); setOpen(true) }
   const leave = () => { if (!pinned) closeT.current = setTimeout(() => setOpen(false), 220) }
+  useEffect(() => {
+    if (!open) return
+    const h = () => place()
+    window.addEventListener('resize', h); window.addEventListener('scroll', h, true)
+    return () => { window.removeEventListener('resize', h); window.removeEventListener('scroll', h, true) }
+  }, [open, place])
 
   const statusCor = total === 0 ? 'var(--text-muted)' : pendentes === 0 ? '#0F9D58' : '#F29900'
 
   return (
     <div style={{ position: 'relative' }} onMouseEnter={enter} onMouseLeave={leave}>
-      <button onClick={() => { setPinned(p => !p); setOpen(true) }}
+      <button ref={btnRef} onClick={() => { place(); setPinned(p => !p); setOpen(true) }}
         className="desktop-only topbar-btn"
         title="Check list do dia"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -118,8 +131,9 @@ export default function ChecklistTopbar() {
         </span>
       </button>
 
-      {open && (
-        <div style={{ position: 'absolute', top: '110%', right: 0, width: 320, maxHeight: '70vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 16px 40px rgba(0,0,0,0.28)', zIndex: 200, overflow: 'hidden' }}>
+      {open && createPortal(
+        <div onMouseEnter={enter} onMouseLeave={leave}
+          style={{ position: 'fixed', top: pos.top, right: pos.right, width: 320, maxHeight: '72vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 18px 48px rgba(0,0,0,0.34)', zIndex: 4000, overflow: 'hidden' }}>
           {/* cabeçalho */}
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
@@ -174,7 +188,8 @@ export default function ChecklistTopbar() {
               ＋ Adicionar
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

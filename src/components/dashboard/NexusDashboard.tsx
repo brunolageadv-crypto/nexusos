@@ -1147,11 +1147,18 @@ const VIS_MODULOS = [
   { id: 'links',      icon: '🔗', label: 'Links',       cor: '#00e5ff', svgIcon: null },
 ]
 
-function useLocationInfo() {
-  return { cidade: 'Belo Horizonte', uf: 'MG', lat: -19.92, lng: -43.94 }
+/* ── Paleta única da barra inferior (cinza + azul, elegante) ── */
+const B_AZUL = '#5b80ad'
+const B_AZUL_D = '#3f6390'
+const pctSty: React.CSSProperties = { fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '0.92rem', color: B_AZUL }
+const subSty: React.CSSProperties = { fontSize: '0.55rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
+function BarraProg({ pct }: { pct: number }) {
+  return (
+    <div style={{ height: 7, borderRadius: 4, background: 'var(--bg-4)', overflow: 'hidden' }}>
+      <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg,${B_AZUL_D},${B_AZUL})`, borderRadius: 4, transition: 'width .6s' }} />
+    </div>
+  )
 }
-
-
 
 /* ── Controle de água interativo (grava em users/{uid}/saude/{data}, integrado à aba Saúde) ── */
 function AguaControle({ cardSty, labelSty }: any) {
@@ -1165,7 +1172,6 @@ function AguaControle({ cardSty, labelSty }: any) {
   const agua = reg?.agua ?? 0
   const meta = reg?.metaAgua ?? 2000
   const pct = Math.min(Math.round((agua / Math.max(meta, 1)) * 100), 100)
-  const cor = '#06b6d4'
   const add = async (ml: number) => {
     if (!uid) return
     const novo = Math.max(0, Math.min(agua + ml, 6000))
@@ -1183,35 +1189,34 @@ function AguaControle({ cardSty, labelSty }: any) {
     else { await add(0); await setDoc(doc(db, 'users', uid, 'saude', hoje), { metaAgua: mm }, { merge: true }) }
   }
   const L = (ml: number) => (ml / 1000).toFixed(ml % 1000 === 0 ? 0 : 1) + 'L'
+  const cor = B_AZUL
   return (
-    <div style={{ ...cardSty(cor), minWidth: 232 } as React.CSSProperties}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={labelSty}>💧 Controle de água interativo</div>
-        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.1rem', color: cor }}>{L(agua)}</span>
+    <div style={{ ...cardSty(), flex: '1.5 1 0', minWidth: 0 } as React.CSSProperties}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+        <div style={labelSty}>💧 Controle de água</div>
+        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '0.95rem', color: cor }}>{L(agua)}</span>
       </div>
-      <div style={{ height: 8, borderRadius: 4, background: 'rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg,#0891b2,${cor})`, borderRadius: 4, transition: 'width .5s', boxShadow: `0 0 8px ${cor}55` }} />
-      </div>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+      <BarraProg pct={pct} />
+      <div style={{ display: 'flex', gap: 4 }}>
         {[250, 330, 500, 1000].map(ml => (
           <button key={ml} onClick={() => add(ml)} title="Clique para adicionar"
-            style={{ flex: 1, minWidth: 48, padding: '5px 4px', borderRadius: 8, border: `1px solid ${cor}40`, background: `${cor}10`, color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.62rem', cursor: 'pointer' }}>
-            {ml >= 1000 ? '1.0L' : ml + 'ml'}
+            style={{ flex: 1, minWidth: 0, padding: '4px 2px', borderRadius: 7, border: `1px solid ${cor}40`, background: `${cor}12`, color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.58rem', cursor: 'pointer' }}>
+            {ml >= 1000 ? '1L' : ml + 'ml'}
           </button>
         ))}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-        <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Meta diária: {L(meta)}</span>
-        <div style={{ display: 'flex', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+        <span style={subSty}>Meta: {L(meta)}</span>
+        <div style={{ display: 'flex', gap: 3 }}>
           <button onClick={() => add(-250)} title="Remover 250ml" style={miniBtn(cor)}>−</button>
-          <button onClick={() => setMeta(meta - 250)} title="Diminuir meta" style={miniBtn('#94a3b8')}>meta −</button>
-          <button onClick={() => setMeta(meta + 250)} title="Aumentar meta" style={miniBtn('#94a3b8')}>meta +</button>
+          <button onClick={() => setMeta(meta - 250)} title="Diminuir meta" style={miniBtn('#94a3b8')}>−</button>
+          <button onClick={() => setMeta(meta + 250)} title="Aumentar meta" style={miniBtn('#94a3b8')}>+</button>
         </div>
       </div>
     </div>
   )
 }
-const miniBtn = (cor: string): React.CSSProperties => ({ padding: '3px 7px', borderRadius: 7, border: `1px solid ${cor}40`, background: 'transparent', color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.6rem', cursor: 'pointer' })
+const miniBtn = (cor: string): React.CSSProperties => ({ padding: '2px 7px', borderRadius: 6, border: `1px solid ${cor}40`, background: 'transparent', color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.62rem', cursor: 'pointer', lineHeight: 1 })
 
 /* ── Piada do momento (popup expandido ao passar o mouse) ── */
 function PiadaCard({ cardSty, labelSty }: any) {
@@ -1222,15 +1227,15 @@ function PiadaCard({ cardSty, labelSty }: any) {
   return (
     <div onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
       onClick={() => setIdx(i => (i + 1) % PIADAS.length)}
-      style={{ ...cardSty('#8b5cf6'), flex: 1, minWidth: 280, position: 'relative', cursor: 'pointer' } as React.CSSProperties}>
+      style={{ ...cardSty(), flex: '1.7 1 0', minWidth: 0, position: 'relative', cursor: 'pointer' } as React.CSSProperties}>
       <div style={labelSty}>😄 Piada do momento</div>
-      <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+      <div style={{ fontSize: '0.76rem', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
         {piada}
       </div>
-      <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>passe o mouse para ler · clique para a próxima</div>
+      <div style={subSty}>passe o mouse para ler · clique p/ a próxima</div>
       {open && (
-        <div style={{ position: 'absolute', bottom: '108%', left: 0, right: 0, background: 'var(--card-bg)', border: '1px solid #8b5cf640', borderRadius: 14, padding: '14px 16px', boxShadow: '0 12px 32px rgba(0,0,0,0.28)', zIndex: 80 }}>
-          <div style={{ fontSize: '0.62rem', color: '#a78bfa', fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>😄 Piada do momento</div>
+        <div style={{ position: 'absolute', bottom: '108%', left: 0, right: 0, background: 'var(--card-bg)', border: `1px solid ${B_AZUL}55`, borderRadius: 14, padding: '14px 16px', boxShadow: '0 12px 32px rgba(0,0,0,0.28)', zIndex: 80 }}>
+          <div style={{ fontSize: '0.62rem', color: B_AZUL, fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>😄 Piada do momento</div>
           <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.6, fontWeight: 500 }}>{piada}</div>
         </div>
       )}
@@ -1239,7 +1244,6 @@ function PiadaCard({ cardSty, labelSty }: any) {
 }
 
 function BarraInferior() {
-  const loc = useLocationInfo()
   const [hora, setHora] = useState(new Date())
   useEffect(() => { const t = setInterval(() => setHora(new Date()), 1000); return () => clearInterval(t) }, [])
 
@@ -1262,94 +1266,79 @@ function BarraInferior() {
   const pctMes = Math.round((diasNoMes/totalDiasMes)*100)
   const diasRestMes = totalDiasMes - diaMes
 
-  const cardSty = (cor: string): React.CSSProperties => ({
-    display:'flex', flexDirection:'column', gap:6, padding:'14px 18px',
-    borderRadius:14, border:`1px solid ${cor}30`,
-    background:`linear-gradient(135deg,${cor}10 0%,${cor}06 100%)`,
-    flexShrink:0, minWidth:120,
+  const cardSty = (): React.CSSProperties => ({
+    display: 'flex', flexDirection: 'column', gap: 4, padding: '7px 12px',
+    borderRadius: 11, border: '1px solid var(--border)', background: 'var(--surface)',
+    flex: '1 1 0', minWidth: 0,
   })
-  const labelSty: React.CSSProperties = { fontSize:'0.58rem', fontFamily:'var(--font-mono)', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'var(--text-muted)' }
-  const valSty = (cor: string): React.CSSProperties => ({ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.1rem', color:cor, lineHeight:1 })
+  const labelSty: React.CSSProperties = { fontSize: '0.55rem', fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 
   return (
-    <div style={{ borderTop:'1px solid rgba(0,0,0,0.08)', background:'var(--bg-1)', flexShrink:0, padding:'14px 20px' }}>
-      <div style={{ display:'flex', gap:10, overflowX:'auto', flexWrap:'nowrap', alignItems:'stretch' }}>
+    <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-1)', flexShrink: 0, padding: '9px 14px' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', overflow: 'hidden' }}>
 
         {/* Relógio */}
-        <div style={{ ...cardSty('#6366f1'), minWidth:148 } as React.CSSProperties}>
+        <div style={cardSty()}>
           <div style={labelSty}>⏱ Horário local</div>
-          <div style={{ fontFamily:'var(--font-mono)', fontWeight:900, fontSize:'1.5rem', color:'#818cf8', letterSpacing:'0.06em', lineHeight:1 }}>{horaStr}</div>
-          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{diaSemanaShort} · UTC-3 · Brasil</div>
+          <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 900, fontSize: '1.2rem', color: B_AZUL, letterSpacing: '0.03em', lineHeight: 1 }}>{horaStr}</div>
+          <div style={subSty}>{diaSemanaShort} · UTC-3</div>
         </div>
 
         {/* Data */}
-        <div style={{ ...cardSty('#3b82f6'), minWidth:148 } as React.CSSProperties}>
+        <div style={cardSty()}>
           <div style={labelSty}>📅 Data</div>
-          <div style={{ display:'flex', alignItems:'baseline', gap:5 }}>
-            <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.6rem', color:'#60a5fa', lineHeight:1 }}>{diaMes}</span>
-            <span style={{ fontFamily:'var(--font-display)', fontWeight:700, fontSize:'0.85rem', color:'#93c5fd' }}>{mes.slice(0,3).toUpperCase()} {ano}</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.3rem', color: B_AZUL, lineHeight: 1 }}>{diaMes}</span>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{mes.slice(0, 3).toUpperCase()} {ano}</span>
           </div>
-          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{diaSemana}</div>
-        </div>
-
-        {/* Localização */}
-        <div style={{ ...cardSty('#10b981'), minWidth:148 } as React.CSSProperties}>
-          <div style={labelSty}>📍 Localização</div>
-          <div style={valSty('#34d399')}>{loc.cidade}</div>
-          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{loc.uf} · Brasil 🇧🇷</div>
+          <div style={subSty}>{diaSemana}</div>
         </div>
 
         {/* Progresso do Ano */}
-        <div style={{ ...cardSty('#f59e0b'), minWidth:200 } as React.CSSProperties}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div style={{ ...cardSty(), flex: '1.2 1 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
             <div style={labelSty}>📊 Ano {ano}</div>
-            <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#fbbf24' }}>{pctAno}%</span>
+            <span style={pctSty}>{pctAno}%</span>
           </div>
-          <div style={{ height:8, borderRadius:4, background:'rgba(0,0,0,0.08)', overflow:'hidden', position:'relative' }}>
-            <div style={{ height:'100%', width:`${pctAno}%`, background:'linear-gradient(90deg,#d97706,#fbbf24)', borderRadius:4, boxShadow:'0 0 10px rgba(251,191,36,0.4)' }} />
-          </div>
-          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>Dia {diasNoAno} de {totalDias} · S{semanaISO}</div>
+          <BarraProg pct={pctAno} />
+          <div style={subSty}>Dia {diasNoAno}/{totalDias} · S{semanaISO}</div>
         </div>
 
         {/* Progresso do Mês */}
-        <div style={{ ...cardSty('#ef4444'), minWidth:185 } as React.CSSProperties}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-            <div style={labelSty}>🗓 {mes.slice(0,3).toUpperCase()}</div>
-            <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:'#f87171' }}>{pctMes}%</span>
+        <div style={{ ...cardSty(), flex: '1.1 1 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+            <div style={labelSty}>🗓 {mes.slice(0, 3).toUpperCase()}</div>
+            <span style={pctSty}>{pctMes}%</span>
           </div>
-          <div style={{ height:8, borderRadius:4, background:'rgba(0,0,0,0.08)', overflow:'hidden' }}>
-            <div style={{ height:'100%', width:`${pctMes}%`, background:'linear-gradient(90deg,#dc2626,#f87171)', borderRadius:4 }} />
-          </div>
-          <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{diasRestMes} dias restantes</div>
+          <BarraProg pct={pctMes} />
+          <div style={subSty}>{diasRestMes} dias restantes</div>
         </div>
-{/* Progresso do Dia */}
-        {(()=>{
-          const totalMinsDia = 24*60
-          const minsPassados = hora.getHours()*60 + hora.getMinutes()
-          const pctDia = Math.round((minsPassados/totalMinsDia)*100)
-          const hRestantes = Math.floor((totalMinsDia-minsPassados)/60)
-          const mRestantes = (totalMinsDia-minsPassados)%60
-          const diaCor = pctDia < 40 ? '#34d399' : pctDia < 70 ? '#60a5fa' : '#f59e0b'
+
+        {/* Progresso do Dia */}
+        {(() => {
+          const totalMinsDia = 24 * 60
+          const minsPassados = hora.getHours() * 60 + hora.getMinutes()
+          const pctDia = Math.round((minsPassados / totalMinsDia) * 100)
+          const hRestantes = Math.floor((totalMinsDia - minsPassados) / 60)
+          const mRestantes = (totalMinsDia - minsPassados) % 60
           return (
-            <div style={{ ...cardSty(diaCor), minWidth:185 } as React.CSSProperties}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div style={{ ...cardSty(), flex: '1.1 1 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
                 <div style={labelSty}>🌅 Hoje</div>
-                <span style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1rem', color:diaCor }}>{pctDia}%</span>
+                <span style={pctSty}>{pctDia}%</span>
               </div>
-              <div style={{ height:8, borderRadius:4, background:'rgba(0,0,0,0.08)', overflow:'hidden' }}>
-                <div style={{ height:'100%', width:`${pctDia}%`, background:`linear-gradient(90deg,${diaCor}bb,${diaCor})`, borderRadius:4, boxShadow:`0 0 8px ${diaCor}50` }} />
-              </div>
-              <div style={{ fontSize:'0.6rem', color:'var(--text-muted)', fontFamily:'var(--font-mono)' }}>{hRestantes}h {mRestantes}min restantes</div>
+              <BarraProg pct={pctDia} />
+              <div style={subSty}>{hRestantes}h {mRestantes}min restantes</div>
             </div>
           )
         })()}
+
         {/* Controle de água interativo (integrado à aba Saúde) */}
         <AguaControle cardSty={cardSty} labelSty={labelSty} />
         {/* Piada do momento */}
         <PiadaCard cardSty={cardSty} labelSty={labelSty} />
 
       </div>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
     </div>
   )
 }
