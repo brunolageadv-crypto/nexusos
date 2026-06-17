@@ -2,6 +2,7 @@ import React from 'react'
 import PainelChecklistDia from './ChecklistDia'
 import PainelArcade from './Arcade'
 import PainelGeosfera from './GeosferaCard'
+import VisaoGeral from './VisaoGeral'
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEditaisCadastrados, useEdital } from '../../hooks/useEdital'
@@ -3061,7 +3062,7 @@ function NoticiasMode() {
   )
 }
 
-function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:string)=>void; global:any; discStats:any[] }) {
+export function VisualDashboard({ onNavigate, global, discStats }: { onNavigate:(id:string)=>void; global:any; discStats:any[] }) {
   const uid = useUid()
   const [moduloAtivo] = useState('visao-geral')
   const mod = VIS_MODULOS.find(m => m.id === moduloAtivo) || VIS_MODULOS[0]
@@ -3219,7 +3220,7 @@ export default function NexusDashboard({ onNavigate, dashView = 'visual' }: Prop
   }
 
   if (dashView === 'visual') {
-    return <VisualDashboard onNavigate={onNavigate} global={global} discStats={discStats} />
+    return <VisaoGeral onNavigate={onNavigate} />
   }
   if (dashView === 'noticias') {
     return <NoticiasMode />
