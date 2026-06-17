@@ -151,6 +151,28 @@ const PDFA_CSS = `
 .pdfa-out-children{ margin-left:12px; border-left:1px solid var(--pa-border); padding-left:3px; }
 .pdfa-out-empty{ padding:18px 14px; font-size:.76rem; color:var(--pa-faint); text-align:center; }
 
+/* navegador de páginas (miniaturas / números) */
+.pdfa-thumbtabs{ display:flex; gap:3px; }
+.pdfa-thumbtabs button{ width:24px; height:22px; border:1px solid var(--pa-border); background:transparent;
+  color:var(--pa-dim); border-radius:6px; cursor:pointer; font-size:.72rem; display:flex; align-items:center;
+  justify-content:center; padding:0; }
+.pdfa-thumbtabs button.on{ background:var(--pa-accent); color:#fff; border-color:transparent; }
+.pdfa-thumbs{ display:flex; flex-direction:column; align-items:center; gap:9px; padding:4px 2px; }
+.pdfa-thumb{ width:100%; max-width:165px; cursor:pointer; border-radius:9px; padding:5px; border:1px solid transparent;
+  transition:.12s; display:flex; flex-direction:column; align-items:center; gap:3px; }
+.pdfa-thumb:hover{ background:var(--pa-hover); }
+.pdfa-thumb.on{ border-color:var(--pa-accent); background:var(--pa-hover); }
+.pdfa-thumb .thumb-canvas{ width:100%; background:#fff; border:1px solid var(--pa-border); border-radius:3px;
+  overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.12); display:flex; }
+.pdfa-thumb canvas{ width:100%; height:auto; display:block; }
+.pdfa-thumb .thumb-n{ font:600 .64rem var(--font-mono,monospace); color:var(--pa-faint); }
+.pdfa-thumb.on .thumb-n{ color:var(--pa-accent); }
+.pdfa-pagenums{ display:grid; grid-template-columns:repeat(auto-fill, minmax(38px,1fr)); gap:5px; padding:4px; }
+.pdfa-pn{ height:32px; border:1px solid var(--pa-border); background:transparent; color:var(--pa-dim);
+  border-radius:7px; cursor:pointer; font:600 .76rem var(--font-mono,monospace); transition:.12s; }
+.pdfa-pn:hover{ background:var(--pa-hover); color:var(--pa-text); }
+.pdfa-pn.on{ background:var(--pa-accent); color:#fff; border-color:transparent; }
+
 /* visualizador (scroll de páginas) */
 .pdfa-viewer{ flex:1; min-width:0; background:var(--pa-bg); border:1px solid var(--pa-border);
   border-radius:var(--pa-radius); overflow:auto; position:relative; }
@@ -314,6 +336,8 @@ export default function AnalisePDF() {
   const [scale, setScale] = useState(1.15)
   const [outline, setOutline] = useState<any[]>([])
   const [showOutline, setShowOutline] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [thumbMode, setThumbMode] = useState<'mini' | 'num'>('mini')
   const [showSide, setShowSide] = useState(true)
   const [pdfCollapsed, setPdfCollapsed] = useState(false)
 
@@ -351,6 +375,14 @@ export default function AnalisePDF() {
   const saveTimerRef = useRef<any>(null)
   const scaleRef = useRef(scale)
   scaleRef.current = scale
+
+  /* refs sincronizados — garantem que o autosave sempre grava na MESMA anotação
+     (corrige o bug em que cada salvamento criava uma nota nova) */
+  const uidRef = useRef(uid); useEffect(() => { uidRef.current = uid }, [uid])
+  const notesRef = useRef(notes); useEffect(() => { notesRef.current = notes }, [notes])
+  const noteIdRef = useRef<string | null>(noteId); useEffect(() => { noteIdRef.current = noteId }, [noteId])
+  const noteTitleRef = useRef(noteTitle); useEffect(() => { noteTitleRef.current = noteTitle }, [noteTitle])
+  const noteFolderIdRef = useRef<string | null>(noteFolderId); useEffect(() => { noteFolderIdRef.current = noteFolderId }, [noteFolderId])
 
   const viewMode = pdfName && !pdfCollapsed ? 'split' : 'note'   // split = PDF+editor | note = editor cheio
 
@@ -393,7 +425,7 @@ export default function AnalisePDF() {
       pdfDocRef.current = pdf
       pageElsRef.current = {}; renderedScaleRef.current = {}; textCacheRef.current = {}
       marksRef.current = {}; hitsRef.current = []; curHitRef.current = 0
-      setHitInfo({ cur: 0, total: 0 }); setQuery('')
+      setHitInfo({ cur: 0, total: 0 }); setQuery(''); setCurrentPage(1)
       setNumPages(pdf.numPages); setPdfName(file.name.replace(/\.pdf$/i, '')); setPdfCollapsed(false)
 
       // metadados (tamanho de cada página em escala 1) para placeholders
@@ -634,6 +666,34 @@ export default function AnalisePDF() {
     return () => clearTimeout(t)
   }, [query, runSearch])
 
+  /* ════════════════════ navegação por página (miniaturas / números) ════════════════════ */
+  const gotoPage = useCallback((pn: number) => {
+    const el = pageElsRef.current[pn]
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); renderPage(pn); setCurrentPage(pn) }
+  }, [renderPage])
+
+  /* mantém a "página atual" sincronizada com o scroll (destaca a miniatura) */
+  useEffect(() => {
+    const v = viewerRef.current; if (!v) return
+    let raf = 0
+    const onScroll = () => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const vTop = v.getBoundingClientRect().top
+        let best = 1, bestD = Infinity
+        for (const m of pageMetaRef.current) {
+          const el = pageElsRef.current[m.pageNum]; if (!el) continue
+          const d = Math.abs(el.getBoundingClientRect().top - vTop)
+          if (d < bestD) { bestD = d; best = m.pageNum }
+        }
+        setCurrentPage(best)
+      })
+    }
+    v.addEventListener('scroll', onScroll, { passive: true })
+    return () => { v.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf) }
+  }, [pdfName])
+
   /* ════════════════════ índice lateral (outline) ════════════════════ */
   const gotoDest = useCallback(async (dest: any) => {
     const pdf = pdfDocRef.current; if (!pdf || !dest) return
@@ -662,60 +722,85 @@ export default function AnalisePDF() {
 
   const setBlock = useCallback((tag: string) => { focusEditor(); document.execCommand('formatBlock', false, tag); markDirty() }, [])
 
-  /* dirty / autosave */
-  const markDirty = useCallback(() => {
-    setSaveState('dirty')
-    clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => { void persistNote() }, 1200)
+  /* ── salvar / autosave ──
+     persistNote lê tudo de refs, então sempre grava na anotação corrente e
+     cria UM id só (na primeira vez), reaproveitando-o nos salvamentos seguintes */
+  const saveSnapshot = useCallback(async (id: string, title: string, folderId: string | null, html: string, createdAt?: number) => {
+    const u = uidRef.current; if (!u) return
+    await setDoc(doc(db, 'users', u, 'pdfNotes', id), clean({
+      id, folderId: folderId ?? null,
+      title: title || 'Sem título',
+      html,
+      createdAt: createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+    }), { merge: true })
   }, [])
 
   const persistNote = useCallback(async () => {
-    if (!uid) return
+    const u = uidRef.current; if (!u) return
     const html = editorRef.current?.innerHTML || ''
     const plain = (editorRef.current?.textContent || '').trim()
-    const title = noteTitle.trim()
-    if (!title && !plain) { setSaveState('idle'); return }   // nada a salvar
+    const title = (noteTitleRef.current || '').trim()
+    if (!title && !plain) { setSaveState('idle'); return }     // nada digitado ainda
+    let id = noteIdRef.current
+    if (!id) { id = newId(); noteIdRef.current = id; setNoteId(id) }   // cria UMA vez
     setSaveState('saving')
-    const id = noteId || newId()
-    if (!noteId) setNoteId(id)
-    const existing = notes.find(n => n.id === id)
+    const createdAt = notesRef.current.find(n => n.id === id)?.createdAt
     try {
-      await setDoc(doc(db, 'users', uid, 'pdfNotes', id), clean({
-        id, folderId: noteFolderId ?? null,
-        title: title || 'Sem título',
-        html,
-        createdAt: existing?.createdAt ?? Date.now(),
-        updatedAt: Date.now(),
-      }), { merge: true })
-      setSaveState('saved')
-      setTimeout(() => setSaveState(s => (s === 'saved' ? 'idle' : s)), 1600)
+      await saveSnapshot(id, title, noteFolderIdRef.current, html, createdAt)
+      setSaveState('saved'); setTimeout(() => setSaveState(s => (s === 'saved' ? 'idle' : s)), 1500)
     } catch (e) { console.error(e); setSaveState('dirty'); toast('Erro ao salvar anotação') }
-  }, [uid, noteId, noteTitle, noteFolderId, notes, toast])
+  }, [saveSnapshot, toast])
+
+  const markDirty = useCallback(() => {
+    setSaveState('dirty')
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => { void persistNote() }, 1000)
+  }, [persistNote])
+
+  /* grava a anotação atual antes de sair dela (sem perder edição, sem criar duplicatas) */
+  const flushPending = useCallback(() => {
+    clearTimeout(saveTimerRef.current)
+    const html = editorRef.current?.innerHTML || ''
+    const plain = (editorRef.current?.textContent || '').trim()
+    const title = (noteTitleRef.current || '').trim()
+    if (!title && !plain) return
+    let id = noteIdRef.current
+    if (!id) { id = newId(); noteIdRef.current = id }
+    const createdAt = notesRef.current.find(n => n.id === id)?.createdAt
+    void saveSnapshot(id, title, noteFolderIdRef.current, html, createdAt)
+  }, [saveSnapshot])
 
   const newNote = useCallback((folderId: string | null = null) => {
-    clearTimeout(saveTimerRef.current)
+    flushPending()
+    noteIdRef.current = null; noteTitleRef.current = ''; noteFolderIdRef.current = folderId
     setNoteId(null); setNoteTitle(''); setNoteFolderId(folderId)
     if (editorRef.current) editorRef.current.innerHTML = ''
     setSaveState('idle'); setPdfCollapsed(false)
     setTimeout(focusEditor, 60)
-  }, [])
+  }, [flushPending])
 
   const openNote = useCallback((n: any) => {
-    clearTimeout(saveTimerRef.current)
+    flushPending()
+    noteIdRef.current = n.id; noteTitleRef.current = n.title || ''; noteFolderIdRef.current = n.folderId ?? null
     setNoteId(n.id); setNoteTitle(n.title || ''); setNoteFolderId(n.folderId ?? null)
     if (editorRef.current) editorRef.current.innerHTML = n.html || ''
     setSaveState('idle')
-    // sem PDF salvo -> ocupa a página inteira (requisito 4.b)
-    setPdfCollapsed(true)
-  }, [])
+    setPdfCollapsed(true)   // sem PDF salvo -> editor ocupa a página inteira
+  }, [flushPending])
 
   const deleteNote = useCallback(async (n: any) => {
-    if (!uid) return
+    const u = uidRef.current; if (!u) return
     if (!confirm('Excluir a anotação "' + (n.title || 'Sem título') + '"?')) return
-    await deleteDoc(doc(db, 'users', uid, 'pdfNotes', n.id))
-    if (noteId === n.id) newNote(null)
+    await deleteDoc(doc(db, 'users', u, 'pdfNotes', n.id))
+    if (noteIdRef.current === n.id) {   // limpa sem regravar a nota excluída
+      clearTimeout(saveTimerRef.current)
+      noteIdRef.current = null; noteTitleRef.current = ''
+      if (editorRef.current) editorRef.current.innerHTML = ''
+      setNoteId(null); setNoteTitle(''); setSaveState('idle')
+    }
     toast('Anotação excluída')
-  }, [uid, noteId, newNote, toast])
+  }, [toast])
 
   /* exportar anotação atual para PDF */
   const exportNotePdf = useCallback(async () => {
@@ -783,6 +868,12 @@ export default function AnalisePDF() {
     if (!confirm('Excluir a pasta "' + f.name + '"' + (affectedNotes.length ? ' e ' + affectedNotes.length + ' anotação(ões) dentro dela' : '') + '?')) return
     for (const id of all) await deleteDoc(doc(db, 'users', uid, 'pdfFolders', id))
     for (const n of affectedNotes) await deleteDoc(doc(db, 'users', uid, 'pdfNotes', n.id))
+    if (affectedNotes.some(n => n.id === noteIdRef.current)) {   // se a nota aberta foi excluída, limpa sem regravar
+      clearTimeout(saveTimerRef.current)
+      noteIdRef.current = null; noteTitleRef.current = ''
+      if (editorRef.current) editorRef.current.innerHTML = ''
+      setNoteId(null); setNoteTitle(''); setSaveState('idle')
+    }
     toast('Pasta excluída')
   }, [uid, folders, notes, toast])
 
@@ -791,7 +882,7 @@ export default function AnalisePDF() {
     if (drag.type === 'note') {
       const n = notes.find(x => x.id === drag.id); if (!n) return
       await setDoc(doc(db, 'users', uid, 'pdfNotes', n.id), { folderId: targetFolderId ?? null }, { merge: true })
-      if (noteId === n.id) setNoteFolderId(targetFolderId ?? null)
+      if (noteId === n.id) { noteFolderIdRef.current = targetFolderId ?? null; setNoteFolderId(targetFolderId ?? null) }
     } else if (drag.type === 'folder') {
       if (drag.id === targetFolderId) return
       // evita mover pasta p/ dentro de si mesma
@@ -846,8 +937,8 @@ export default function AnalisePDF() {
         {/* barra superior do PDF */}
         <div className="pdfa-bar">
           <span className="pdfa-title">📄 {pdfName || 'Análise de PDF'}</span>
-          <button className="pdfa-btn icon" title={showOutline ? 'Ocultar índice' : 'Mostrar índice'}
-            onClick={() => setShowOutline(v => !v)} disabled={!pdfName}>☰</button>
+          <button className="pdfa-btn icon" title={showOutline ? 'Ocultar páginas' : 'Mostrar páginas'}
+            onClick={() => setShowOutline(v => !v)} disabled={!pdfName}>▦</button>
 
           <label className="pdfa-btn primary" style={{ cursor: 'pointer' }}>
             ⤓ Importar PDF
@@ -904,13 +995,21 @@ export default function AnalisePDF() {
         {/* área PDF (índice + visualizador) — escondida em modo nota */}
         <div className={'pdfa-viewer-wrap' + (viewMode === 'note' ? ' collapsed' : '')}
           style={{ flex: `0 0 calc(${Math.round(splitRatio * 100)}% - 9px)` }}>
-          {/* índice lateral */}
+          {/* navegador de páginas (miniaturas ou números) */}
           <div className={'pdfa-outline' + (showOutline ? '' : ' hide')}>
-            <h4>Índice <span style={{ color: 'var(--pa-faint)', fontWeight: 600 }}>{numPages ? numPages + ' pág.' : ''}</span></h4>
+            <h4>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Páginas <span style={{ color: 'var(--pa-faint)', fontWeight: 600 }}>{numPages || ''}</span></span>
+              <span className="pdfa-thumbtabs">
+                <button className={thumbMode === 'mini' ? 'on' : ''} onClick={() => setThumbMode('mini')} title="Miniaturas">▦</button>
+                <button className={thumbMode === 'num' ? 'on' : ''} onClick={() => setThumbMode('num')} title="Números das páginas">#</button>
+              </span>
+            </h4>
             <div className="pdfa-outline-list">
-              {outline.length === 0
-                ? <div className="pdfa-out-empty">Este PDF não possui índice (sumário) incorporado.</div>
-                : <OutlineTree items={outline} onGo={gotoDest} />}
+              {!pdfName
+                ? <div className="pdfa-out-empty">Importe um PDF para navegar pelas páginas.</div>
+                : thumbMode === 'mini'
+                  ? <PageThumbs key={pdfName} pdfDocRef={pdfDocRef} pdfjsRef={pdfjsRef} meta={pageMetaRef.current} numPages={numPages} current={currentPage} onGoto={gotoPage} />
+                  : <PageNumbers numPages={numPages} current={currentPage} onGoto={gotoPage} />}
             </div>
           </div>
           {/* visualizador */}
@@ -939,7 +1038,7 @@ export default function AnalisePDF() {
           style={viewMode === 'split' ? { flex: 1 } : undefined}>
           <div className="pdfa-etoolbar">
             <input className="pdfa-note-title" placeholder="Título da anotação…" value={noteTitle}
-              onChange={e => { setNoteTitle(e.target.value); markDirty() }} />
+              onChange={e => { noteTitleRef.current = e.target.value; setNoteTitle(e.target.value); markDirty() }} />
             <span className="sep" />
             <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('bold')} title="Negrito (Ctrl+B)" style={{ fontWeight: 800 }}>B</button>
             <button className="pdfa-tbtn" onMouseDown={e => e.preventDefault()} onClick={() => exec('italic')} title="Itálico (Ctrl+I)" style={{ fontStyle: 'italic' }}>I</button>
@@ -1010,6 +1109,69 @@ export default function AnalisePDF() {
 
 /* dragRef compartilhado (fora do componente para sobreviver a re-renders) */
 const dragRef = { current: null as any }
+
+/* ───────────────────────── miniaturas de páginas (lazy) ───────────────────────── */
+function PageThumbs({ pdfDocRef, pdfjsRef, meta, numPages, current, onGoto }: any) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const doneRef = useRef<Record<number, boolean>>({})
+  useEffect(() => {
+    const host = hostRef.current; if (!host || !numPages) return
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(async e => {
+        if (!e.isIntersecting) return
+        const pn = Number((e.target as HTMLElement).dataset.p)
+        if (doneRef.current[pn]) return
+        doneRef.current[pn] = true
+        const pdf = pdfDocRef.current; if (!pdf) { doneRef.current[pn] = false; return }
+        try {
+          const page = await pdf.getPage(pn)
+          const vp0 = page.getViewport({ scale: 1 })
+          const vp = page.getViewport({ scale: 158 / vp0.width })
+          const cv = (e.target as HTMLElement).querySelector('canvas') as HTMLCanvasElement
+          if (!cv) return
+          const ratio = window.devicePixelRatio || 1
+          cv.width = Math.floor(vp.width * ratio); cv.height = Math.floor(vp.height * ratio)
+          cv.style.width = '100%'; cv.style.height = 'auto'
+          const ctx = cv.getContext('2d'); ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+          await page.render({ canvasContext: ctx, viewport: vp }).promise
+        } catch { doneRef.current[pn] = false }
+      })
+    }, { root: host, rootMargin: '400px 0px' })
+    host.querySelectorAll('[data-p]').forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [numPages])
+  /* rola a miniatura ativa para a vista */
+  useEffect(() => {
+    const host = hostRef.current; if (!host) return
+    const el = host.querySelector(`[data-p="${current}"]`) as HTMLElement
+    if (el) el.scrollIntoView({ block: 'nearest' })
+  }, [current])
+  return (
+    <div className="pdfa-thumbs" ref={hostRef}>
+      {Array.from({ length: numPages }, (_, i) => i + 1).map(pn => {
+        const m = (meta || []).find((x: any) => x.pageNum === pn)
+        const ar = m ? (m.h / m.w) : 1.414
+        return (
+          <div key={pn} data-p={pn} className={'pdfa-thumb' + (current === pn ? ' on' : '')} onClick={() => onGoto(pn)}>
+            <div className="thumb-canvas" style={{ aspectRatio: `1 / ${ar.toFixed(3)}` }}><canvas /></div>
+            <span className="thumb-n">{pn}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/* ───────────────────────── lista corrida de números de página ───────────────────────── */
+function PageNumbers({ numPages, current, onGoto }: any) {
+  return (
+    <div className="pdfa-pagenums">
+      {Array.from({ length: numPages }, (_, i) => i + 1).map(pn => (
+        <button key={pn} className={'pdfa-pn' + (current === pn ? ' on' : '')} onClick={() => onGoto(pn)}>{pn}</button>
+      ))}
+    </div>
+  )
+}
 
 /* ───────────────────────── índice (outline) recursivo ───────────────────────── */
 function OutlineTree({ items, onGo, depth = 0 }: any) {
