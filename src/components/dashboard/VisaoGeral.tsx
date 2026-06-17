@@ -303,17 +303,45 @@ function PdfRecentes({ pdfNotes, onNavigate }: any) {
 // — Mapa Mental (NOVO) —
 function MapasKpi({ mm, onNavigate }: any) { return <Kpi icon="🧠" label="Mapas Mentais" value={mm.maps} sub={`${mm.folders} pasta(s)`} color="#7c6cff" navTo="mapamental" onNavigate={onNavigate} /> }
 
-// — Saudação / relógio —
+// — Saudação / relógio (fundo temático por horário) —
+function skyTheme(h: number) {
+  if (h < 5)  return { key: 'madrugada',  icon: '🌙', gradient: 'linear-gradient(165deg,#070b1f 0%,#10183a 45%,#241640 100%)', deco: 'stars',   sun: '' }
+  if (h < 8)  return { key: 'amanhecer',  icon: '🌅', gradient: 'linear-gradient(165deg,#3a2e63 0%,#8a5a9e 32%,#f48aa0 68%,#ffd3a3 100%)', deco: 'sunrise', sun: '#ffe2b3' }
+  if (h < 12) return { key: 'manhã',      icon: '☀️', gradient: 'linear-gradient(165deg,#1c7fe0 0%,#48b4f4 52%,#a9e1ff 100%)', deco: 'sunhigh', sun: '#fff6da' }
+  if (h < 17) return { key: 'tarde',      icon: '🌤️', gradient: 'linear-gradient(165deg,#0f5cb4 0%,#2a86d6 45%,#7ec1f0 100%)', deco: 'sunhigh', sun: '#fff0c6' }
+  if (h < 20) return { key: 'entardecer', icon: '🌇', gradient: 'linear-gradient(165deg,#272a63 0%,#9a4a72 38%,#e6694a 74%,#ffc06a 100%)', deco: 'sunset', sun: '#ffd189' }
+  return { key: 'noite', icon: '✨', gradient: 'linear-gradient(165deg,#0a1430 0%,#142a55 50%,#2f285c 100%)', deco: 'stars', sun: '' }
+}
 function Saudacao() {
   const [now, setNow] = useState(new Date())
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t) }, [])
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 20000); return () => clearInterval(t) }, [])
   const h = now.getHours()
-  const saud = h < 6 ? 'Boa madrugada' : h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
+  const theme = useMemo(() => skyTheme(h), [h])
+  const stars = useMemo(() => Array.from({ length: 30 }, () => ({ top: Math.random() * 78, left: Math.random() * 100, s: Math.random() * 1.6 + 0.7, d: (Math.random() * 3.2).toFixed(2), o: (Math.random() * 0.5 + 0.4).toFixed(2) })), [])
+  const saud = h < 5 ? 'Boa madrugada' : h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
+  const showStars = theme.deco === 'stars'
+  const sunPos: React.CSSProperties = theme.deco === 'sunrise' ? { bottom: -46, left: '8%' } : theme.deco === 'sunset' ? { bottom: -52, right: '10%' } : { top: -44, right: '12%' }
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, background: 'linear-gradient(135deg, var(--accent) 0%, #5b5bd6 100%)', borderRadius: 16, padding: '18px 22px', color: '#fff', boxShadow: 'var(--shadow-card)' }}>
-      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.66rem', opacity: .85, letterSpacing: '0.06em' }}>{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
-      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.7rem', lineHeight: 1.1 }}>{saud}, Bruno</div>
-      <div style={{ fontSize: '0.8rem', opacity: .9 }}>{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · Central de Gestão NEXUS</div>
+    <div style={{ position: 'relative', overflow: 'hidden', height: '100%', borderRadius: 16, boxShadow: 'var(--shadow-card)', background: theme.gradient }}>
+      {/* sol (nascente / alto / poente) */}
+      {theme.sun && <div style={{ position: 'absolute', width: 150, height: 150, borderRadius: '50%', background: `radial-gradient(circle, ${theme.sun} 0%, ${theme.sun}88 32%, transparent 68%)`, filter: 'blur(1px)', animation: 'sgSun 6s ease-in-out infinite', ...sunPos }} />}
+      {/* lua + estrelas (madrugada / noite) */}
+      {showStars && <>
+        <div style={{ position: 'absolute', top: 14, right: 20, width: 34, height: 34, borderRadius: '50%', background: 'radial-gradient(circle at 38% 38%, #fdf6e3 0%, #e8e6d0 55%, transparent 72%)', boxShadow: '0 0 26px rgba(253,246,227,0.35)', opacity: 0.92 }} />
+        {stars.map((st, i) => <span key={i} style={{ position: 'absolute', top: `${st.top}%`, left: `${st.left}%`, width: st.s, height: st.s, borderRadius: '50%', background: '#fff', opacity: Number(st.o), animation: `sgTwinkle 3s ease-in-out ${st.d}s infinite` }} />)}
+      </>}
+      {/* scrim p/ legibilidade do texto em qualquer fundo */}
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.06) 46%, transparent 76%)' }} />
+      {/* conteúdo */}
+      <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '18px 22px', color: '#fff', textShadow: '0 1px 10px rgba(0,0,0,0.38)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.66rem', opacity: .92, letterSpacing: '0.06em', textTransform: 'capitalize' }}>{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
+          <span style={{ fontSize: '0.6rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)', borderRadius: 20, padding: '2px 9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{theme.icon} {theme.key}</span>
+        </div>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.7rem', lineHeight: 1.1 }}>{saud}, Bruno</div>
+        <div style={{ fontSize: '0.8rem', opacity: .95 }}>{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · Central de Gestão NEXUS</div>
+      </div>
+      <style>{`@keyframes sgTwinkle{0%,100%{opacity:.2}50%{opacity:1}}@keyframes sgSun{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}`}</style>
     </div>
   )
 }
