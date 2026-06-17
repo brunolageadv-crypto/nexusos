@@ -18,6 +18,7 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
+import PainelArcade from './Arcade'
 
 /* ───────────────────────── helpers de data ───────────────────────── */
 const hojeISO = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
@@ -380,6 +381,7 @@ const REGISTRY: Record<string, any> = {
   'links-lista':       { label: 'Links Recentes',      icon: '🔗', kind: 'detail', w: 4, h: 2, render: (p: any) => <LinksLista {...p} /> },
   'viagens-lista':     { label: 'Viagens Confirmadas', icon: '✈️', kind: 'detail', w: 4, h: 2, render: (p: any) => <ViagensLista {...p} /> },
   'pdf-recentes':      { label: 'Anotações de PDF',    icon: '📄', kind: 'detail', w: 4, h: 3, render: (p: any) => <PdfRecentes {...p} /> },
+  'arcade':            { label: 'Arcade',              icon: '🕹', kind: 'detail', w: 6, h: 4, render: (p: any) => <div style={{ height: '100%', overflow: 'auto', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16 }}><PainelArcade /></div> },
 }
 
 const W_TIERS = [3, 4, 6, 12]
@@ -393,6 +395,7 @@ const DEFAULT_LAYOUT = [
   { id: 'agu-disciplinas', w: 4, h: 3 }, { id: 'prontuario-prazos', w: 4, h: 3 }, { id: 'agenda-hoje-lista', w: 4, h: 3 },
   { id: 'agu-revisoes', w: 4, h: 3 }, { id: 'concursos-lista', w: 4, h: 2 }, { id: 'agenda-semana', w: 4, h: 2 },
   { id: 'pdf-recentes', w: 4, h: 2 }, { id: 'notas-recentes', w: 4, h: 2 }, { id: 'saude-hoje', w: 4, h: 2 },
+  { id: 'arcade', w: 6, h: 4 },
 ]
 
 /* ═══════════════════ BOARD ═══════════════════ */

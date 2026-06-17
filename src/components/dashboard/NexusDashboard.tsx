@@ -3220,7 +3220,14 @@ export default function NexusDashboard({ onNavigate, dashView = 'visual' }: Prop
   }
 
   if (dashView === 'visual') {
-    return <VisaoGeral onNavigate={onNavigate} />
+    return (
+      <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+        <div style={{ flex:1, minHeight:0, overflowY:'auto' }}>
+          <VisaoGeral onNavigate={onNavigate} />
+        </div>
+        <BarraInferior />
+      </div>
+    )
   }
   if (dashView === 'noticias') {
     return <NoticiasMode />
