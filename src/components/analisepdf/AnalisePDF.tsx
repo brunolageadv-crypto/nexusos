@@ -31,6 +31,7 @@
        o PDF vivem somente na sessão atual.
    ════════════════════════════════════════════════════════════════════ */
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
@@ -338,6 +339,13 @@ export default function AnalisePDF() {
   const [showOutline, setShowOutline] = useState(true)
   const [currentPage, setCurrentPage] = useState(1)
   const [thumbMode, setThumbMode] = useState<'mini' | 'num'>('mini')
+  /* assistentes de leitura + controle de páginas lidas */
+  const [assist, setAssist] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco'>('none')
+  const [cursor, setCursor] = useState<{ x: number; y: number; top: number; left: number; w: number; h: number; inside: boolean }>({ x: 0, y: 0, top: 0, left: 0, w: 0, h: 0, inside: false })
+  const [readPages, setReadPages] = useState<Set<number>>(new Set())
+  const assistRef = useRef(assist); useEffect(() => { assistRef.current = assist }, [assist])
+  const lensRef = useRef<HTMLCanvasElement>(null)
+  const moveRaf = useRef(0)
   const [showSide, setShowSide] = useState(true)
   const [pdfCollapsed, setPdfCollapsed] = useState(false)
 
@@ -694,6 +702,55 @@ export default function AnalisePDF() {
     return () => { v.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf) }
   }, [pdfName])
 
+  /* ════════════════════ controle de páginas lidas (por PDF, em localStorage) ════════════════════ */
+  useEffect(() => {
+    if (!pdfName) { setReadPages(new Set()); return }
+    try { const r = localStorage.getItem('nexus_pdfread_' + pdfName); setReadPages(new Set(r ? JSON.parse(r) : [])) }
+    catch { setReadPages(new Set()) }
+  }, [pdfName])
+  const toggleRead = useCallback((pn: number) => {
+    setReadPages(prev => {
+      const n = new Set(prev); n.has(pn) ? n.delete(pn) : n.add(pn)
+      if (pdfName) { try { localStorage.setItem('nexus_pdfread_' + pdfName, JSON.stringify([...n])) } catch { } }
+      return n
+    })
+  }, [pdfName])
+
+  /* ════════════════════ assistentes de leitura (lupa / máscara / régua / foco) ════════════════════ */
+  const onViewerMove = useCallback((e: React.MouseEvent) => {
+    if (assistRef.current === 'none') return
+    const cx = e.clientX, cy = e.clientY
+    if (moveRaf.current) return
+    moveRaf.current = requestAnimationFrame(() => {
+      moveRaf.current = 0
+      const v = viewerRef.current; if (!v) return
+      const r = v.getBoundingClientRect()
+      setCursor({ x: cx, y: cy, top: r.top, left: r.left, w: r.width, h: r.height, inside: true })
+    })
+  }, [])
+  const onViewerLeave = useCallback(() => setCursor(c => ({ ...c, inside: false })), [])
+
+  /* desenha a lupa a partir do canvas da página sob o cursor */
+  useEffect(() => {
+    if (assist !== 'lupa' || !cursor.inside) return
+    const cv = lensRef.current; if (!cv) return
+    const LENS = 170, ZOOM = 2.3, ratio = window.devicePixelRatio || 1
+    const ctx = cv.getContext('2d'); if (!ctx) return
+    if (cv.width !== LENS * ratio) { cv.width = LENS * ratio; cv.height = LENS * ratio }
+    ctx.clearRect(0, 0, cv.width, cv.height)
+    const el = document.elementFromPoint(cursor.x, cursor.y) as HTMLElement | null
+    const src = (el ? (el.tagName === 'CANVAS' ? el : el.closest('.pdfa-page')?.querySelector('canvas')) : null) as HTMLCanvasElement | null
+    if (!src) return
+    const r = src.getBoundingClientRect()
+    const dppx = src.width / r.width, dppy = src.height / r.height
+    const regionCss = LENS / ZOOM
+    const sw = regionCss * dppx, sh = regionCss * dppy
+    const sx = (cursor.x - r.left) * dppx - sw / 2
+    const sy = (cursor.y - r.top) * dppy - sh / 2
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height)
+    try { ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height) } catch { }
+  }, [assist, cursor])
+
   /* ════════════════════ índice lateral (outline) ════════════════════ */
   const gotoDest = useCallback(async (dest: any) => {
     const pdf = pdfDocRef.current; if (!pdf || !dest) return
@@ -970,6 +1027,20 @@ export default function AnalisePDF() {
             <button className="pdfa-btn" onClick={fitPage} title="Ajustar à página">⤢ Página</button>
 
             <span className="sep" />
+            {/* assistentes de leitura */}
+            <button className={'pdfa-btn icon' + (assist === 'lupa' ? ' on' : '')} onClick={() => setAssist(a => a === 'lupa' ? 'none' : 'lupa')} title="Lupa — amplia a região sob o cursor">🔎</button>
+            <button className={'pdfa-btn icon' + (assist === 'mascara' ? ' on' : '')} onClick={() => setAssist(a => a === 'mascara' ? 'none' : 'mascara')} title="Máscara — isola a linha em leitura">▤</button>
+            <button className={'pdfa-btn icon' + (assist === 'regua' ? ' on' : '')} onClick={() => setAssist(a => a === 'regua' ? 'none' : 'regua')} title="Régua — guia horizontal de leitura">▬</button>
+            <button className={'pdfa-btn icon' + (assist === 'foco' ? ' on' : '')} onClick={() => setAssist(a => a === 'foco' ? 'none' : 'foco')} title="Foco — destaca o entorno do cursor">◎</button>
+
+            <span className="sep" />
+            {/* página lida */}
+            <button className={'pdfa-btn' + (readPages.has(currentPage) ? ' on' : '')} onClick={() => toggleRead(currentPage)}
+              title="Marcar/desmarcar a página atual como lida">
+              {readPages.has(currentPage) ? '✓ Lida' : '○ Marcar lida'}{numPages ? ` · ${readPages.size}/${numPages}` : ''}
+            </button>
+
+            <span className="sep" />
             {/* busca */}
             <div className="pdfa-search">
               <span style={{ color: 'var(--pa-faint)', fontSize: '.8rem' }}>🔍</span>
@@ -998,7 +1069,7 @@ export default function AnalisePDF() {
           {/* navegador de páginas (miniaturas ou números) */}
           <div className={'pdfa-outline' + (showOutline ? '' : ' hide')}>
             <h4>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Páginas <span style={{ color: 'var(--pa-faint)', fontWeight: 600 }}>{numPages || ''}</span></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>Páginas <span style={{ color: 'var(--pa-faint)', fontWeight: 600 }}>{numPages || ''}{readPages.size ? ` · ${readPages.size} lida(s)` : ''}</span></span>
               <span className="pdfa-thumbtabs">
                 <button className={thumbMode === 'mini' ? 'on' : ''} onClick={() => setThumbMode('mini')} title="Miniaturas">▦</button>
                 <button className={thumbMode === 'num' ? 'on' : ''} onClick={() => setThumbMode('num')} title="Números das páginas">#</button>
@@ -1008,12 +1079,12 @@ export default function AnalisePDF() {
               {!pdfName
                 ? <div className="pdfa-out-empty">Importe um PDF para navegar pelas páginas.</div>
                 : thumbMode === 'mini'
-                  ? <PageThumbs key={pdfName} pdfDocRef={pdfDocRef} pdfjsRef={pdfjsRef} meta={pageMetaRef.current} numPages={numPages} current={currentPage} onGoto={gotoPage} />
-                  : <PageNumbers numPages={numPages} current={currentPage} onGoto={gotoPage} />}
+                  ? <PageThumbs key={pdfName} pdfDocRef={pdfDocRef} pdfjsRef={pdfjsRef} meta={pageMetaRef.current} numPages={numPages} current={currentPage} onGoto={gotoPage} read={readPages} onToggleRead={toggleRead} />
+                  : <PageNumbers numPages={numPages} current={currentPage} onGoto={gotoPage} read={readPages} onToggleRead={toggleRead} />}
             </div>
           </div>
           {/* visualizador */}
-          <div className="pdfa-viewer" ref={viewerRef}>
+          <div className="pdfa-viewer" ref={viewerRef} onMouseMove={onViewerMove} onMouseLeave={onViewerLeave}>
             {pdfName
               ? <div className="pdfa-pages" ref={pagesHostRef} />
               : <div className="pdfa-empty">
@@ -1029,6 +1100,41 @@ export default function AnalisePDF() {
                 </div>}
           </div>
         </div>
+
+        {/* ════ overlay dos assistentes de leitura (lupa / máscara / régua / foco) ════ */}
+        {assist !== 'none' && cursor.inside && createPortal(
+          <div style={{ position: 'fixed', left: cursor.left, top: cursor.top, width: cursor.w, height: cursor.h, pointerEvents: 'none', overflow: 'hidden', zIndex: 60 }}>
+            {(() => {
+              const lx = cursor.x - cursor.left, ly = cursor.y - cursor.top
+              const ACC = 'var(--pa-accent)'
+              if (assist === 'regua') return (
+                <>
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: ly - 15, height: 30, background: 'linear-gradient(rgba(99,102,241,0.12), rgba(99,102,241,0))' }} />
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: ly - 1, height: 2, background: ACC, boxShadow: '0 1px 4px rgba(0,0,0,0.25)' }} />
+                </>
+              )
+              if (assist === 'mascara') {
+                const STRIP = 66
+                return (
+                  <>
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.max(0, ly - STRIP / 2), background: 'rgba(15,23,42,0.64)' }} />
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: ly + STRIP / 2, bottom: 0, background: 'rgba(15,23,42,0.64)' }} />
+                    <div style={{ position: 'absolute', left: 0, right: 0, top: ly - STRIP / 2, height: STRIP, borderTop: `1px solid ${ACC}`, borderBottom: `1px solid ${ACC}` }} />
+                  </>
+                )
+              }
+              if (assist === 'foco') {
+                const R = 120
+                return <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(circle ${R}px at ${lx}px ${ly}px, rgba(0,0,0,0) 0, rgba(0,0,0,0) ${R}px, rgba(15,23,42,0.58) ${R + 64}px)` }} />
+              }
+              if (assist === 'lupa') return (
+                <canvas ref={lensRef} style={{ position: 'absolute', left: lx - 85, top: ly - 85, width: 170, height: 170, borderRadius: '50%', border: '3px solid var(--pa-accent)', boxShadow: '0 10px 28px rgba(0,0,0,0.4)', background: '#fff' }} />
+              )
+              return null
+            })()}
+          </div>,
+          document.body
+        )}
 
         {/* divisor (só no modo split) */}
         {viewMode === 'split' && <div className="pdfa-divider" onPointerDown={startDividerDrag} title="Arraste para redimensionar" />}
@@ -1111,7 +1217,7 @@ export default function AnalisePDF() {
 const dragRef = { current: null as any }
 
 /* ───────────────────────── miniaturas de páginas (lazy) ───────────────────────── */
-function PageThumbs({ pdfDocRef, pdfjsRef, meta, numPages, current, onGoto }: any) {
+function PageThumbs({ pdfDocRef, pdfjsRef, meta, numPages, current, onGoto, read, onToggleRead }: any) {
   const hostRef = useRef<HTMLDivElement>(null)
   const doneRef = useRef<Record<number, boolean>>({})
   useEffect(() => {
@@ -1151,10 +1257,15 @@ function PageThumbs({ pdfDocRef, pdfjsRef, meta, numPages, current, onGoto }: an
       {Array.from({ length: numPages }, (_, i) => i + 1).map(pn => {
         const m = (meta || []).find((x: any) => x.pageNum === pn)
         const ar = m ? (m.h / m.w) : 1.414
+        const lida = read?.has(pn)
         return (
-          <div key={pn} data-p={pn} className={'pdfa-thumb' + (current === pn ? ' on' : '')} onClick={() => onGoto(pn)}>
-            <div className="thumb-canvas" style={{ aspectRatio: `1 / ${ar.toFixed(3)}` }}><canvas /></div>
-            <span className="thumb-n">{pn}</span>
+          <div key={pn} data-p={pn} className={'pdfa-thumb' + (current === pn ? ' on' : '') + (lida ? ' read' : '')} onClick={() => onGoto(pn)} style={{ position: 'relative' }}>
+            <div className="thumb-canvas" style={{ aspectRatio: `1 / ${ar.toFixed(3)}`, boxShadow: lida ? '0 0 0 2px #16a34a' : undefined }}><canvas /></div>
+            <button onClick={e => { e.stopPropagation(); onToggleRead?.(pn) }} title={lida ? 'Marcar como não lida' : 'Marcar como lida'}
+              style={{ position: 'absolute', top: 7, right: 9, width: 18, height: 18, borderRadius: '50%', border: `1.5px solid ${lida ? '#16a34a' : 'var(--pa-border-md)'}`, background: lida ? '#16a34a' : 'var(--pa-bg)', color: '#fff', fontSize: '0.6rem', fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 }}>
+              {lida ? '✓' : ''}
+            </button>
+            <span className="thumb-n" style={lida ? { color: '#16a34a' } : undefined}>{pn}{lida ? ' · lida' : ''}</span>
           </div>
         )
       })}
@@ -1163,12 +1274,21 @@ function PageThumbs({ pdfDocRef, pdfjsRef, meta, numPages, current, onGoto }: an
 }
 
 /* ───────────────────────── lista corrida de números de página ───────────────────────── */
-function PageNumbers({ numPages, current, onGoto }: any) {
+function PageNumbers({ numPages, current, onGoto, read, onToggleRead }: any) {
   return (
     <div className="pdfa-pagenums">
-      {Array.from({ length: numPages }, (_, i) => i + 1).map(pn => (
-        <button key={pn} className={'pdfa-pn' + (current === pn ? ' on' : '')} onClick={() => onGoto(pn)}>{pn}</button>
-      ))}
+      {Array.from({ length: numPages }, (_, i) => i + 1).map(pn => {
+        const lida = read?.has(pn)
+        return (
+          <button key={pn} className={'pdfa-pn' + (current === pn ? ' on' : '') + (lida ? ' read' : '')}
+            onClick={() => onGoto(pn)}
+            onContextMenu={e => { e.preventDefault(); onToggleRead?.(pn) }}
+            title={lida ? 'Lida — clique p/ ir · clique direito p/ desmarcar' : 'Clique p/ ir · clique direito p/ marcar lida'}
+            style={lida ? { background: '#16a34a', borderColor: 'transparent', color: '#fff' } : undefined}>
+            {lida ? '✓' : pn}
+          </button>
+        )
+      })}
     </div>
   )
 }
