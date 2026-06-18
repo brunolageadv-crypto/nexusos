@@ -43,9 +43,12 @@ function clean<T extends object>(obj: T): T {
 const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
 
 /* ─────────────── carregadores de libs externas (CDN sob demanda) ─────────────── */
+const CDN_BASES = [
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174',
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build',
+  'https://unpkg.com/pdfjs-dist@3.11.174/build',
+]
 const CDN = {
-  pdf:    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
-  worker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   jspdf:  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
   h2c:    'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
 }
@@ -58,9 +61,17 @@ function loadScript(src: string) {
   })
 }
 async function ensurePdfjs() {
-  if (!(window as any).pdfjsLib) await loadScript(CDN.pdf)
+  if (!(window as any).pdfjsLib) {
+    let ok = false, lastErr: any
+    for (const base of CDN_BASES) {                       // tenta CDNs em ordem (resiliência)
+      try { await loadScript(base + '/pdf.min.js'); if ((window as any).pdfjsLib) { (window as any).__pdfBase = base; ok = true; break } }
+      catch (e) { lastErr = e }
+    }
+    if (!ok) throw lastErr || new Error('Não foi possível carregar o leitor de PDF (CDN).')
+  }
   const lib = (window as any).pdfjsLib
-  if (lib && !lib.GlobalWorkerOptions.workerSrc) lib.GlobalWorkerOptions.workerSrc = CDN.worker
+  const base = (window as any).__pdfBase || CDN_BASES[0]
+  try { if (lib && lib.GlobalWorkerOptions && !lib.GlobalWorkerOptions.workerSrc) lib.GlobalWorkerOptions.workerSrc = base + '/pdf.worker.min.js' } catch { }
   return lib
 }
 async function ensureExportLibs() {
@@ -343,6 +354,9 @@ export default function AnalisePDF() {
   const [assist, setAssist] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco'>('none')
   const [cursor, setCursor] = useState<{ x: number; y: number; top: number; left: number; w: number; h: number; inside: boolean }>({ x: 0, y: 0, top: 0, left: 0, w: 0, h: 0, inside: false })
   const [readPages, setReadPages] = useState<Set<number>>(new Set())
+  /* ferramenta: copiar trecho selecionado para a nota */
+  const [clipMode, setClipMode] = useState(false)
+  const [clipBtn, setClipBtn] = useState<{ x: number; y: number; text: string } | null>(null)
   const assistRef = useRef(assist); useEffect(() => { assistRef.current = assist }, [assist])
   const lensRef = useRef<HTMLCanvasElement>(null)
   const moveRaf = useRef(0)
@@ -454,9 +468,9 @@ export default function AnalisePDF() {
       // monta placeholders e dá fit-width inicial
       requestAnimationFrame(() => { buildPagePlaceholders(); fitWidth() })
       toast('PDF carregado — ' + pdf.numPages + ' páginas')
-    } catch (err) {
+    } catch (err: any) {
       console.error('[AnalisePDF] erro ao abrir PDF:', err)
-      toast('Não foi possível abrir o PDF')
+      toast('Não foi possível abrir o PDF' + (err?.message ? ': ' + err.message : ''))
     }
   }, [toast])
 
@@ -751,6 +765,50 @@ export default function AnalisePDF() {
     try { ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height) } catch { }
   }, [assist, cursor])
 
+  /* ════════════════════ copiar trecho do PDF → editor ════════════════════ */
+  const insertExcerptToEditor = useCallback((text: string) => {
+    const ed = editorRef.current; if (!ed) return
+    const t = (text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').trim()
+    if (!t) return
+    window.getSelection()?.removeAllRanges()          // limpa a seleção feita no PDF
+    const p = document.createElement('p')             // texto comum, editável normalmente
+    p.textContent = t
+    ed.appendChild(p)
+    ed.scrollTop = ed.scrollHeight
+    // posiciona o cursor ao final do trecho inserido, para continuar escrevendo
+    ed.focus()
+    const range = document.createRange()
+    range.selectNodeContents(p); range.collapse(false)
+    const sel = window.getSelection()
+    sel?.removeAllRanges(); sel?.addRange(range)
+    markDirty()
+    toast('Trecho copiado para a nota')
+  }, [markDirty, toast])
+
+  const getViewerSelection = useCallback(() => {
+    const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null
+    const v = viewerRef.current; if (!v) return null
+    const range = sel.getRangeAt(0)
+    if (!v.contains(range.commonAncestorContainer)) return null     // seleção precisa estar no PDF
+    const text = sel.toString(); if (!text.trim()) return null
+    return { text, rect: range.getBoundingClientRect() }
+  }, [])
+
+  const onViewerMouseUp = useCallback(() => {
+    if (!clipMode) return
+    setTimeout(() => {
+      const s = getViewerSelection()
+      if (s) setClipBtn({ x: s.rect.left + s.rect.width / 2, y: s.rect.top, text: s.text })
+      else setClipBtn(null)
+    }, 10)
+  }, [clipMode, getViewerSelection])
+
+  const onViewerContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!clipMode) return
+    const s = getViewerSelection()
+    if (s) { e.preventDefault(); insertExcerptToEditor(s.text); setClipBtn(null) }
+  }, [clipMode, getViewerSelection, insertExcerptToEditor])
+
   /* ════════════════════ índice lateral (outline) ════════════════════ */
   const gotoDest = useCallback(async (dest: any) => {
     const pdf = pdfDocRef.current; if (!pdf || !dest) return
@@ -1032,6 +1090,8 @@ export default function AnalisePDF() {
             <button className={'pdfa-btn icon' + (assist === 'mascara' ? ' on' : '')} onClick={() => setAssist(a => a === 'mascara' ? 'none' : 'mascara')} title="Máscara — isola a linha em leitura">▤</button>
             <button className={'pdfa-btn icon' + (assist === 'regua' ? ' on' : '')} onClick={() => setAssist(a => a === 'regua' ? 'none' : 'regua')} title="Régua — guia horizontal de leitura">▬</button>
             <button className={'pdfa-btn icon' + (assist === 'foco' ? ' on' : '')} onClick={() => setAssist(a => a === 'foco' ? 'none' : 'foco')} title="Foco — destaca o entorno do cursor">◎</button>
+            <button className={'pdfa-btn' + (clipMode ? ' on' : '')} onClick={() => { setClipMode(v => !v); setClipBtn(null) }}
+              title="Trecho → nota: selecione o texto no PDF e clique em OK (ou clique com o botão direito) para copiar para o editor">✂ Trecho → nota</button>
 
             <span className="sep" />
             {/* página lida */}
@@ -1084,7 +1144,8 @@ export default function AnalisePDF() {
             </div>
           </div>
           {/* visualizador */}
-          <div className="pdfa-viewer" ref={viewerRef} onMouseMove={onViewerMove} onMouseLeave={onViewerLeave}>
+          <div className="pdfa-viewer" ref={viewerRef} onMouseMove={onViewerMove} onMouseLeave={onViewerLeave}
+            onMouseDown={() => setClipBtn(null)} onMouseUp={onViewerMouseUp} onContextMenu={onViewerContextMenu}>
             {pdfName
               ? <div className="pdfa-pages" ref={pagesHostRef} />
               : <div className="pdfa-empty">
@@ -1133,6 +1194,18 @@ export default function AnalisePDF() {
               return null
             })()}
           </div>,
+          document.body
+        )}
+
+        {/* botão flutuante "OK / copiar trecho" (modo Trecho → nota) */}
+        {clipMode && clipBtn && createPortal(
+          <button
+            onMouseDown={e => { e.preventDefault(); e.stopPropagation() }}
+            onClick={() => { insertExcerptToEditor(clipBtn.text); setClipBtn(null) }}
+            style={{ position: 'fixed', left: Math.max(8, clipBtn.x - 70), top: Math.max(8, clipBtn.y - 42), zIndex: 4000, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 12px', borderRadius: 9, border: 'none', background: 'var(--pa-accent, #1A73E8)', color: '#fff', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 22px rgba(0,0,0,0.32)' }}
+            title="Copiar o trecho selecionado para a nota">
+            ✓ Copiar para a nota
+          </button>,
           document.body
         )}
 
