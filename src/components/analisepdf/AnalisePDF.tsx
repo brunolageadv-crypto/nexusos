@@ -765,50 +765,6 @@ export default function AnalisePDF() {
     try { ctx.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height) } catch { }
   }, [assist, cursor])
 
-  /* ════════════════════ copiar trecho do PDF → editor ════════════════════ */
-  const insertExcerptToEditor = useCallback((text: string) => {
-    const ed = editorRef.current; if (!ed) return
-    const t = (text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').trim()
-    if (!t) return
-    window.getSelection()?.removeAllRanges()          // limpa a seleção feita no PDF
-    const p = document.createElement('p')             // texto comum, editável normalmente
-    p.textContent = t
-    ed.appendChild(p)
-    ed.scrollTop = ed.scrollHeight
-    // posiciona o cursor ao final do trecho inserido, para continuar escrevendo
-    ed.focus()
-    const range = document.createRange()
-    range.selectNodeContents(p); range.collapse(false)
-    const sel = window.getSelection()
-    sel?.removeAllRanges(); sel?.addRange(range)
-    markDirty()
-    toast('Trecho copiado para a nota')
-  }, [markDirty, toast])
-
-  const getViewerSelection = useCallback(() => {
-    const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null
-    const v = viewerRef.current; if (!v) return null
-    const range = sel.getRangeAt(0)
-    if (!v.contains(range.commonAncestorContainer)) return null     // seleção precisa estar no PDF
-    const text = sel.toString(); if (!text.trim()) return null
-    return { text, rect: range.getBoundingClientRect() }
-  }, [])
-
-  const onViewerMouseUp = useCallback(() => {
-    if (!clipMode) return
-    setTimeout(() => {
-      const s = getViewerSelection()
-      if (s) setClipBtn({ x: s.rect.left + s.rect.width / 2, y: s.rect.top, text: s.text })
-      else setClipBtn(null)
-    }, 10)
-  }, [clipMode, getViewerSelection])
-
-  const onViewerContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!clipMode) return
-    const s = getViewerSelection()
-    if (s) { e.preventDefault(); insertExcerptToEditor(s.text); setClipBtn(null) }
-  }, [clipMode, getViewerSelection, insertExcerptToEditor])
-
   /* ════════════════════ índice lateral (outline) ════════════════════ */
   const gotoDest = useCallback(async (dest: any) => {
     const pdf = pdfDocRef.current; if (!pdf || !dest) return
@@ -885,6 +841,50 @@ export default function AnalisePDF() {
     const createdAt = notesRef.current.find(n => n.id === id)?.createdAt
     void saveSnapshot(id, title, noteFolderIdRef.current, html, createdAt)
   }, [saveSnapshot])
+
+  /* ════════════════════ copiar trecho do PDF → editor ════════════════════ */
+  const insertExcerptToEditor = useCallback((text: string) => {
+    const ed = editorRef.current; if (!ed) return
+    const t = (text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{2,}/g, '\n').trim()
+    if (!t) return
+    window.getSelection()?.removeAllRanges()          // limpa a seleção feita no PDF
+    const p = document.createElement('p')             // texto comum, editável normalmente
+    p.textContent = t
+    ed.appendChild(p)
+    ed.scrollTop = ed.scrollHeight
+    // posiciona o cursor ao final do trecho inserido, para continuar escrevendo
+    ed.focus()
+    const range = document.createRange()
+    range.selectNodeContents(p); range.collapse(false)
+    const sel = window.getSelection()
+    sel?.removeAllRanges(); sel?.addRange(range)
+    markDirty()
+    toast('Trecho copiado para a nota')
+  }, [markDirty, toast])
+
+  const getViewerSelection = useCallback(() => {
+    const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null
+    const v = viewerRef.current; if (!v) return null
+    const range = sel.getRangeAt(0)
+    if (!v.contains(range.commonAncestorContainer)) return null     // seleção precisa estar no PDF
+    const text = sel.toString(); if (!text.trim()) return null
+    return { text, rect: range.getBoundingClientRect() }
+  }, [])
+
+  const onViewerMouseUp = useCallback(() => {
+    if (!clipMode) return
+    setTimeout(() => {
+      const s = getViewerSelection()
+      if (s) setClipBtn({ x: s.rect.left + s.rect.width / 2, y: s.rect.top, text: s.text })
+      else setClipBtn(null)
+    }, 10)
+  }, [clipMode, getViewerSelection])
+
+  const onViewerContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!clipMode) return
+    const s = getViewerSelection()
+    if (s) { e.preventDefault(); insertExcerptToEditor(s.text); setClipBtn(null) }
+  }, [clipMode, getViewerSelection, insertExcerptToEditor])
 
   const newNote = useCallback((folderId: string | null = null) => {
     flushPending()
