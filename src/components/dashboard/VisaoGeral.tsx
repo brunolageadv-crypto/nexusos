@@ -121,7 +121,7 @@ function AguAcerto({ agu, onNavigate }: any) { return <Kpi icon="🎯" label="% 
 function EditaisCard({ onNavigate }: any) {
   const { editais } = useEditaisCadastrados()
   const [sel, setSel] = useState(0)
-  const [chart, setChart] = useState<'pizza' | 'linhas' | 'area' | 'combo'>('pizza')
+  const [chart, setChart] = useState<'pizza' | 'linhas' | 'area' | 'combo'>('linhas')
   // todos os editais: 3 builtin (AGU, PGM-BH, PGM-Curitiba) + cadastrados no Firestore
   const customs = editais.filter((e: any) => !EDITAIS_FIXOS_IDS.includes(e.id))
   const all = [...EDITAIS_BUILTIN, ...customs]
@@ -507,7 +507,16 @@ const REGISTRY: Record<string, any> = {
   'links-lista':       { label: 'Links Recentes',      icon: '🔗', kind: 'detail', w: 4, h: 2, render: (p: any) => <LinksLista {...p} /> },
   'viagens-lista':     { label: 'Viagens Confirmadas', icon: '✈️', kind: 'detail', w: 4, h: 2, render: (p: any) => <ViagensLista {...p} /> },
   'pdf-recentes':      { label: 'Anotações de PDF',    icon: '📄', kind: 'detail', w: 4, h: 3, render: (p: any) => <PdfRecentes {...p} /> },
-  'arcade':            { label: 'Arcade',              icon: '🕹', kind: 'detail', w: 6, h: 4, render: (p: any) => <div style={{ height: '100%', overflow: 'auto', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16 }}><PainelArcade /></div> },
+  'arcade':            { label: 'Arcade',              icon: '🕹', kind: 'detail', w: 6, h: 4, render: (_p: any) => (
+    <div style={{ position: 'relative', height: '100%', overflow: 'hidden', borderRadius: 16, border: '1px solid rgba(124,58,237,0.4)', background: 'radial-gradient(circle at 82% 16%, rgba(168,85,247,0.30), transparent 46%), radial-gradient(circle at 14% 88%, rgba(34,211,238,0.20), transparent 42%), repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 28px), linear-gradient(135deg,#1b1038 0%,#2d1b4e 52%,#0e0a22 100%)' }}>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+        <span style={{ position: 'absolute', top: -16, right: 8, fontSize: 124, opacity: 0.07, transform: 'rotate(12deg)' }}>🕹️</span>
+        <span style={{ position: 'absolute', bottom: -22, left: -8, fontSize: 112, opacity: 0.07, transform: 'rotate(-10deg)' }}>👾</span>
+        <span style={{ position: 'absolute', top: '40%', left: '42%', fontSize: 92, opacity: 0.05 }}>🎮</span>
+      </div>
+      <div style={{ position: 'relative', zIndex: 1, height: '100%', overflow: 'auto', padding: 4 }}><PainelArcade /></div>
+    </div>
+  ) },
 }
 
 const W_TIERS = [3, 4, 6, 12]

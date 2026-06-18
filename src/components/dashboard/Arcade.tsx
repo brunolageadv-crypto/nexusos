@@ -4,6 +4,7 @@ import { GameAsteroids, GameSpaceShooter, GameFlappy, GameHelicopter, GameQuickC
 import { GameSeqMemory, GameNumMemory, GameVisualMemory, GameColorMemory, GameOthello, GameGomoku, GameNim, GameMancala, GameHex, GameChess } from './ArcadeGamesD'
 import { GameVisualReflex, GameAnagram, GameHiddenWord, GameEquations, GameNumSeq, GameFastOps, GameSecretCode, GameColorMatch, GameBubblePop, GameConnectDots, GameStackBlocks, GameMerge } from './ArcadeGamesE'
 import { GameNonogram, GamePipe, GameMatchPair, GameSwitches, GameNumCubes, GameFreeCell, GamePyramid, GameTriPeaks, GameSpider, GameCrossword, GameJigsaw, GameTangram } from './ArcadeGamesF'
+import { GameTetris, GameRunner, GameTron, GameDoodle, GameCrossy, GameFruit, GameMole, GameGeoJump, GameMissile, GameMeteor } from './ArcadeGamesG'
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const SK = {
@@ -823,7 +824,19 @@ export const GAMES: GameDef[] = [
     // done: ['bubble_pop','Bubble Pop','Casual'
     // done: ['stack_blocks','Stack Blocks','Cas
     // done: ['merge','Merge Game','Casual','🔮',
-  ] as [string,string,string,string,string][]).map(([id,name,cat,icon,desc])=>makeStub(id,name,cat,icon,desc))
+  ] as [string,string,string,string,string][]).map(([id,name,cat,icon,desc])=>makeStub(id,name,cat,icon,desc)),
+
+  // ── Lote G — 10 novos jogos de Arcade ──
+  { id:'tetris',name:'Tetris',cat:'Arcade',icon:'🟦',desc:'Encaixe as peças e complete linhas',xpWin:100,xpPlay:18,xpRecord:40,component:(p)=><GameTetris {...p}/> },
+  { id:'runner',name:'Corredor Sem Fim',cat:'Arcade',icon:'🦖',desc:'Pule os obstáculos numa corrida que acelera',xpWin:80,xpPlay:15,xpRecord:32,component:(p)=><GameRunner {...p}/> },
+  { id:'tron',name:'Moto de Luz',cat:'Arcade',icon:'🏍️',desc:'Duelo de rastros de luz contra a IA',xpWin:90,xpPlay:16,xpRecord:35,component:(p)=><GameTron {...p}/> },
+  { id:'doodle',name:'Pulo nas Nuvens',cat:'Arcade',icon:'☁️',desc:'Suba pulando de plataforma em plataforma',xpWin:80,xpPlay:15,xpRecord:32,component:(p)=><GameDoodle {...p}/> },
+  { id:'crossy',name:'Travessia',cat:'Arcade',icon:'🐸',desc:'Atravesse o trânsito sem ser atropelado',xpWin:80,xpPlay:15,xpRecord:30,component:(p)=><GameCrossy {...p}/> },
+  { id:'fruit_slice',name:'Corta Frutas',cat:'Arcade',icon:'🍉',desc:'Fatie as frutas no ar e evite as bombas',xpWin:80,xpPlay:15,xpRecord:32,component:(p)=><GameFruit {...p}/> },
+  { id:'mole',name:'Acerte a Toupeira',cat:'Arcade',icon:'🐹',desc:'Acerte as toupeiras em 30 segundos',xpWin:70,xpPlay:14,xpRecord:28,component:(p)=><GameMole {...p}/> },
+  { id:'geo_jump',name:'Salto Geométrico',cat:'Arcade',icon:'🔷',desc:'Salte os espinhos no ritmo certo',xpWin:90,xpPlay:16,xpRecord:35,component:(p)=><GameGeoJump {...p}/> },
+  { id:'missile',name:'Defesa Aérea',cat:'Arcade',icon:'🚀',desc:'Exploda os mísseis e proteja as cidades',xpWin:90,xpPlay:16,xpRecord:36,component:(p)=><GameMissile {...p}/> },
+  { id:'meteor',name:'Chuva de Meteoros',cat:'Arcade',icon:'☄️',desc:'Desvie dos meteoros e sobreviva',xpWin:80,xpPlay:15,xpRecord:32,component:(p)=><GameMeteor {...p}/> },
 ]
 
 const CATS = ['Todos', ...Array.from(new Set(GAMES.map(g => g.cat)))]
