@@ -19,6 +19,8 @@ import { useUid } from '../../hooks/useUid'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEdital, useEditaisCadastrados } from '../../hooks/useEdital'
+import { EDITAIS_BUILTIN, EDITAIS_FIXOS_IDS } from '../editais/GestorEditais'
+import { PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import PainelArcade from './Arcade'
 
 /* ───────────────────────── helpers de data ───────────────────────── */
@@ -116,40 +118,101 @@ function Linha({ cor, titulo, meta, right }: any) {
 function AguProgresso({ agu, onNavigate }: any) { return <Kpi icon="📊" label="Progresso AGU" value={`${agu.global.pctConcluido}%`} sub={`${agu.global.concluidos}/${TOTAL_SUBTOPICOS} subtópicos`} color="#1A73E8" pct={agu.global.pctConcluido} navTo="editais" onNavigate={onNavigate} /> }
 function AguQuestoes({ agu, onNavigate }: any) { return <Kpi icon="📝" label="Questões" value={agu.global.questoes || '—'} sub={`${agu.global.acertos} acertos`} color="#8B5CF6" navTo="editais" onNavigate={onNavigate} /> }
 function AguAcerto({ agu, onNavigate }: any) { return <Kpi icon="🎯" label="% Acerto" value={agu.global.questoes > 0 ? `${agu.global.pctAcerto}%` : '—'} sub="desempenho geral" color="#0F9D58" pct={agu.global.questoes > 0 ? agu.global.pctAcerto : 0} navTo="editais" onNavigate={onNavigate} /> }
-function EditaisCard({ agu, onNavigate }: any) {
+function EditaisCard({ onNavigate }: any) {
   const { editais } = useEditaisCadastrados()
   const [sel, setSel] = useState(0)
-  const all = [{ id: 'agu', nome: 'Edital AGU', cor: '#1A73E8', isBuiltin: true }, ...editais.map((e: any) => ({ id: e.id, nome: e.nome, cor: e.cor || '#1A73E8', isBuiltin: false }))]
-  const cur = all[sel % all.length]
-  const hookCur = useEdital(cur.isBuiltin ? 'agu' : cur.id)
-  const curEdital = editais.find((e: any) => e.id === cur.id)
-  const ids = cur.isBuiltin ? null : (curEdital ? curEdital.disciplinas.flatMap((d: any) => d.topicos.flatMap((t: any) => t.subtopicos.map((s: any) => s.id))) : [])
-  const stats = cur.isBuiltin ? agu.global : hookCur.getStats(ids || [])
-  const discs = cur.isBuiltin
-    ? [...agu.discStats].sort((a, b) => b.pctConcluido - a.pctConcluido)
-    : (curEdital ? curEdital.disciplinas.map((d: any) => { const dids = d.topicos.flatMap((t: any) => t.subtopicos.map((s: any) => s.id)); return { ...d, ...hookCur.getStats(dids), total: dids.length } }) : [])
+  const [chart, setChart] = useState<'pizza' | 'linhas' | 'area' | 'combo'>('pizza')
+  // todos os editais: 3 builtin (AGU, PGM-BH, PGM-Curitiba) + cadastrados no Firestore
+  const customs = editais.filter((e: any) => !EDITAIS_FIXOS_IDS.includes(e.id))
+  const all = [...EDITAIS_BUILTIN, ...customs]
+  const idx = all.length ? sel % all.length : 0
+  const cur: any = all[idx] || EDITAIS_BUILTIN[0]
+  const hookCur = useEdital(cur.id)
+  const discData = (cur.disciplinas || []).map((d: any) => {
+    const ids = d.topicos.flatMap((t: any) => t.subtopicos.map((s: any) => s.id))
+    const st = hookCur.getStats(ids)
+    return {
+      nome: (d.nome || '').replace('Direito ', ''),
+      curto: (d.nome || '').replace('Direito ', '').slice(0, 9),
+      cor: d.cor || cur.cor || '#1A73E8',
+      pct: st.pctConcluido, concluidos: st.concluidos, emAndamento: st.emAndamento,
+      pendentes: Math.max(0, st.total - st.concluidos - st.emAndamento), total: st.total,
+    }
+  })
+  const allIds = (cur.disciplinas || []).flatMap((d: any) => d.topicos.flatMap((t: any) => t.subtopicos.map((s: any) => s.id)))
+  const stats = hookCur.getStats(allIds)
   const arrow: React.CSSProperties = { width: 26, height: 26, flexShrink: 0, borderRadius: 8, border: '1px solid var(--border-md)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+  const chartBtn = (id: string, lbl: string): React.CSSProperties => ({ flex: 1, padding: '4px 2px', borderRadius: 7, border: `1px solid ${chart === id ? cur.cor : 'var(--border)'}`, background: chart === id ? `${cur.cor}16` : 'transparent', color: chart === id ? cur.cor : 'var(--text-muted)', fontSize: '0.6rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-display)' })
+  const tipStyle = { background: 'var(--card-bg)', border: '1px solid var(--border-md)', borderRadius: 8, fontSize: '0.72rem', color: 'var(--text-primary)' }
+  const totConcl = discData.reduce((a, d) => a + d.concluidos, 0)
+  const pieData = totConcl > 0
+    ? discData.filter(d => d.concluidos > 0).map(d => ({ name: d.nome, value: d.concluidos, fill: d.cor }))
+    : [{ name: 'Sem progresso ainda', value: 1, fill: 'var(--bg-4)' }]
+
   return (
-    <CardShell icon="⚖" title="Editais" color={cur.cor} badge={`${(sel % all.length) + 1}/${all.length}`} footer="Abrir Editais" navTo="editais" onNavigate={onNavigate}>
+    <CardShell icon="⚖" title="Editais" color={cur.cor} badge={`${idx + 1}/${all.length}`} footer="Abrir Editais" navTo="editais" onNavigate={onNavigate}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <button style={arrow} onClick={() => setSel(s => (s - 1 + all.length) % all.length)} title="Edital anterior" disabled={all.length < 2}>‹</button>
         <div style={{ flex: 1, textAlign: 'center', minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.84rem', color: cur.cor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cur.nome}</div>
-          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{stats.pctConcluido}% · {stats.concluidos}/{ids ? ids.length : (agu.discStats.reduce((a: number, d: any) => a + (d.total || 0), 0))} subtópicos</div>
+          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{cur.orgao} · {stats.pctConcluido}% · {stats.concluidos}/{allIds.length} subtópicos</div>
         </div>
         <button style={arrow} onClick={() => setSel(s => (s + 1) % all.length)} title="Próximo edital" disabled={all.length < 2}>›</button>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {discs.length === 0 ? <Empty icon="⚖" msg="Sem disciplinas neste edital" /> : discs.map((d: any) => (
-          <div key={d.id || d.nome} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem' }}>
-              <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '78%' }}>{(d.nome || '').replace('Direito ', '')}</span>
-              <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{d.pctConcluido}%</span>
-            </div>
-            <div style={{ height: 5, borderRadius: 3, background: 'var(--bg-4)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${d.pctConcluido}%`, background: d.cor || cur.cor, borderRadius: 3, transition: 'width .8s' }} /></div>
-          </div>
-        ))}
+
+      <div style={{ display: 'flex', gap: 4 }}>
+        <button style={chartBtn('pizza', 'Pizza')} onClick={() => setChart('pizza')}>◔ Pizza</button>
+        <button style={chartBtn('linhas', 'Linhas')} onClick={() => setChart('linhas')}>📈 Linhas</button>
+        <button style={chartBtn('area', 'Área')} onClick={() => setChart('area')}>▰ Área</button>
+        <button style={chartBtn('combo', 'Combo')} onClick={() => setChart('combo')}>⊞ Combo</button>
       </div>
+
+      {discData.length === 0 ? <Empty icon="⚖" msg="Sem disciplinas neste edital" /> : (
+        <div style={{ height: 178, width: '100%' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            {chart === 'pizza' ? (
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={72} paddingAngle={2} stroke="var(--card-bg)" strokeWidth={2}>
+                  {pieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Pie>
+                <Tooltip contentStyle={tipStyle} formatter={(v: any, n: any) => [`${v} concluído(s)`, n]} />
+              </PieChart>
+            ) : chart === 'linhas' ? (
+              <LineChart data={discData} margin={{ top: 8, right: 10, left: -22, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="curto" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} interval={0} angle={-30} textAnchor="end" height={42} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'var(--text-muted)' }} />
+                <Tooltip contentStyle={tipStyle} formatter={(v: any) => [`${v}%`, '% concluído']} labelFormatter={(_: any, p: any) => p?.[0]?.payload?.nome || ''} />
+                <Line type="monotone" dataKey="pct" name="% concluído" stroke={cur.cor} strokeWidth={2.5} dot={{ r: 3, fill: cur.cor }} />
+              </LineChart>
+            ) : chart === 'area' ? (
+              <AreaChart data={discData} margin={{ top: 8, right: 10, left: -22, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="edAreaG" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={cur.cor} stopOpacity={0.5} />
+                    <stop offset="100%" stopColor={cur.cor} stopOpacity={0.04} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="curto" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} interval={0} angle={-30} textAnchor="end" height={42} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: 'var(--text-muted)' }} />
+                <Tooltip contentStyle={tipStyle} formatter={(v: any) => [`${v}%`, '% concluído']} labelFormatter={(_: any, p: any) => p?.[0]?.payload?.nome || ''} />
+                <Area type="monotone" dataKey="pct" name="% concluído" stroke={cur.cor} strokeWidth={2} fill="url(#edAreaG)" />
+              </AreaChart>
+            ) : (
+              <ComposedChart data={discData} margin={{ top: 8, right: 6, left: -22, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="curto" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} interval={0} angle={-30} textAnchor="end" height={42} />
+                <YAxis yAxisId="l" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} />
+                <YAxis yAxisId="r" orientation="right" domain={[0, 100]} tick={{ fontSize: 9, fill: 'var(--text-muted)' }} />
+                <Tooltip contentStyle={tipStyle} labelFormatter={(_: any, p: any) => p?.[0]?.payload?.nome || ''} />
+                <Bar yAxisId="l" dataKey="concluidos" name="Concluídos" fill={cur.cor} radius={[3, 3, 0, 0]} barSize={14} />
+                <Line yAxisId="r" type="monotone" dataKey="pct" name="% concluído" stroke="#F29900" strokeWidth={2.2} dot={{ r: 2.5 }} />
+              </ComposedChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+      )}
     </CardShell>
   )
 }

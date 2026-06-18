@@ -92,6 +92,10 @@ const AGU_EDITAL = aguParaEdital()
 const PGM_BH_EDITAL = pgmBhParaEdital()
 const PGM_CWB_EDITAL = pgmCuritibaParaEdital()
 
+// Reaproveitados no dashboard (card Editais) para listar todos os editais
+export const EDITAIS_BUILTIN: EditalCadastrado[] = [AGU_EDITAL, PGM_BH_EDITAL, PGM_CWB_EDITAL]
+export const EDITAIS_FIXOS_IDS = ['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador']
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function newId() { return Math.random().toString(36).slice(2, 10) }
 
