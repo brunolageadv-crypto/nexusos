@@ -1,4 +1,5 @@
 import React from 'react'
+import { createPortal } from 'react-dom'
 import PainelChecklistDia from './ChecklistDia'
 import PainelArcade from './Arcade'
 import PainelGeosfera from './GeosferaCard'
@@ -1225,6 +1226,7 @@ const drInp: React.CSSProperties = { background: 'var(--surface)', border: '1px 
 
 function DiasRestantesCard({ cardSty, labelSty }: any) {
   const uid = useUid()
+  const cardRef = useRef<HTMLDivElement>(null)
   const [eventos, setEventos] = useState<EventoDR[]>([])
   const [idx, setIdx] = useState(0)
   const [form, setForm] = useState<Partial<EventoDR> | null>(null)
@@ -1263,7 +1265,7 @@ function DiasRestantesCard({ cardSty, labelSty }: any) {
   const corDias = dias < 0 ? 'var(--text-muted)' : cor
 
   return (
-    <div style={{ ...cardSty(), flex: '1.9 1 0', minWidth: 0, position: 'relative' } as React.CSSProperties}>
+    <div ref={cardRef} style={{ ...cardSty(), flex: '1.9 1 0', minWidth: 0, position: 'relative' } as React.CSSProperties}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
         <div style={labelSty}>⏳ Dias restantes</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
@@ -1299,28 +1301,33 @@ function DiasRestantesCard({ cardSty, labelSty }: any) {
         </div>
       )}
 
-      {form && (
-        <div style={{ position: 'absolute', bottom: '108%', right: 0, width: 288, background: 'var(--card-bg)', border: `1px solid ${cor}55`, borderRadius: 14, padding: '13px 15px', boxShadow: '0 14px 36px rgba(0,0,0,0.32)', zIndex: 90, display: 'flex', flexDirection: 'column', gap: 9 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: '0.62rem', color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{form.id ? 'Editar evento' : 'Novo evento'}</div>
-            <button onClick={() => setForm(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.05rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+      {form && createPortal((() => {
+        const r = cardRef.current?.getBoundingClientRect()
+        const bottom = r ? Math.max(12, window.innerHeight - r.top + 8) : 84
+        const right = r ? Math.max(12, window.innerWidth - r.right) : 16
+        return (
+          <div style={{ position: 'fixed', bottom, right, width: 300, background: 'var(--card-bg)', border: `1px solid ${cor}55`, borderRadius: 14, padding: '13px 15px', boxShadow: '0 16px 40px rgba(0,0,0,0.38)', zIndex: 9999, display: 'flex', flexDirection: 'column', gap: 9 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.62rem', color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{form.id ? 'Editar evento' : 'Novo evento'}</div>
+              <button onClick={() => setForm(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.05rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </div>
+            <input autoFocus value={form.titulo ?? ''} onChange={e => setForm(f => ({ ...f!, titulo: e.target.value }))} placeholder="Título (ex.: Concurso PGM Curitiba)" style={drInp} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="date" value={form.data ?? ''} onChange={e => setForm(f => ({ ...f!, data: e.target.value }))} style={{ ...drInp, flex: 1 }} />
+              <input type="number" min={0} max={100} value={form.progresso ?? ''} onChange={e => setForm(f => ({ ...f!, progresso: e.target.value === '' ? null : Number(e.target.value) }))} placeholder="% progr." style={{ ...drInp, width: 84 }} title="Progresso opcional (0–100)" />
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {DR_ICONES.map(ic => (
+                <button key={ic} onClick={() => setForm(f => ({ ...f!, icone: ic }))} style={{ width: 27, height: 27, borderRadius: 7, border: `1px solid ${form.icone === ic ? cor : 'var(--border)'}`, background: form.icone === ic ? `${cor}18` : 'transparent', cursor: 'pointer', fontSize: '0.88rem', lineHeight: 1 }}>{ic}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+              <button onClick={() => setForm(null)} style={{ padding: '6px 13px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={salvar} disabled={!form.titulo || !form.data} style={{ padding: '6px 15px', borderRadius: 8, border: 'none', background: (!form.titulo || !form.data) ? 'var(--bg-4)' : cor, color: '#fff', fontSize: '0.68rem', fontWeight: 700, cursor: (!form.titulo || !form.data) ? 'default' : 'pointer' }}>Salvar</button>
+            </div>
           </div>
-          <input value={form.titulo ?? ''} onChange={e => setForm(f => ({ ...f!, titulo: e.target.value }))} placeholder="Título (ex.: Concurso PGM Curitiba)" style={drInp} />
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input type="date" value={form.data ?? ''} onChange={e => setForm(f => ({ ...f!, data: e.target.value }))} style={{ ...drInp, flex: 1 }} />
-            <input type="number" min={0} max={100} value={form.progresso ?? ''} onChange={e => setForm(f => ({ ...f!, progresso: e.target.value === '' ? null : Number(e.target.value) }))} placeholder="% progr." style={{ ...drInp, width: 84 }} title="Progresso opcional (0–100)" />
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {DR_ICONES.map(ic => (
-              <button key={ic} onClick={() => setForm(f => ({ ...f!, icone: ic }))} style={{ width: 27, height: 27, borderRadius: 7, border: `1px solid ${form.icone === ic ? cor : 'var(--border)'}`, background: form.icone === ic ? `${cor}18` : 'transparent', cursor: 'pointer', fontSize: '0.88rem', lineHeight: 1 }}>{ic}</button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-            <button onClick={() => setForm(null)} style={{ padding: '6px 13px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
-            <button onClick={salvar} disabled={!form.titulo || !form.data} style={{ padding: '6px 15px', borderRadius: 8, border: 'none', background: (!form.titulo || !form.data) ? 'var(--bg-4)' : cor, color: '#fff', fontSize: '0.68rem', fontWeight: 700, cursor: (!form.titulo || !form.data) ? 'default' : 'pointer' }}>Salvar</button>
-          </div>
-        </div>
-      )}
+        )
+      })(), document.body)}
     </div>
   )
 }
