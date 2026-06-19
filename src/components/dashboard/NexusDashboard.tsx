@@ -1244,6 +1244,13 @@ function DiasRestantesCard({ cardSty, labelSty }: any) {
   const hojeISO = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
   const diasAte = (data: string) => { if (!data) return 0; return Math.round((new Date(data + 'T12:00').getTime() - new Date(hojeISO + 'T12:00').getTime()) / 86400000) }
   const fmtBR = (d: string) => { if (!d) return ''; const [y, m, dy] = d.split('-'); return `${dy}/${m}/${y}` }
+  // progresso automático: 0% no dia do cadastro → 100% no dia do evento (proporcional aos dias)
+  const progressoAuto = (ev: EventoDR) => {
+    const startISO = new Date((ev.criadoEm ?? Date.now()) - 3 * 3600000).toISOString().slice(0, 10)
+    const total = Math.round((new Date(ev.data + 'T12:00').getTime() - new Date(startISO + 'T12:00').getTime()) / 86400000)
+    if (total <= 0) return diasAte(ev.data) <= 0 ? 100 : 0
+    return Math.max(0, Math.min(100, Math.round(((total - diasAte(ev.data)) / total) * 100)))
+  }
   const cor = B_AZUL
 
   const salvar = async () => {
@@ -1251,7 +1258,7 @@ function DiasRestantesCard({ cardSty, labelSty }: any) {
     const ev: EventoDR = {
       id: form.id ?? Math.random().toString(36).slice(2, 10),
       titulo: form.titulo, data: form.data, icone: form.icone ?? '📅',
-      progresso: (form.progresso === null || form.progresso === undefined) ? null : Math.max(0, Math.min(100, Number(form.progresso))),
+      progresso: null,
       criadoEm: form.criadoEm ?? Date.now(),
     }
     await setDoc(doc(db, `users/${uid}/dias_restantes`, ev.id), ev)
@@ -1287,12 +1294,12 @@ function DiasRestantesCard({ cardSty, labelSty }: any) {
             <span style={{ marginLeft: 'auto', ...subSty }}>📅 {fmtBR(atual.data)}</span>
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '0.98rem', color: corDias, lineHeight: 1 }}>{txtDias}</div>
-          {atual.progresso !== null && atual.progresso !== undefined ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ flex: 1 }}><BarraProg pct={atual.progresso} /></div>
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.6rem', color: cor }}>{atual.progresso}%</span>
+          {(() => { const pct = progressoAuto(atual); return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} title="Progresso do tempo até o evento">
+              <div style={{ flex: 1 }}><BarraProg pct={pct} /></div>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.6rem', color: cor }}>{pct}%</span>
             </div>
-          ) : <div style={subSty}>Contagem regressiva até o evento</div>}
+          ) })()}
         </>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1312,10 +1319,7 @@ function DiasRestantesCard({ cardSty, labelSty }: any) {
               <button onClick={() => setForm(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.05rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
             </div>
             <input autoFocus value={form.titulo ?? ''} onChange={e => setForm(f => ({ ...f!, titulo: e.target.value }))} placeholder="Título (ex.: Concurso PGM Curitiba)" style={drInp} />
-            <div style={{ display: 'flex', gap: 6 }}>
-              <input type="date" value={form.data ?? ''} onChange={e => setForm(f => ({ ...f!, data: e.target.value }))} style={{ ...drInp, flex: 1 }} />
-              <input type="number" min={0} max={100} value={form.progresso ?? ''} onChange={e => setForm(f => ({ ...f!, progresso: e.target.value === '' ? null : Number(e.target.value) }))} placeholder="% progr." style={{ ...drInp, width: 84 }} title="Progresso opcional (0–100)" />
-            </div>
+            <input type="date" value={form.data ?? ''} onChange={e => setForm(f => ({ ...f!, data: e.target.value }))} style={drInp} />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {DR_ICONES.map(ic => (
                 <button key={ic} onClick={() => setForm(f => ({ ...f!, icone: ic }))} style={{ width: 27, height: 27, borderRadius: 7, border: `1px solid ${form.icone === ic ? cor : 'var(--border)'}`, background: form.icone === ic ? `${cor}18` : 'transparent', cursor: 'pointer', fontSize: '0.88rem', lineHeight: 1 }}>{ic}</button>
