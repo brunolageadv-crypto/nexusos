@@ -330,8 +330,12 @@ const PDFA_CSS = `
 }
 /* cursor de captura no visualizador */
 .pdfa-viewer.capturing{ cursor:crosshair; }
+.pdfa-viewer.capturing .pdfa-textlayer{ -webkit-user-select:none; user-select:none; }
 .pdfa-viewer.capturing .pdfa-textlayer > span{ cursor:crosshair; }
-.pdfa-viewer.capturing .pdfa-textlayer ::selection{ background:rgba(26,115,232,.42); }
+
+/* retângulo de seleção (marquee) */
+.pdfa-mm-marquee{ position:fixed; z-index:4980; pointer-events:none; border:1.5px solid var(--pa-accent);
+  background:rgba(26,115,232,.16); border-radius:3px; box-shadow:0 0 0 1px rgba(255,255,255,.5) inset; }
 
 /* cabeçalho da árvore (toggle de captura, raiz ativa) */
 .pdfa-mm-head{ display:flex; align-items:center; gap:8px; flex-wrap:wrap;
@@ -361,6 +365,32 @@ const PDFA_CSS = `
 .pdfa-mm-row:hover .pdfa-mm-x{ opacity:1; }
 .pdfa-mm-x:hover{ background:var(--mm-excecao); color:#fff; }
 .pdfa-mm-fold{ flex:none; width:16px; text-align:center; color:var(--pa-faint); cursor:pointer; user-select:none; font-size:.7rem; }
+.pdfa-mm-rename{ flex:1; min-width:0; font:inherit; font-size:.82rem; border:1px solid var(--pa-accent);
+  background:var(--pa-panel); color:var(--pa-text); border-radius:6px; padding:2px 6px; outline:none; }
+
+/* arraste para re-aninhar/reordenar */
+.pdfa-mm-row.dragging{ opacity:.45; }
+.pdfa-mm-row.drop-into{ background:var(--accent-bg,rgba(26,115,232,.08)); border-color:var(--pa-accent); box-shadow:inset 0 0 0 1px var(--pa-accent); }
+.pdfa-mm-row.drop-before{ box-shadow:inset 0 2px 0 0 var(--pa-accent); }
+.pdfa-mm-row.drop-after{ box-shadow:inset 0 -2px 0 0 var(--pa-accent); }
+
+/* toolbar da árvore (busca + desfazer/refazer) */
+.pdfa-mm-bar{ display:flex; align-items:center; gap:6px; padding:6px 10px; border-bottom:1px solid var(--pa-border); }
+.pdfa-mm-bar .find{ flex:1; display:flex; align-items:center; gap:5px; background:var(--pa-hover);
+  border:1px solid var(--pa-border); border-radius:8px; padding:3px 8px; }
+.pdfa-mm-bar .find input{ flex:1; border:none; background:transparent; outline:none; font:inherit; font-size:.76rem; color:var(--pa-text); }
+
+/* menu de contexto do nó */
+.pdfa-mm-ctx{ position:fixed; z-index:5010; background:var(--pa-panel); border:1px solid var(--pa-border-md);
+  border-radius:10px; box-shadow:var(--pa-shadow); padding:5px; min-width:178px; }
+.pdfa-mm-ctx button{ display:flex; align-items:center; gap:8px; width:100%; border:none; background:transparent;
+  color:var(--pa-text); font:inherit; font-size:.76rem; text-align:left; padding:7px 9px; border-radius:7px; cursor:pointer; }
+.pdfa-mm-ctx button:hover{ background:var(--pa-hover); }
+.pdfa-mm-ctx .div{ height:1px; background:var(--pa-border); margin:4px 2px; }
+.pdfa-mm-ctx .types{ display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:4px; }
+.pdfa-mm-ctx .types button{ padding:5px 7px; font-size:.72rem; }
+.pdfa-mm-ctx .types .dot{ width:10px; height:10px; border-radius:3px; flex:none; }
+.pdfa-mm-ctx .ttl{ font-size:.64rem; color:var(--pa-faint); font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:4px 9px 2px; }
 
 /* menu de classificação (popup junto ao cursor) */
 .pdfa-mm-menu{ position:fixed; z-index:5000; background:var(--pa-panel); border:1px solid var(--pa-border-md);
@@ -421,23 +451,138 @@ function mmNormalize(raw: string): string {
   return s
 }
 
-/* descobre a palavra sob o cursor via caret (sem depender de seleção nativa) */
-function mmWordAtPoint(x: number, y: number): { text: string; node: Text; start: number; end: number } | null {
-  let range: Range | null = null
-  const dany = document as any
-  if (dany.caretRangeFromPoint) range = dany.caretRangeFromPoint(x, y)
-  else if (dany.caretPositionFromPoint) { const p = dany.caretPositionFromPoint(x, y); if (p) { range = document.createRange(); range.setStart(p.offsetNode, p.offset); range.collapse(true) } }
-  if (!range || range.startContainer.nodeType !== 3) return null
-  const node = range.startContainer as Text
-  const txt = node.textContent || ''
-  const off = range.startOffset
-  const W = /[A-Za-zÀ-ÿ0-9º°ªₐ§/.-]/   // caracteres que formam "palavra" jurídica (inclui art./§/nº)
-  let a = off, b = off
-  while (a > 0 && W.test(txt[a - 1])) a--
-  while (b < txt.length && W.test(txt[b])) b++
-  const word = txt.slice(a, b).trim()
-  if (!word) return null
-  return { text: word, node, start: a, end: b }
+/* ───────────────────────── MAPA MENTAL: exportadores ───────────────────────── */
+type MmNode = any
+const mmChildrenOf = (nodes: MmNode[], pid: string | null) => nodes.filter(n => n.paiId === pid).sort((a, b) => a.ordem - b.ordem)
+const mmRoots = (nodes: MmNode[]) => mmChildrenOf(nodes, null)
+
+/* rótulo "inteligente" de um nó, conforme o tipo */
+function mmLabel(n: MmNode, opts: { incluirPaginas?: boolean } = {}): string {
+  const t = (n.texto || '').trim()
+  let out = t
+  const ctx = n.contexto && n.contexto.trim() && n.contexto.trim() !== t ? n.contexto.trim() : ''
+  switch (n.tipo) {
+    case 'conceito':
+    case 'definicao':
+      out = ctx ? `${t}: ${ctx}` : t; break
+    case 'jurisprudencia':
+      out = `“${t}”`; break
+    case 'fundamento':
+      out = `Fundamento: ${t}`; break
+    case 'prazo':
+      out = `Prazo: ${t}`; break
+    default:
+      out = t
+  }
+  if (opts.incluirPaginas && n.pagina) out += ` (p. ${n.pagina})`
+  return out
+}
+
+/* 1) Markdown hierárquico — headings p/ tópico/subtópico, bullets p/ o resto */
+function mmExportMarkdown(nodes: MmNode[], opts: any = {}): string {
+  const L: string[] = []
+  const walk = (pid: string | null, depth: number) => {
+    for (const n of mmChildrenOf(nodes, pid)) {
+      if (n.tipo === 'topico' || n.tipo === 'subtopico') {
+        L.push('#'.repeat(Math.min(depth + 1, 6)) + ' ' + mmLabel(n, opts))
+      } else {
+        L.push('  '.repeat(Math.max(0, depth)) + '- ' + mmLabel(n, opts))
+      }
+      walk(n.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  return L.join('\n')
+}
+
+/* 2) Markdown com badges de tipo */
+function mmExportMarkdownBadges(nodes: MmNode[], opts: any = {}): string {
+  const L: string[] = []
+  const walk = (pid: string | null, depth: number) => {
+    for (const n of mmChildrenOf(nodes, pid)) {
+      const tp = MM_TIPO[n.tipo] || MM_TIPO['nota']
+      const t = (n.texto || '').trim()
+      const ctx = n.contexto && n.contexto.trim() && n.contexto.trim() !== t ? ' → ' + n.contexto.trim() : ''
+      const pg = opts.incluirPaginas && n.pagina ? ` (p. ${n.pagina})` : ''
+      L.push('   '.repeat(depth) + `[${tp.sigla}] ${t}${ctx}${pg}`)
+      walk(n.id, depth + 1)
+    }
+  }
+  walk(null, 0)
+  return L.join('\n')
+}
+
+/* 3) Texto indentado puro (.txt) com conectores ASCII */
+function mmExportTxt(nodes: MmNode[], opts: any = {}): string {
+  const L: string[] = []
+  const walk = (pid: string | null, prefix: string) => {
+    const kids = mmChildrenOf(nodes, pid)
+    kids.forEach((n, i) => {
+      const last = i === kids.length - 1
+      L.push(prefix + (last ? '└─ ' : '├─ ') + mmLabel(n, opts))
+      walk(n.id, prefix + (last ? '   ' : '│  '))
+    })
+  }
+  walk(null, '')
+  return L.join('\n')
+}
+
+/* 4) Outline numerado jurídico (1, 1.1, 1.1.1…) */
+function mmExportOutline(nodes: MmNode[], opts: any = {}): string {
+  const L: string[] = []
+  const walk = (pid: string | null, num: string) => {
+    mmChildrenOf(nodes, pid).forEach((n, i) => {
+      const cur = num ? `${num}.${i + 1}` : `${i + 1}`
+      L.push(`${cur} ${mmLabel(n, opts)}`)
+      walk(n.id, cur)
+    })
+  }
+  walk(null, '')
+  return L.join('\n')
+}
+
+/* 5) JSON (round-trip) */
+function mmExportJSON(nodes: MmNode[], pdfNome: string): string {
+  return JSON.stringify({ pdfNome, titulo: pdfNome, nos: nodes, atualizadoEm: new Date(Date.now() - 3 * 3600000).toISOString() }, null, 2)
+}
+
+/* 6) OPML (MindNode/XMind…) */
+function mmExportOPML(nodes: MmNode[], pdfNome: string, opts: any = {}): string {
+  const esc = (s = '') => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+  const lines: string[] = []
+  const walk = (pid: string | null, indent: string) => {
+    for (const n of mmChildrenOf(nodes, pid)) {
+      const kids = mmChildrenOf(nodes, n.id)
+      const tp = MM_TIPO[n.tipo] || MM_TIPO['nota']
+      const txt = esc(`[${tp.sigla}] ${mmLabel(n, opts)}`)
+      if (kids.length) { lines.push(`${indent}<outline text="${txt}">`); walk(n.id, indent + '  '); lines.push(`${indent}</outline>`) }
+      else lines.push(`${indent}<outline text="${txt}"/>`)
+    }
+  }
+  walk(null, '      ')
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0">\n  <head><title>${esc(pdfNome)}</title></head>\n  <body>\n${lines.join('\n')}\n  </body>\n</opml>`
+}
+
+/* 7) Anki / Flashcards (TSV  frente \t verso) */
+function mmExportAnki(nodes: MmNode[]): string {
+  const clean = (s = '') => s.replace(/[\t\n\r]+/g, ' ').trim()
+  const path = (n: MmNode): string => {
+    const chain: string[] = []
+    let cur: MmNode | undefined = nodes.find(x => x.id === n.paiId)
+    while (cur) { chain.unshift(cur.texto); cur = nodes.find(x => x.id === cur!.paiId) }
+    return chain.join(' › ')
+  }
+  const cards: string[] = []
+  const CONTENT = new Set(['conceito', 'definicao', 'caracteristica', 'requisito', 'excecao', 'exemplo', 'jurisprudencia', 'fundamento', 'prazo'])
+  for (const n of nodes) {
+    if (!CONTENT.has(n.tipo)) continue
+    const tp = MM_TIPO[n.tipo] || MM_TIPO['nota']
+    const p = path(n)
+    const front = clean(`${p ? p + ' — ' : ''}${tp.label}`)
+    const back = clean(n.contexto && n.contexto !== n.texto ? `${n.texto} — ${n.contexto}` : n.texto)
+    if (front && back) cards.push(`${front}\t${back}`)
+  }
+  return cards.join('\n')
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
@@ -478,10 +623,21 @@ export default function AnalisePDF() {
   const [mmActiveId, setMmActiveId] = useState<string | null>(null) // nó-pai ativo (novas capturas entram como filho dele)
   const [captureMode, setCaptureMode] = useState(false)            // liga o "mouse de captura" sobre o PDF
   const [mmMenu, setMmMenu] = useState<{ x: number; y: number; text: string; pagina?: number; contexto?: string } | null>(null)
+  const [mmBox, setMmBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null) // marquee visual
+  const [mmRename, setMmRename] = useState<string | null>(null)   // id do nó em edição inline
+  const [mmQuery, setMmQuery] = useState('')                       // busca/filtro na árvore
+  const [mmCtx, setMmCtx] = useState<{ x: number; y: number; id: string } | null>(null) // menu de contexto
+  const [mmDropTarget, setMmDropTarget] = useState<{ id: string; zone: 'before' | 'into' | 'after' } | null>(null)
+  const [mmExportOpen, setMmExportOpen] = useState(false)         // menu Exportar aberto
+  const [mmIncluirPag, setMmIncluirPag] = useState(true)          // sufixo "(p. N)" nas exportações
+  const [mmZoom, setMmZoom] = useState(1)                          // zoom do mapa visual
   const mmNodesRef = useRef<any[]>([]); useEffect(() => { mmNodesRef.current = mmNodes }, [mmNodes])
   const mmActiveRef = useRef<string | null>(null); useEffect(() => { mmActiveRef.current = mmActiveId }, [mmActiveId])
   const captureModeRef = useRef(false); useEffect(() => { captureModeRef.current = captureMode }, [captureMode])
-  const mmDownRef = useRef<{ x: number; y: number } | null>(null)
+  const mmDragRef = useRef<{ x0: number; y0: number; active: boolean } | null>(null) // arraste do marquee no PDF
+  const mmDragNodeRef = useRef<string | null>(null)               // nó sendo arrastado na árvore
+  const mmPast = useRef<string[]>([])                              // histórico p/ desfazer
+  const mmFuture = useRef<string[]>([])                            // histórico p/ refazer
 
   /* ── busca ── */
   const [query, setQuery] = useState('')
@@ -971,56 +1127,117 @@ export default function AnalisePDF() {
   /* ════════════════════ MAPA MENTAL TEXTUAL: captura + persistência ════════════════════ */
   const MM_LS_KEY = 'nexus_pdfmapa_v1'
 
-  /* página de origem a partir de um nó do DOM (sobe até .pdfa-page) */
+  /* página de origem a partir de um nó/elemento do DOM (sobe até .pdfa-page) */
   const mmPageOf = (node: Node | null): number | undefined => {
     let el: HTMLElement | null = (node && node.nodeType === 3 ? (node as Text).parentElement : (node as HTMLElement)) || null
     while (el && !el.classList?.contains('pdfa-page')) el = el.parentElement
     return el ? Number((el as HTMLElement).dataset.page) : undefined
   }
 
-  /* frase de origem (contexto) ao redor de uma palavra capturada */
-  const mmSentenceAround = (node: Text, start: number): string | undefined => {
-    const t = node.textContent || ''
-    let a = start, b = start
-    while (a > 0 && !/[.;:!?]/.test(t[a - 1])) a--
-    while (b < t.length && !/[.;:!?]/.test(t[b])) b++
-    const s = mmNormalize(t.slice(a, b + 1))
-    return s && s.length > 3 ? s : undefined
+  /* junta palavras na ordem de leitura, removendo hifenização de quebra de linha */
+  const mmJoinWords = (arr: string[]): string => {
+    const merged: string[] = []
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].endsWith('-') && i + 1 < arr.length && /^[a-zà-ÿ]/.test(arr[i + 1])) { merged.push(arr[i].slice(0, -1) + arr[i + 1]); i++ }
+      else merged.push(arr[i])
+    }
+    return mmNormalize(merged.join(' '))
+  }
+
+  /* coleta o texto cujas PALAVRAS estão dentro do retângulo (geometria pura, sem seleção nativa) */
+  const mmCollectInRect = (box: { left: number; top: number; right: number; bottom: number }, mode: 'center' | 'point' = 'center') => {
+    const words: { page: number; top: number; left: number; word: string }[] = []
+    const hit = (rect: DOMRect) => {
+      if (mode === 'point') return box.left >= rect.left && box.left <= rect.right && box.top >= rect.top && box.top <= rect.bottom
+      const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2
+      return cx >= box.left && cx <= box.right && cy >= box.top && cy <= box.bottom
+    }
+    for (const key of Object.keys(pageElsRef.current)) {
+      const pn = Number(key); const pageEl = pageElsRef.current[pn]; if (!pageEl) continue
+      const pr = pageEl.getBoundingClientRect()
+      if (pr.right < box.left || pr.left > box.right || pr.bottom < box.top || pr.top > box.bottom) continue
+      const tl = pageEl.querySelector('.pdfa-textlayer'); if (!tl) continue
+      tl.querySelectorAll('span').forEach((span: any) => {
+        const sr = span.getBoundingClientRect()
+        if (sr.right < box.left || sr.left > box.right || sr.bottom < box.top || sr.top > box.bottom) return
+        const node = span.firstChild
+        if (!node || node.nodeType !== 3) {
+          if (hit(sr)) { const t = (span.textContent || '').trim(); if (t) words.push({ page: pn, top: sr.top, left: sr.left, word: t }) }
+          return
+        }
+        const text = node.textContent || ''
+        const re = /\S+/g; let m: RegExpExecArray | null
+        while ((m = re.exec(text))) {
+          const r = document.createRange()
+          try { r.setStart(node, m.index); r.setEnd(node, m.index + m[0].length) } catch { continue }
+          const rect = r.getBoundingClientRect()
+          if (!rect.width && !rect.height) continue
+          if (hit(rect)) words.push({ page: pn, top: rect.top, left: rect.left, word: m[0] })
+        }
+      })
+    }
+    words.sort((a, b) => Math.abs(a.top - b.top) > 4 ? a.top - b.top : a.left - b.left)
+    return words
   }
 
   /* abre o menu de classificação junto ao cursor */
   const mmOpenMenu = useCallback((x: number, y: number, text: string, pagina?: number, contexto?: string) => {
-    const t = mmNormalize(text); if (!t) return
+    const t = mmNormalize(text); if (!t) { toast('Nada dentro do retângulo'); return }
     const mx = Math.max(8, Math.min(x, window.innerWidth - 312))
     const my = Math.max(8, Math.min(y, window.innerHeight - 370))
     setMmMenu({ x: mx, y: my, text: t, pagina, contexto })
-  }, [])
+  }, [toast])
 
-  /* captura no mouseup do visualizador: clique = 1 palavra | arraste = trecho/frase */
-  const mmCaptureFromViewer = useCallback((e: React.MouseEvent) => {
-    if (!captureModeRef.current) return
-    const down = mmDownRef.current; mmDownRef.current = null
-    const dist = down ? Math.hypot(e.clientX - down.x, e.clientY - down.y) : 0
-    const sel = window.getSelection()
-    // ARRASTE → usa a seleção (trecho)
-    if (dist > 6 && sel && !sel.isCollapsed && sel.rangeCount) {
-      const range = sel.getRangeAt(0)
-      if (viewerRef.current?.contains(range.commonAncestorContainer)) {
-        const text = sel.toString(); const pagina = mmPageOf(range.startContainer)
-        sel.removeAllRanges()
-        if (text.trim()) mmOpenMenu(e.clientX, e.clientY, text, pagina)
-        return
-      }
+  /* ── marquee (retângulo de seleção sobre o PDF) ── */
+  const mmOnDown = useCallback((e: React.MouseEvent) => {
+    if (!captureModeRef.current || e.button !== 0) return
+    e.preventDefault()                                   // impede a seleção nativa (origem do "pega demais")
+    window.getSelection()?.removeAllRanges()
+    mmDragRef.current = { x0: e.clientX, y0: e.clientY, active: true }
+    setMmBox({ left: e.clientX, top: e.clientY, width: 0, height: 0 })
+  }, [])
+  const mmOnMove = useCallback((e: React.MouseEvent) => {
+    const d = mmDragRef.current; if (!d || !d.active) return
+    setMmBox({ left: Math.min(d.x0, e.clientX), top: Math.min(d.y0, e.clientY), width: Math.abs(e.clientX - d.x0), height: Math.abs(e.clientY - d.y0) })
+  }, [])
+  const mmOnUp = useCallback((e: React.MouseEvent) => {
+    const d = mmDragRef.current; mmDragRef.current = null
+    if (!d || !d.active) return
+    setMmBox(null)
+    const left = Math.min(d.x0, e.clientX), top = Math.min(d.y0, e.clientY)
+    const right = Math.max(d.x0, e.clientX), bottom = Math.max(d.y0, e.clientY)
+    let words
+    if ((right - left) < 4 && (bottom - top) < 4) {       // clique simples → palavra sob o ponto
+      words = mmCollectInRect({ left: e.clientX, top: e.clientY, right: e.clientX, bottom: e.clientY }, 'point')
+    } else {                                              // retângulo → tudo dentro
+      words = mmCollectInRect({ left, top, right, bottom }, 'center')
     }
-    // CLIQUE → só a palavra sob o cursor (corrige "seleciona várias de uma vez")
-    sel?.removeAllRanges()
-    const w = mmWordAtPoint(e.clientX, e.clientY)
-    if (w) mmOpenMenu(e.clientX, e.clientY, w.text, mmPageOf(w.node), mmSentenceAround(w.node, w.start))
-  }, [mmOpenMenu])
+    if (!words.length) { toast('Nada dentro do retângulo — desenhe sobre o texto'); return }
+    const text = mmJoinWords(words.map(w => w.word))
+    mmOpenMenu(e.clientX, e.clientY, text, words[0].page, words.length > 1 ? text : undefined)
+  }, [mmOpenMenu, toast])
+
+  /* ── histórico (desfazer/refazer) ── */
+  const mmSnapshot = useCallback(() => {
+    mmPast.current.push(JSON.stringify(mmNodesRef.current))
+    if (mmPast.current.length > 80) mmPast.current.shift()
+    mmFuture.current = []
+  }, [])
+  const mmUndo = useCallback(() => {
+    if (!mmPast.current.length) { toast('Nada para desfazer'); return }
+    mmFuture.current.push(JSON.stringify(mmNodesRef.current))
+    setMmNodes(JSON.parse(mmPast.current.pop() as string))
+  }, [toast])
+  const mmRedo = useCallback(() => {
+    if (!mmFuture.current.length) { toast('Nada para refazer'); return }
+    mmPast.current.push(JSON.stringify(mmNodesRef.current))
+    setMmNodes(JSON.parse(mmFuture.current.pop() as string))
+  }, [toast])
 
   /* adiciona um nó do tipo escolhido, como filho do nó ativo; o novo vira o ativo */
   const mmAddNode = useCallback((tipo: string) => {
     const menu = mmMenu; if (!menu) return
+    mmSnapshot()
     const paiId = mmActiveRef.current
     const irmaos = mmNodesRef.current.filter(n => n.paiId === paiId)
     const node = {
@@ -1032,21 +1249,76 @@ export default function AnalisePDF() {
     setMmActiveId(node.id)
     setMmMenu(null)
     toast((MM_TIPO[tipo]?.label || 'Nó') + ' adicionado')
-  }, [mmMenu, toast])
+  }, [mmMenu, mmSnapshot, toast])
 
   /* exclui um nó e toda a subárvore abaixo dele */
   const mmDeleteNode = useCallback((id: string) => {
+    mmSnapshot()
     setMmNodes(prev => {
       const kill = new Set<string>([id]); let changed = true
       while (changed) { changed = false; for (const n of prev) if (n.paiId && kill.has(n.paiId) && !kill.has(n.id)) { kill.add(n.id); changed = true } }
       return prev.filter(n => !kill.has(n.id))
     })
-    setMmActiveId(a => (a === id ? null : a))
-  }, [])
+    setMmActiveId(a => (a === id ? null : a)); setMmCtx(null)
+  }, [mmSnapshot])
 
   const mmToggleCollapse = useCallback((id: string) => {
     setMmNodes(prev => prev.map(n => n.id === id ? { ...n, colapsado: !n.colapsado } : n))
   }, [])
+
+  /* troca o tipo de um nó */
+  const mmSetType = useCallback((id: string, tipo: string) => {
+    mmSnapshot()
+    setMmNodes(prev => prev.map(n => n.id === id ? { ...n, tipo } : n)); setMmCtx(null)
+  }, [mmSnapshot])
+
+  /* renomear inline (commit) */
+  const mmRenameCommit = useCallback((id: string, val: string) => {
+    const t = mmNormalize(val)
+    if (t) { mmSnapshot(); setMmNodes(prev => prev.map(n => n.id === id ? { ...n, texto: t } : n)) }
+    setMmRename(null)
+  }, [mmSnapshot])
+
+  /* adiciona um filho manual (entra em modo de renomear) */
+  const mmAddChild = useCallback((pid: string | null) => {
+    mmSnapshot()
+    const id = newId()
+    const irmaos = mmNodesRef.current.filter(n => n.paiId === pid)
+    setMmNodes(prev => [...prev, { id, texto: 'Novo nó', tipo: 'nota', paiId: pid, ordem: irmaos.length, colapsado: false, criadoEm: new Date(Date.now() - 3 * 3600000).toISOString() }])
+    setMmActiveId(pid); setMmCtx(null); setMmRename(id)
+  }, [mmSnapshot])
+
+  /* mover (drag-and-drop): re-aninhar (into) ou reordenar entre irmãos (before/after) */
+  const mmMove = useCallback((dragId: string, targetId: string, zone: 'before' | 'into' | 'after') => {
+    if (dragId === targetId) return
+    const nodes = mmNodesRef.current
+    // impede soltar dentro da própria subárvore (ciclo)
+    const isDesc = (ancestor: string, id: string): boolean => {
+      let cur = nodes.find(n => n.id === id)
+      while (cur) { if (cur.paiId === ancestor) return true; cur = nodes.find(n => n.id === cur!.paiId) }
+      return false
+    }
+    if (isDesc(dragId, targetId)) { toast('Não dá para soltar dentro do próprio ramo'); return }
+    mmSnapshot()
+    setMmNodes(prev => {
+      const arr = prev.map(n => ({ ...n }))
+      const drag = arr.find(n => n.id === dragId); const target = arr.find(n => n.id === targetId)
+      if (!drag || !target) return prev
+      if (zone === 'into') {
+        drag.paiId = targetId
+        const sibs = arr.filter(n => n.paiId === targetId && n.id !== dragId)
+        drag.ordem = sibs.length
+        target.colapsado = false
+      } else {
+        drag.paiId = target.paiId
+        const sibs = arr.filter(n => n.paiId === target.paiId && n.id !== dragId).sort((a, b) => a.ordem - b.ordem)
+        const idx = sibs.findIndex(n => n.id === targetId)
+        sibs.splice(zone === 'before' ? idx : idx + 1, 0, drag)
+        sibs.forEach((n, i) => { n.ordem = i })
+      }
+      return arr
+    })
+  }, [mmSnapshot, toast])
 
   /* "voltar à origem": rola o PDF até a página do nó */
   const mmGotoPage = useCallback((pn?: number) => {
@@ -1055,6 +1327,62 @@ export default function AnalisePDF() {
     if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); renderPage(pn); setCurrentPage(pn) }
   }, [renderPage])
 
+  /* ── exportação (Etapa 4) ── */
+  const mmDownload = useCallback((filename: string, content: string, mime = 'text/plain;charset=utf-8') => {
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = filename
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1500)
+  }, [])
+
+  const mmDoExport = useCallback((fmt: string) => {
+    const nodes = mmNodesRef.current
+    if (!nodes.length) { toast('Mapa vazio'); return }
+    const base = (pdfName || 'mapa').replace(/[^\w\-]+/g, '_').slice(0, 40)
+    const opts = { incluirPaginas: mmIncluirPag }
+    setMmExportOpen(false)
+    switch (fmt) {
+      case 'md':       mmDownload(`${base}_mapa.md`, mmExportMarkdown(nodes, opts), 'text/markdown'); break
+      case 'mdbadge':  mmDownload(`${base}_mapa_badges.md`, mmExportMarkdownBadges(nodes, opts), 'text/markdown'); break
+      case 'txt':      mmDownload(`${base}_mapa.txt`, mmExportTxt(nodes, opts)); break
+      case 'outline':  mmDownload(`${base}_outline.txt`, mmExportOutline(nodes, opts)); break
+      case 'json':     mmDownload(`${base}_mapa.json`, mmExportJSON(nodes, pdfName || 'mapa'), 'application/json'); break
+      case 'opml':     mmDownload(`${base}_mapa.opml`, mmExportOPML(nodes, pdfName || 'mapa', opts), 'text/x-opml'); break
+      case 'anki':     mmDownload(`${base}_anki.tsv`, mmExportAnki(nodes), 'text/tab-separated-values'); break
+      case 'copy':
+        navigator.clipboard?.writeText(mmExportMarkdown(nodes, opts)).then(() => toast('Markdown copiado'), () => toast('Não foi possível copiar'))
+        break
+      default: break
+    }
+    if (fmt !== 'copy') toast('Exportado: ' + fmt.toUpperCase())
+  }, [pdfName, mmIncluirPag, mmDownload, toast])
+
+  /* PDF visual do mapa (Etapa 5) — reaproveita jsPDF + html2canvas */
+  const mmMapRef = useRef<HTMLDivElement>(null)
+  const mmExportMapaPDF = useCallback(async () => {
+    if (!mmNodesRef.current.length) { toast('Mapa vazio'); return }
+    const stage = mmMapRef.current; if (!stage) return
+    const ov = rootRef.current?.querySelector('.pdfa-overlay') as HTMLElement
+    ov?.classList.add('show')
+    try {
+      await ensureExportLibs()
+      const { jsPDF } = (window as any).jspdf
+      const canvas = await (window as any).html2canvas(stage, { backgroundColor: '#ffffff', scale: 2 })
+      const img = canvas.toDataURL('image/png')
+      const landscape = canvas.width >= canvas.height
+      const pdf = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' })
+      const pw = pdf.internal.pageSize.getWidth(), ph = pdf.internal.pageSize.getHeight()
+      const margin = 24
+      const ratio = Math.min((pw - margin * 2) / canvas.width, (ph - margin * 2) / canvas.height)
+      const w = canvas.width * ratio, h = canvas.height * ratio
+      pdf.addImage(img, 'PNG', (pw - w) / 2, (ph - h) / 2, w, h)
+      pdf.save(`${(pdfName || 'mapa').replace(/[^\w\-]+/g, '_').slice(0, 40)}_mapa.pdf`)
+      toast('PDF do mapa gerado')
+    } catch (err) { console.error(err); toast('Falha ao gerar o PDF') }
+    finally { ov?.classList.remove('show') }
+  }, [pdfName, toast])
+
   /* restaura o mapa salvo ao abrir/identificar o PDF (por nome) */
   useEffect(() => {
     if (!pdfName) return
@@ -1062,7 +1390,7 @@ export default function AnalisePDF() {
       const all = JSON.parse(localStorage.getItem(MM_LS_KEY) || '{}')
       setMmNodes(all[pdfName]?.nos || [])
     } catch { setMmNodes([]) }
-    setMmActiveId(null)
+    setMmActiveId(null); mmPast.current = []; mmFuture.current = []
   }, [pdfName])
 
   /* auto-save (debounce ~800ms) no localStorage, por PDF */
@@ -1080,13 +1408,21 @@ export default function AnalisePDF() {
     return () => { if (mmSaveTimer.current) clearTimeout(mmSaveTimer.current) }
   }, [mmNodes, pdfName])
 
-  /* fecha o menu de classificação ao apertar Esc */
+  /* teclado: Esc fecha menus/renome; Ctrl+Z/Y desfaz/refaz na árvore */
   useEffect(() => {
-    if (!mmMenu) return
-    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMmMenu(null) }
-    document.addEventListener('keydown', onEsc)
-    return () => document.removeEventListener('keydown', onEsc)
-  }, [mmMenu])
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setMmMenu(null); setMmCtx(null); setMmRename(null); return }
+      const tag = (e.target as HTMLElement)?.tagName
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable
+      if (bottomView === 'arvore' && (e.ctrlKey || e.metaKey) && !typing) {
+        const k = e.key.toLowerCase()
+        if (k === 'z' && !e.shiftKey) { e.preventDefault(); mmUndo() }
+        else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); mmRedo() }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [bottomView, mmUndo, mmRedo])
 
   const newNote = useCallback((folderId: string | null = null) => {
     flushPending()
@@ -1332,9 +1668,10 @@ export default function AnalisePDF() {
             </div>
           </div>
           {/* visualizador */}
-          <div className={'pdfa-viewer' + (captureMode ? ' capturing' : '')} ref={viewerRef} onMouseMove={onViewerMove} onMouseLeave={onViewerLeave}
-            onMouseDown={(e) => { setClipBtn(null); if (captureMode) mmDownRef.current = { x: e.clientX, y: e.clientY } }}
-            onMouseUp={(e) => { onViewerMouseUp(); if (captureMode) mmCaptureFromViewer(e) }} onContextMenu={onViewerContextMenu}>
+          <div className={'pdfa-viewer' + (captureMode ? ' capturing' : '')} ref={viewerRef}
+            onMouseMove={(e) => { onViewerMove(e); if (captureMode) mmOnMove(e) }} onMouseLeave={onViewerLeave}
+            onMouseDown={(e) => { setClipBtn(null); if (captureMode) mmOnDown(e) }}
+            onMouseUp={(e) => { onViewerMouseUp(); if (captureMode) mmOnUp(e) }} onContextMenu={onViewerContextMenu}>
             {pdfName
               ? <div className="pdfa-pages" ref={pagesHostRef} />
               : <div className="pdfa-empty">
@@ -1425,6 +1762,37 @@ export default function AnalisePDF() {
           document.body
         )}
 
+        {/* ── retângulo de seleção (marquee) sobre o PDF ── */}
+        {mmBox && createPortal(
+          <div className="pdfa-mm-marquee" style={{ left: mmBox.left, top: mmBox.top, width: mmBox.width, height: mmBox.height }} />,
+          document.body
+        )}
+
+        {/* ── menu de contexto de um nó da árvore ── */}
+        {mmCtx && createPortal(
+          <>
+            <div onMouseDown={() => setMmCtx(null)} onContextMenu={e => { e.preventDefault(); setMmCtx(null) }}
+              style={{ position: 'fixed', inset: 0, zIndex: 5005, background: 'transparent' }} />
+            <div className="pdfa-mm-ctx" style={{ left: mmCtx.x, top: mmCtx.y }} onMouseDown={e => e.stopPropagation()}>
+              <button onClick={() => { setMmRename(mmCtx.id); setMmCtx(null) }}>✎ Renomear</button>
+              <button onClick={() => { mmAddChild(mmCtx.id) }}>＋ Adicionar filho</button>
+              <button onClick={() => { setMmActiveId(mmCtx.id); setMmCtx(null) }}>◎ Tornar nó-pai ativo</button>
+              <div className="div" />
+              <div className="ttl">Trocar tipo</div>
+              <div className="types">
+                {MM_TIPOS.map(t => (
+                  <button key={t.key} onClick={() => mmSetType(mmCtx.id, t.key)} title={t.label}>
+                    <span className="dot" style={{ background: t.cor }} />{t.sigla}
+                  </button>
+                ))}
+              </div>
+              <div className="div" />
+              <button onClick={() => mmDeleteNode(mmCtx.id)} style={{ color: 'var(--mm-excecao)' }}>🗑 Excluir (e filhos)</button>
+            </div>
+          </>,
+          document.body
+        )}
+
         {/* divisor (só no modo split) */}
         {viewMode === 'split' && <div className="pdfa-divider" onPointerDown={startDividerDrag} title="Arraste para redimensionar" />}
 
@@ -1481,14 +1849,26 @@ export default function AnalisePDF() {
 
           {/* ── ÁRVORE (Mapa Mental Textual) ── */}
           {bottomView === 'arvore' && (() => {
-            // monta as linhas respeitando colapso
             const childrenOf = (pid: string | null) => mmNodes.filter(n => n.paiId === pid).sort((a, b) => a.ordem - b.ordem)
+            // filtro de busca: mantém os nós que casam + seus ancestrais
+            const q = mmQuery.trim().toLowerCase()
+            let visible: Set<string> | null = null
+            if (q) {
+              visible = new Set<string>()
+              for (const n of mmNodes) {
+                if ((n.texto || '').toLowerCase().includes(q)) {
+                  let cur: any = n
+                  while (cur) { visible.add(cur.id); cur = mmNodes.find(x => x.id === cur.paiId) }
+                }
+              }
+            }
             const rows: any[] = []
             const walk = (pid: string | null, depth: number) => {
               for (const n of childrenOf(pid)) {
+                if (visible && !visible.has(n.id)) continue
                 const kids = childrenOf(n.id)
                 rows.push({ n, depth, hasKids: kids.length > 0 })
-                if (!n.colapsado) walk(n.id, depth + 1)
+                if (!n.colapsado || q) walk(n.id, depth + 1)
               }
             }
             walk(null, 0)
@@ -1498,7 +1878,7 @@ export default function AnalisePDF() {
                 <div className="pdfa-mm-head">
                   <button className={'pdfa-btn' + (captureMode ? ' on' : '')} disabled={!pdfName}
                     onClick={() => { setCaptureMode(v => !v); if (clipMode) setClipMode(false); window.getSelection()?.removeAllRanges() }}
-                    title="Liga o mouse de captura sobre o PDF: clique numa palavra ou arraste para um trecho">
+                    title="Liga o mouse de captura: arraste um retângulo sobre o texto (ou clique numa palavra)">
                     {captureMode ? '🖱️ Capturando…' : '🖱️ Ativar captura'}
                   </button>
                   <div className="pdfa-mm-active" title="Novas capturas entram como filho deste nó. Clique num nó da árvore para trocar.">
@@ -1507,29 +1887,76 @@ export default function AnalisePDF() {
                   {mmActiveId && <button className="pdfa-btn icon" onClick={() => setMmActiveId(null)} title="Voltar a capturar na raiz">⤴ Raiz</button>}
                   <span className="grow" />
                   {mmNodes.length > 0 && <button className="pdfa-btn icon" title="Limpar todo o mapa"
-                    onClick={() => { if (confirm('Apagar todo o mapa mental deste PDF?')) { setMmNodes([]); setMmActiveId(null) } }}>🗑</button>}
+                    onClick={() => { if (confirm('Apagar todo o mapa mental deste PDF?')) { mmSnapshot(); setMmNodes([]); setMmActiveId(null) } }}>🗑</button>}
                 </div>
-                <div className="pdfa-mm-tree">
+                <div className="pdfa-mm-bar">
+                  <div className="find">
+                    <span style={{ color: 'var(--pa-faint)', fontSize: '.8rem' }}>🔍</span>
+                    <input placeholder="Buscar nó…" value={mmQuery} onChange={e => setMmQuery(e.target.value)} />
+                    {mmQuery && <span style={{ cursor: 'pointer', color: 'var(--pa-faint)' }} onClick={() => setMmQuery('')}>✕</span>}
+                  </div>
+                  <button className="pdfa-btn icon" onClick={mmUndo} title="Desfazer (Ctrl+Z)">↶</button>
+                  <button className="pdfa-btn icon" onClick={mmRedo} title="Refazer (Ctrl+Y)">↷</button>
+                  <button className="pdfa-btn icon" onClick={() => mmAddChild(null)} disabled={!pdfName} title="Novo tópico manual (raiz)">＋</button>
+                  <div style={{ position: 'relative' }}>
+                    <button className={'pdfa-btn' + (mmExportOpen ? ' on' : '')} disabled={mmNodes.length === 0}
+                      onClick={() => setMmExportOpen(v => !v)} title="Exportar o mapa">⤓ Exportar</button>
+                    {mmExportOpen && (
+                      <div className="pdfa-mm-ctx" style={{ position: 'absolute', right: 0, top: '110%', left: 'auto' }} onMouseLeave={() => setMmExportOpen(false)}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', fontSize: '.74rem', color: 'var(--pa-dim)', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={mmIncluirPag} onChange={e => setMmIncluirPag(e.target.checked)} /> incluir páginas (p. N)
+                        </label>
+                        <div className="div" />
+                        <button onClick={() => mmDoExport('md')}>⬇ Markdown hierárquico</button>
+                        <button onClick={() => mmDoExport('mdbadge')}>⬇ Markdown com badges</button>
+                        <button onClick={() => mmDoExport('txt')}>⬇ Texto indentado (.txt)</button>
+                        <button onClick={() => mmDoExport('outline')}>⬇ Outline numerado</button>
+                        <button onClick={() => mmDoExport('json')}>⬇ JSON (round-trip)</button>
+                        <button onClick={() => mmDoExport('opml')}>⬇ OPML (MindNode/XMind)</button>
+                        <button onClick={() => mmDoExport('anki')}>⬇ Anki / Flashcards (TSV)</button>
+                        <button onClick={mmExportMapaPDF}>⬇ PDF visual do mapa</button>
+                        <div className="div" />
+                        <button onClick={() => mmDoExport('copy')}>📋 Copiar Markdown</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="pdfa-mm-tree"
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const d = mmDragNodeRef.current; mmDragNodeRef.current = null; setMmDropTarget(null); /* solto no vazio = vira raiz no fim */ if (d) { const tops = mmNodesRef.current.filter(n => n.paiId === null); if (tops.length) mmMove(d, tops[tops.length - 1].id, 'after') } }}>
                   {rows.length === 0
                     ? <div className="pdfa-mm-empty">
                         <div style={{ fontSize: 30 }}>🌲</div>
-                        <b style={{ color: 'var(--pa-dim)' }}>Mapa vazio</b>
+                        <b style={{ color: 'var(--pa-dim)' }}>{q ? 'Nada encontrado' : 'Mapa vazio'}</b>
                         <span style={{ fontSize: '.8rem', maxWidth: 420, lineHeight: 1.5 }}>
-                          {pdfName ? <>Clique em <b>🖱️ Ativar captura</b> e depois clique numa palavra (ou arraste um trecho) no PDF. Escolha o tipo no menu que abre.</> : 'Importe um PDF para começar a capturar.'}
+                          {q ? 'Tente outro termo.' : pdfName ? <>Clique em <b>🖱️ Ativar captura</b> e <b>arraste um retângulo</b> sobre o texto do PDF. Escolha o tipo no menu que abre.</> : 'Importe um PDF para começar a capturar.'}
                         </span>
                       </div>
                     : rows.map(({ n, depth, hasKids }) => {
                         const tp = MM_TIPO[n.tipo] || MM_TIPO['nota']
+                        const dt = mmDropTarget && mmDropTarget.id === n.id ? mmDropTarget.zone : null
                         return (
-                          <div key={n.id} className={'pdfa-mm-row' + (n.id === mmActiveId ? ' active' : '')}
+                          <div key={n.id}
+                            className={'pdfa-mm-row' + (n.id === mmActiveId ? ' active' : '') + (dt ? ' drop-' + dt : '')}
                             style={{ marginLeft: depth * 16 }}
-                            onClick={() => setMmActiveId(id => id === n.id ? id : n.id)}
-                            title="Clique para tornar este o nó-pai ativo (as próximas capturas entram aqui)">
+                            draggable={mmRename !== n.id}
+                            onDragStart={(e) => { mmDragNodeRef.current = n.id; e.dataTransfer.effectAllowed = 'move' }}
+                            onDragEnd={() => { mmDragNodeRef.current = null; setMmDropTarget(null) }}
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (mmDragNodeRef.current === n.id) return; const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); const rel = (e.clientY - r.top) / r.height; const zone = rel < 0.28 ? 'before' : rel > 0.72 ? 'after' : 'into'; setMmDropTarget({ id: n.id, zone }) }}
+                            onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const d = mmDragNodeRef.current; mmDragNodeRef.current = null; const zone = (mmDropTarget && mmDropTarget.id === n.id ? mmDropTarget.zone : 'into'); setMmDropTarget(null); if (d) mmMove(d, n.id, zone) }}
+                            onClick={() => { if (mmRename !== n.id) setMmActiveId(n.id) }}
+                            onContextMenu={(e) => { e.preventDefault(); setMmCtx({ x: Math.min(e.clientX, window.innerWidth - 200), y: Math.min(e.clientY, window.innerHeight - 330), id: n.id }) }}
+                            title="Clique = nó-pai ativo · 2 cliques = renomear · arraste = re-aninhar · botão direito = menu">
                             <span className="pdfa-mm-fold" onClick={(e) => { e.stopPropagation(); if (hasKids) mmToggleCollapse(n.id) }}>
                               {hasKids ? (n.colapsado ? '▸' : '▾') : '•'}
                             </span>
                             <span className="pdfa-mm-badge" style={{ background: tp.cor }} title={tp.label}>{tp.sigla}</span>
-                            <span className="pdfa-mm-txt">{n.texto}</span>
+                            {mmRename === n.id
+                              ? <input className="pdfa-mm-rename" autoFocus defaultValue={n.texto}
+                                  onClick={e => e.stopPropagation()}
+                                  onBlur={e => mmRenameCommit(n.id, (e.target as HTMLInputElement).value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') mmRenameCommit(n.id, (e.target as HTMLInputElement).value); else if (e.key === 'Escape') setMmRename(null) }} />
+                              : <span className="pdfa-mm-txt" onDoubleClick={(e) => { e.stopPropagation(); setMmRename(n.id) }}>{n.texto}</span>}
                             {n.pagina && <span className="pdfa-mm-pg" onClick={(e) => { e.stopPropagation(); mmGotoPage(n.pagina) }} title="Voltar à origem (página no PDF)">p.{n.pagina}</span>}
                             <button className="pdfa-mm-x" onClick={(e) => { e.stopPropagation(); mmDeleteNode(n.id) }} title="Excluir nó (e filhos)">×</button>
                           </div>
@@ -1541,15 +1968,78 @@ export default function AnalisePDF() {
           })()}
 
           {/* ── MAPA (visual) — scaffold; conteúdo na Etapa 5 ── */}
-          {bottomView === 'mapa' && (
-            <div className="pdfa-mm-placeholder" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--pa-faint)', textAlign: 'center', padding: 24 }}>
-              <div style={{ fontSize: 32 }}>🗺</div>
-              <b style={{ color: 'var(--pa-dim)' }}>Mapa Mental Visual</b>
-              <span style={{ fontSize: '.82rem', maxWidth: 420, lineHeight: 1.5 }}>
-                A mesma árvore renderizada como mapa visual (SVG) com export em PDF. Chega na Etapa 5.
-              </span>
-            </div>
-          )}
+          {bottomView === 'mapa' && (() => {
+            // layout horizontal (raiz à esquerda) respeitando colapso
+            const BW = 172, BH = 30, COL = BW + 56, ROW = 40, PAD = 24
+            const pos: Record<string, { x: number; y: number; n: any }> = {}
+            const edges: { from: string; to: string }[] = []
+            let leaf = 0, maxDepth = 0
+            const layout = (pid: string | null, depth: number): number => {
+              const kids = mmChildrenOf(mmNodes, pid)
+              if (depth > maxDepth) maxDepth = depth
+              if (!kids.length) return -1
+              const ys: number[] = []
+              for (const n of kids) {
+                let y: number
+                const hasKids = mmChildrenOf(mmNodes, n.id).length > 0
+                if (n.colapsado || !hasKids) { y = leaf * ROW; leaf++ }
+                else { y = layout(n.id, depth + 1) }
+                pos[n.id] = { x: depth * COL, y, n }
+                if (pid) edges.push({ from: pid, to: n.id })
+                ys.push(y)
+              }
+              return ys.reduce((a, b) => a + b, 0) / ys.length
+            }
+            layout(null, 0)
+            const ids = Object.keys(pos)
+            const W = (maxDepth + 1) * COL + PAD * 2
+            const H = Math.max(leaf, 1) * ROW + PAD * 2
+            return (
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div className="pdfa-mm-bar">
+                  <span style={{ fontSize: '.74rem', color: 'var(--pa-dim)', fontWeight: 700 }}>🗺 Mapa visual</span>
+                  <span className="grow" style={{ flex: 1 }} />
+                  <button className="pdfa-btn icon" onClick={() => setMmZoom(z => Math.max(0.4, +(z - 0.1).toFixed(2)))} title="Diminuir">－</button>
+                  <span style={{ fontSize: '.72rem', color: 'var(--pa-faint)', minWidth: 38, textAlign: 'center' }}>{Math.round(mmZoom * 100)}%</span>
+                  <button className="pdfa-btn icon" onClick={() => setMmZoom(z => Math.min(2.5, +(z + 0.1).toFixed(2)))} title="Aumentar">＋</button>
+                  <button className="pdfa-btn icon" onClick={() => setMmZoom(1)} title="100%">⟳</button>
+                  <button className="pdfa-btn" onClick={mmExportMapaPDF} disabled={ids.length === 0} title="Exportar o mapa em PDF">⤓ PDF</button>
+                </div>
+                <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: 'var(--pa-bg)' }}>
+                  {ids.length === 0
+                    ? <div className="pdfa-mm-empty" style={{ height: '100%' }}>
+                        <div style={{ fontSize: 30 }}>🗺</div>
+                        <b style={{ color: 'var(--pa-dim)' }}>Mapa vazio</b>
+                        <span style={{ fontSize: '.8rem' }}>Capture nós na aba 🌲 Árvore para ver o mapa aqui.</span>
+                      </div>
+                    : <div ref={mmMapRef} style={{ width: W * mmZoom, height: H * mmZoom, background: '#ffffff', position: 'relative' }}>
+                        <svg viewBox={`0 0 ${W} ${H}`} width={W * mmZoom} height={H * mmZoom} xmlns="http://www.w3.org/2000/svg">
+                          {edges.map((e, i) => {
+                            const a = pos[e.from], b = pos[e.to]; if (!a || !b) return null
+                            const x1 = a.x + BW + PAD, y1 = a.y + BH / 2 + PAD
+                            const x2 = b.x + PAD, y2 = b.y + BH / 2 + PAD
+                            const mx = (x1 + x2) / 2
+                            return <path key={i} d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`} fill="none" stroke="#c9ccd1" strokeWidth={1.4} />
+                          })}
+                          {ids.map(id => {
+                            const p = pos[id]; const tp = MM_TIPO[p.n.tipo] || MM_TIPO['nota']
+                            const x = p.x + PAD, y = p.y + PAD
+                            const label = (p.n.texto || '').length > 26 ? (p.n.texto || '').slice(0, 25) + '…' : p.n.texto
+                            return (
+                              <g key={id} style={{ cursor: 'pointer' }} onClick={() => { setBottomView('arvore'); setMmActiveId(id) }}>
+                                <rect x={x} y={y} width={BW} height={BH} rx={7} fill={tp.cor} />
+                                <text x={x + 9} y={y + 13} fill="#fff" fontSize={9} fontWeight={800} fontFamily="Arial">{tp.sigla}</text>
+                                <text x={x + 9} y={y + 23} fill="#fff" fontSize={10.5} fontFamily="Arial">{label}</text>
+                                {mmIncluirPag && p.n.pagina ? <text x={x + BW - 6} y={y + 11} fill="rgba(255,255,255,.85)" fontSize={8} textAnchor="end" fontFamily="Arial">p.{p.n.pagina}</text> : null}
+                              </g>
+                            )
+                          })}
+                        </svg>
+                      </div>}
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </div>
 
