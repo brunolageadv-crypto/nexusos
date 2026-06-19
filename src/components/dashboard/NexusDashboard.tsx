@@ -1,6 +1,5 @@
 import React from 'react'
 import PainelChecklistDia from './ChecklistDia'
-import { PIADAS } from './piadas'
 import PainelArcade from './Arcade'
 import PainelGeosfera from './GeosferaCard'
 import VisaoGeral from './VisaoGeral'
@@ -10,7 +9,7 @@ import { useEditaisCadastrados, useEdital } from '../../hooks/useEdital'
 import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
-import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore'
 
 interface Props { onNavigate: (id: string) => void; dashView?: 'noticias' | 'visual' }
 
@@ -1218,25 +1217,108 @@ function AguaControle({ cardSty, labelSty }: any) {
 }
 const miniBtn = (cor: string): React.CSSProperties => ({ padding: '2px 7px', borderRadius: 6, border: `1px solid ${cor}40`, background: 'transparent', color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.62rem', cursor: 'pointer', lineHeight: 1 })
 
-/* ── Piada do momento (popup expandido ao passar o mouse) ── */
-function PiadaCard({ cardSty, labelSty }: any) {
-  const [idx, setIdx] = useState(() => Math.floor(Math.random() * PIADAS.length))
-  const [open, setOpen] = useState(false)
-  useEffect(() => { const t = setInterval(() => setIdx(i => (i + 1) % PIADAS.length), 35000); return () => clearInterval(t) }, [])
-  const piada = PIADAS[idx]
+/* ── Dias Restantes (eventos futuros com contagem regressiva) ── */
+interface EventoDR { id: string; titulo: string; data: string; icone: string; progresso: number | null; criadoEm: number }
+const DR_ICONES = ['📅','🎯','✈️','🎓','⚖️','🏆','🎂','💼','❤️','🏠','📝','🎉']
+const drNav = (cor: string): React.CSSProperties => ({ width: 20, height: 20, borderRadius: 6, border: `1px solid ${cor}33`, background: `${cor}12`, color: cor, fontWeight: 800, fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1, padding: 0 })
+const drInp: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', fontSize: '0.72rem', padding: '6px 9px', width: '100%', fontFamily: 'var(--font-body)' }
+
+function DiasRestantesCard({ cardSty, labelSty }: any) {
+  const uid = useUid()
+  const [eventos, setEventos] = useState<EventoDR[]>([])
+  const [idx, setIdx] = useState(0)
+  const [form, setForm] = useState<Partial<EventoDR> | null>(null)
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(query(collection(db, `users/${uid}/dias_restantes`), orderBy('data', 'asc')), snap =>
+      setEventos(snap.docs.map(d => d.data() as EventoDR)))
+  }, [uid])
+  // recalcula a contagem regressiva sozinho (cobre a virada do dia)
+  useEffect(() => { const t = setInterval(() => setTick(x => x + 1), 60000); return () => clearInterval(t) }, [])
+  useEffect(() => { if (idx >= eventos.length) setIdx(Math.max(0, eventos.length - 1)) }, [eventos.length, idx])
+
+  const hojeISO = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+  const diasAte = (data: string) => { if (!data) return 0; return Math.round((new Date(data + 'T12:00').getTime() - new Date(hojeISO + 'T12:00').getTime()) / 86400000) }
+  const fmtBR = (d: string) => { if (!d) return ''; const [y, m, dy] = d.split('-'); return `${dy}/${m}/${y}` }
+  const cor = B_AZUL
+
+  const salvar = async () => {
+    if (!uid || !form || !form.titulo || !form.data) return
+    const ev: EventoDR = {
+      id: form.id ?? Math.random().toString(36).slice(2, 10),
+      titulo: form.titulo, data: form.data, icone: form.icone ?? '📅',
+      progresso: (form.progresso === null || form.progresso === undefined) ? null : Math.max(0, Math.min(100, Number(form.progresso))),
+      criadoEm: form.criadoEm ?? Date.now(),
+    }
+    await setDoc(doc(db, `users/${uid}/dias_restantes`, ev.id), ev)
+    setForm(null)
+  }
+  const excluir = async (id: string) => { if (uid && db) await deleteDoc(doc(db, `users/${uid}/dias_restantes`, id)) }
+
+  const atual = eventos[idx]
+  const dias = atual ? diasAte(atual.data) : 0
+  const txtDias = dias > 0 ? `${dias} ${dias === 1 ? 'dia restante' : 'dias restantes'}` : dias === 0 ? 'É hoje!' : 'Evento concluído'
+  const corDias = dias < 0 ? 'var(--text-muted)' : cor
+
   return (
-    <div onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}
-      onClick={() => setIdx(i => (i + 1) % PIADAS.length)}
-      style={{ ...cardSty(), flex: '1.7 1 0', minWidth: 0, position: 'relative', cursor: 'pointer' } as React.CSSProperties}>
-      <div style={labelSty}>😄 Piada do momento</div>
-      <div style={{ fontSize: '0.76rem', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.45, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-        {piada}
+    <div style={{ ...cardSty(), flex: '1.9 1 0', minWidth: 0, position: 'relative' } as React.CSSProperties}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+        <div style={labelSty}>⏳ Dias restantes</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          {eventos.length > 1 && (<>
+            <button onClick={() => setIdx(i => (i - 1 + eventos.length) % eventos.length)} style={drNav(cor)} title="Evento anterior">‹</button>
+            <span style={{ fontSize: '0.52rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', minWidth: 22, textAlign: 'center' }}>{idx + 1}/{eventos.length}</span>
+            <button onClick={() => setIdx(i => (i + 1) % eventos.length)} style={drNav(cor)} title="Próximo evento">›</button>
+          </>)}
+          {atual && <button onClick={() => excluir(atual.id)} style={drNav('#b06a6a')} title="Cancelar este evento">✕</button>}
+          <button onClick={() => setForm({ icone: '📅', progresso: null, data: '', titulo: '' })} style={drNav(cor)} title="Cadastrar evento">＋</button>
+        </div>
       </div>
-      <div style={subSty}>passe o mouse para ler · clique p/ a próxima</div>
-      {open && (
-        <div style={{ position: 'absolute', bottom: '108%', left: 0, right: 0, background: 'var(--card-bg)', border: `1px solid ${B_AZUL}55`, borderRadius: 14, padding: '14px 16px', boxShadow: '0 12px 32px rgba(0,0,0,0.28)', zIndex: 80 }}>
-          <div style={{ fontSize: '0.62rem', color: B_AZUL, fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7 }}>😄 Piada do momento</div>
-          <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.6, fontWeight: 500 }}>{piada}</div>
+
+      {atual ? (
+        <>
+          <div onClick={() => setForm({ ...atual })} title="Clique para editar" style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, cursor: 'pointer' }}>
+            <span style={{ fontSize: '0.9rem' }}>{atual.icone}</span>
+            <span style={{ fontWeight: 700, fontSize: '0.74rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{atual.titulo}</span>
+            <span style={{ marginLeft: 'auto', ...subSty }}>📅 {fmtBR(atual.data)}</span>
+          </div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '0.98rem', color: corDias, lineHeight: 1 }}>{txtDias}</div>
+          {atual.progresso !== null && atual.progresso !== undefined ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ flex: 1 }}><BarraProg pct={atual.progresso} /></div>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.6rem', color: cor }}>{atual.progresso}%</span>
+            </div>
+          ) : <div style={subSty}>Contagem regressiva até o evento</div>}
+        </>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Nenhum evento cadastrado</div>
+          <button onClick={() => setForm({ icone: '📅', progresso: null, data: '', titulo: '' })} style={{ alignSelf: 'flex-start', padding: '3px 10px', borderRadius: 7, border: `1px solid ${cor}40`, background: `${cor}12`, color: cor, fontWeight: 700, fontSize: '0.6rem', cursor: 'pointer' }}>＋ Cadastrar evento</button>
+        </div>
+      )}
+
+      {form && (
+        <div style={{ position: 'absolute', bottom: '108%', right: 0, width: 288, background: 'var(--card-bg)', border: `1px solid ${cor}55`, borderRadius: 14, padding: '13px 15px', boxShadow: '0 14px 36px rgba(0,0,0,0.32)', zIndex: 90, display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '0.62rem', color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{form.id ? 'Editar evento' : 'Novo evento'}</div>
+            <button onClick={() => setForm(null)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.05rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
+          </div>
+          <input value={form.titulo ?? ''} onChange={e => setForm(f => ({ ...f!, titulo: e.target.value }))} placeholder="Título (ex.: Concurso PGM Curitiba)" style={drInp} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input type="date" value={form.data ?? ''} onChange={e => setForm(f => ({ ...f!, data: e.target.value }))} style={{ ...drInp, flex: 1 }} />
+            <input type="number" min={0} max={100} value={form.progresso ?? ''} onChange={e => setForm(f => ({ ...f!, progresso: e.target.value === '' ? null : Number(e.target.value) }))} placeholder="% progr." style={{ ...drInp, width: 84 }} title="Progresso opcional (0–100)" />
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {DR_ICONES.map(ic => (
+              <button key={ic} onClick={() => setForm(f => ({ ...f!, icone: ic }))} style={{ width: 27, height: 27, borderRadius: 7, border: `1px solid ${form.icone === ic ? cor : 'var(--border)'}`, background: form.icone === ic ? `${cor}18` : 'transparent', cursor: 'pointer', fontSize: '0.88rem', lineHeight: 1 }}>{ic}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+            <button onClick={() => setForm(null)} style={{ padding: '6px 13px', borderRadius: 8, border: '1px solid var(--border)', background: 'none', color: 'var(--text-secondary)', fontSize: '0.68rem', fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+            <button onClick={salvar} disabled={!form.titulo || !form.data} style={{ padding: '6px 15px', borderRadius: 8, border: 'none', background: (!form.titulo || !form.data) ? 'var(--bg-4)' : cor, color: '#fff', fontSize: '0.68rem', fontWeight: 700, cursor: (!form.titulo || !form.data) ? 'default' : 'pointer' }}>Salvar</button>
+          </div>
         </div>
       )}
     </div>
@@ -1335,8 +1417,8 @@ function BarraInferior() {
 
         {/* Controle de água interativo (integrado à aba Saúde) */}
         <AguaControle cardSty={cardSty} labelSty={labelSty} />
-        {/* Piada do momento */}
-        <PiadaCard cardSty={cardSty} labelSty={labelSty} />
+        {/* Dias restantes (eventos com contagem regressiva) */}
+        <DiasRestantesCard cardSty={cardSty} labelSty={labelSty} />
 
       </div>
     </div>
