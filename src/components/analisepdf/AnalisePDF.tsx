@@ -327,8 +327,6 @@ const PDFA_CSS = `
 `
 
 /* ───────────────────────────── helpers de UI ───────────────────────────── */
-const HILITE_COLORS = ['#FDD663', '#81C995', '#8AB4F8', '#F28B82', '#D7AEFB', '#FCAD70']
-
 function escapeHtml(s = '') {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
@@ -363,9 +361,8 @@ export default function AnalisePDF() {
   const [showSide, setShowSide] = useState(true)
   const [pdfCollapsed, setPdfCollapsed] = useState(false)
 
-  /* ── marcação ── */
-  const [markColor, setMarkColor] = useState(HILITE_COLORS[0])
-  const [markMode, setMarkMode] = useState<'highlight' | 'underline'>('highlight')
+  /* ── visão do painel inferior: nota (editor) · arvore (mapa textual) · mapa (visual) ── */
+  const [bottomView, setBottomView] = useState<'nota' | 'arvore' | 'mapa'>('arvore')
 
   /* ── busca ── */
   const [query, setQuery] = useState('')
@@ -590,40 +587,6 @@ export default function AnalisePDF() {
     const m = pageMetaRef.current[0]; if (!m) return
     applyScale(Math.min((vw - 56) / m.w, (vh - 56) / m.h))
   }, [applyScale])
-
-  /* ════════════════════ marcação por seleção ════════════════════ */
-  const applyMarkup = useCallback((type: 'highlight' | 'underline') => {
-    const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) { toast('Selecione um trecho no PDF'); return }
-    const range = sel.getRangeAt(0)
-    const sc = scaleRef.current
-    const rects = range.getClientRects()
-    let added = 0
-    for (const r of rects) {
-      if (r.width < 1 || r.height < 1) continue
-      // descobre a qual página o retângulo pertence
-      for (const m of pageMetaRef.current) {
-        const pageEl = pageElsRef.current[m.pageNum]; if (!pageEl) continue
-        const pr = pageEl.getBoundingClientRect()
-        const cx = r.left + r.width / 2, cy = r.top + r.height / 2
-        if (cx >= pr.left && cx <= pr.right && cy >= pr.top && cy <= pr.bottom) {
-          const x = (r.left - pr.left) / sc, y = (r.top - pr.top) / sc
-          const w = r.width / sc, h = r.height / sc
-          marksRef.current[m.pageNum] = marksRef.current[m.pageNum] || []
-          marksRef.current[m.pageNum].push({ x, y, w, h, color: markColor, type })
-          drawMarks(m.pageNum); added++
-          break
-        }
-      }
-    }
-    sel.removeAllRanges()
-    if (added) toast(type === 'underline' ? 'Trecho sublinhado' : 'Trecho destacado')
-  }, [markColor, drawMarks, toast])
-
-  const clearMarks = useCallback(() => {
-    marksRef.current = {}
-    Object.keys(pageElsRef.current).forEach(pn => drawMarks(Number(pn)))
-    toast('Marcações removidas')
-  }, [drawMarks, toast])
 
   /* ════════════════════ busca interna ════════════════════ */
   const applySearchToPage = useCallback((pn: number) => {
@@ -1063,20 +1026,6 @@ export default function AnalisePDF() {
 
           {pdfName && <>
             <span className="sep" />
-            {/* marcação */}
-            <button className={'pdfa-btn ' + (markMode === 'highlight' ? 'on' : '')}
-              onClick={() => { setMarkMode('highlight'); applyMarkup('highlight') }} title="Destacar a seleção">🖍 Destacar</button>
-            <button className={'pdfa-btn ' + (markMode === 'underline' ? 'on' : '')}
-              onClick={() => { setMarkMode('underline'); applyMarkup('underline') }} title="Sublinhar a seleção">U̲ Sublinhar</button>
-            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
-              {HILITE_COLORS.map(c => (
-                <span key={c} className={'pdfa-swatch ' + (markColor === c ? 'on' : '')}
-                  style={{ background: c }} onClick={() => setMarkColor(c)} title="Cor da marcação" />
-              ))}
-            </div>
-            <button className="pdfa-btn icon" onClick={clearMarks} title="Limpar todas as marcações">🧹</button>
-
-            <span className="sep" />
             {/* zoom */}
             <button className="pdfa-btn icon" onClick={() => applyScale(scale / 1.15)} title="Reduzir">−</button>
             <span className="pdfa-zoom-val">{Math.round(scale * 100)}%</span>
@@ -1215,6 +1164,20 @@ export default function AnalisePDF() {
         {/* EDITOR */}
         <div className={'pdfa-editor-box' + (viewMode === 'note' ? ' fullnote' : '')}
           style={viewMode === 'split' ? { flex: 1 } : undefined}>
+          {/* ── seletor de visão do painel inferior (Árvore · Mapa · Nota) ── */}
+          <div className="pdfa-mm-tabs" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--pa-border)' }}>
+            <button className={'pdfa-btn' + (bottomView === 'arvore' ? ' on' : '')} onClick={() => setBottomView('arvore')} title="Mapa mental textual — árvore de captura">🌲 Árvore</button>
+            <button className={'pdfa-btn' + (bottomView === 'mapa' ? ' on' : '')} onClick={() => setBottomView('mapa')} title="Mapa mental visual">🗺 Mapa</button>
+            <span className="sep" />
+            <button className={'pdfa-btn' + (bottomView === 'nota' ? ' on' : '')} onClick={() => setBottomView('nota')} title="Editor de anotações">✍ Nota</button>
+            <span className="grow" style={{ flex: 1 }} />
+            <span style={{ fontSize: '.72rem', color: 'var(--pa-faint)', fontWeight: 600 }}>
+              {bottomView === 'nota' ? 'Anotações (rich text)' : bottomView === 'arvore' ? 'Captura de palavras-chave do PDF' : 'Visualização do mapa'}
+            </span>
+          </div>
+
+          {/* ── NOTA (editor rich-text existente) ── */}
+          {bottomView === 'nota' && <>
           <div className="pdfa-etoolbar">
             <input className="pdfa-note-title" placeholder="Título da anotação…" value={noteTitle}
               onChange={e => { noteTitleRef.current = e.target.value; setNoteTitle(e.target.value); markDirty() }} />
@@ -1247,6 +1210,30 @@ export default function AnalisePDF() {
               // Tab dentro de listas indenta em vez de sair do editor
               if (e.key === 'Tab') { e.preventDefault(); document.execCommand(e.shiftKey ? 'outdent' : 'indent') }
             }} />
+          </>}
+
+          {/* ── ÁRVORE (Mapa Mental Textual) — scaffold; conteúdo nas próximas etapas ── */}
+          {bottomView === 'arvore' && (
+            <div className="pdfa-mm-placeholder" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--pa-faint)', textAlign: 'center', padding: 24 }}>
+              <div style={{ fontSize: 32 }}>🌲</div>
+              <b style={{ color: 'var(--pa-dim)' }}>Mapa Mental Textual</b>
+              <span style={{ fontSize: '.82rem', maxWidth: 420, lineHeight: 1.5 }}>
+                Aqui vai a árvore de captura: clique/arraste palavras no PDF para montar a hierarquia.
+                Estrutura pronta — captura e árvore chegam nas próximas etapas.
+              </span>
+            </div>
+          )}
+
+          {/* ── MAPA (visual) — scaffold; conteúdo na Etapa 5 ── */}
+          {bottomView === 'mapa' && (
+            <div className="pdfa-mm-placeholder" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--pa-faint)', textAlign: 'center', padding: 24 }}>
+              <div style={{ fontSize: 32 }}>🗺</div>
+              <b style={{ color: 'var(--pa-dim)' }}>Mapa Mental Visual</b>
+              <span style={{ fontSize: '.82rem', maxWidth: 420, lineHeight: 1.5 }}>
+                A mesma árvore renderizada como mapa visual (SVG) com export em PDF. Chega na Etapa 5.
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
