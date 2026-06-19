@@ -320,6 +320,67 @@ const PDFA_CSS = `
   font-weight:600; box-shadow:var(--pa-shadow); opacity:0; pointer-events:none; transition:.25s; z-index:60; }
 .pdfa-toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
+/* ════════════════════ MAPA MENTAL TEXTUAL ════════════════════ */
+/* paleta por tipo de nó (semântica; legível em claro/escuro) */
+.pdfa-app{
+  --mm-topico:#1F3864; --mm-subtopico:#2E5AAC; --mm-conceito:#0F766E;
+  --mm-definicao:#9333EA; --mm-caracteristica:#0EA5E9; --mm-requisito:#B45309;
+  --mm-excecao:#DC2626; --mm-exemplo:#16A34A; --mm-jurisprudencia:#7C3AED;
+  --mm-fundamento:#9C5700; --mm-prazo:#DB2777; --mm-nota:#5f6368;
+}
+/* cursor de captura no visualizador */
+.pdfa-viewer.capturing{ cursor:crosshair; }
+.pdfa-viewer.capturing .pdfa-textlayer > span{ cursor:crosshair; }
+.pdfa-viewer.capturing .pdfa-textlayer ::selection{ background:rgba(26,115,232,.42); }
+
+/* cabeçalho da árvore (toggle de captura, raiz ativa) */
+.pdfa-mm-head{ display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:8px 10px; border-bottom:1px solid var(--pa-border); }
+.pdfa-mm-head .grow{ flex:1 }
+.pdfa-mm-active{ font-size:.72rem; color:var(--pa-dim); display:flex; align-items:center; gap:6px;
+  background:var(--pa-hover); border:1px solid var(--pa-border); border-radius:8px; padding:4px 9px; max-width:300px; }
+.pdfa-mm-active b{ color:var(--pa-text); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* lista da árvore */
+.pdfa-mm-tree{ flex:1; min-height:0; overflow:auto; padding:8px 6px 14px; }
+.pdfa-mm-empty{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  height:100%; color:var(--pa-faint); text-align:center; padding:20px; }
+.pdfa-mm-row{ display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:9px; cursor:pointer;
+  transition:background .12s; border:1px solid transparent; }
+.pdfa-mm-row:hover{ background:var(--pa-hover); }
+.pdfa-mm-row.active{ background:var(--pa-hover); border-color:var(--pa-border-md); }
+.pdfa-mm-row.active .pdfa-mm-txt{ font-weight:700; }
+.pdfa-mm-badge{ flex:none; min-width:20px; height:18px; padding:0 5px; border-radius:5px; color:#fff;
+  font-size:.62rem; font-weight:800; display:inline-flex; align-items:center; justify-content:center; letter-spacing:.02em; }
+.pdfa-mm-txt{ flex:1; min-width:0; font-size:.82rem; color:var(--pa-text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdfa-mm-pg{ flex:none; font-size:.62rem; color:var(--pa-faint); background:var(--pa-hover);
+  border-radius:5px; padding:1px 5px; cursor:pointer; }
+.pdfa-mm-pg:hover{ color:var(--pa-accent); }
+.pdfa-mm-x{ flex:none; width:20px; height:20px; border:none; background:transparent; color:var(--pa-faint);
+  border-radius:6px; cursor:pointer; font-size:.85rem; opacity:0; transition:.12s; }
+.pdfa-mm-row:hover .pdfa-mm-x{ opacity:1; }
+.pdfa-mm-x:hover{ background:var(--mm-excecao); color:#fff; }
+.pdfa-mm-fold{ flex:none; width:16px; text-align:center; color:var(--pa-faint); cursor:pointer; user-select:none; font-size:.7rem; }
+
+/* menu de classificação (popup junto ao cursor) */
+.pdfa-mm-menu{ position:fixed; z-index:5000; background:var(--pa-panel); border:1px solid var(--pa-border-md);
+  border-radius:12px; box-shadow:var(--pa-shadow); padding:10px; width:300px; max-width:92vw; }
+.pdfa-mm-menu .cap{ font-size:.74rem; color:var(--pa-text); background:var(--pa-hover); border-radius:8px;
+  padding:7px 9px; margin-bottom:8px; max-height:64px; overflow:auto; line-height:1.35; }
+.pdfa-mm-menu .cap b{ color:var(--pa-accent); }
+.pdfa-mm-menu .tgt{ font-size:.68rem; color:var(--pa-dim); margin-bottom:8px; }
+.pdfa-mm-menu .tgt b{ color:var(--pa-text); }
+.pdfa-mm-grid{ display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.pdfa-mm-opt{ display:flex; align-items:center; gap:7px; border:1px solid var(--pa-border); background:transparent;
+  border-radius:8px; padding:6px 8px; cursor:pointer; font:inherit; font-size:.74rem; color:var(--pa-text); text-align:left;
+  transition:.12s; }
+.pdfa-mm-opt:hover{ background:var(--pa-hover); border-color:var(--pa-border-md); }
+.pdfa-mm-opt .dot{ flex:none; width:11px; height:11px; border-radius:3px; }
+.pdfa-mm-menu .foot{ display:flex; gap:6px; margin-top:9px; }
+.pdfa-mm-menu .foot button{ flex:1; border:1px solid var(--pa-border); background:transparent; color:var(--pa-dim);
+  border-radius:8px; padding:6px; cursor:pointer; font:inherit; font-size:.72rem; font-weight:600; }
+.pdfa-mm-menu .foot button:hover{ background:var(--pa-hover); }
+
 /* responsivo: some com colunas auxiliares em telas estreitas */
 @media (max-width:1080px){
   .pdfa-side{ display:none; } .pdfa-outline{ display:none; }
@@ -329,6 +390,54 @@ const PDFA_CSS = `
 /* ───────────────────────────── helpers de UI ───────────────────────────── */
 function escapeHtml(s = '') {
   return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
+}
+
+/* ───────────────────────── MAPA MENTAL: tipos de nó ───────────────────────── */
+/* cada tipo → cor (var CSS), rótulo e sigla (badge) */
+const MM_TIPOS = [
+  { key: 'topico',        label: 'Tópico',          sigla: 'T',  cor: 'var(--mm-topico)' },
+  { key: 'subtopico',     label: 'Subtópico',       sigla: 'S',  cor: 'var(--mm-subtopico)' },
+  { key: 'conceito',      label: 'Conceito',        sigla: 'C',  cor: 'var(--mm-conceito)' },
+  { key: 'definicao',     label: 'Definição',       sigla: 'D',  cor: 'var(--mm-definicao)' },
+  { key: 'caracteristica',label: 'Característica',   sigla: 'Ca', cor: 'var(--mm-caracteristica)' },
+  { key: 'requisito',     label: 'Requisito',       sigla: 'R',  cor: 'var(--mm-requisito)' },
+  { key: 'excecao',       label: 'Exceção',         sigla: 'Ex', cor: 'var(--mm-excecao)' },
+  { key: 'exemplo',       label: 'Exemplo',         sigla: 'E',  cor: 'var(--mm-exemplo)' },
+  { key: 'jurisprudencia',label: 'Jurisprudência',  sigla: 'J',  cor: 'var(--mm-jurisprudencia)' },
+  { key: 'fundamento',    label: 'Fundamento legal',sigla: 'F',  cor: 'var(--mm-fundamento)' },
+  { key: 'prazo',         label: 'Prazo',           sigla: 'P',  cor: 'var(--mm-prazo)' },
+  { key: 'nota',          label: 'Nota',            sigla: 'N',  cor: 'var(--mm-nota)' },
+] as const
+const MM_TIPO = Object.fromEntries(MM_TIPOS.map(t => [t.key, t]))
+
+/* normaliza texto capturado do PDF: tira hifenização de quebra, colapsa espaços */
+function mmNormalize(raw: string): string {
+  if (!raw) return ''
+  let s = raw.replace(/\r/g, '')
+  // remove hifenização de quebra de linha:  consti-\ntuição -> constituição
+  s = s.replace(/([A-Za-zÀ-ÿ])-\s*\n\s*([a-zà-ÿ])/g, '$1$2')
+  // quebras de linha viram espaço, colapsa múltiplos espaços
+  s = s.replace(/\s*\n\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trim()
+  return s
+}
+
+/* descobre a palavra sob o cursor via caret (sem depender de seleção nativa) */
+function mmWordAtPoint(x: number, y: number): { text: string; node: Text; start: number; end: number } | null {
+  let range: Range | null = null
+  const dany = document as any
+  if (dany.caretRangeFromPoint) range = dany.caretRangeFromPoint(x, y)
+  else if (dany.caretPositionFromPoint) { const p = dany.caretPositionFromPoint(x, y); if (p) { range = document.createRange(); range.setStart(p.offsetNode, p.offset); range.collapse(true) } }
+  if (!range || range.startContainer.nodeType !== 3) return null
+  const node = range.startContainer as Text
+  const txt = node.textContent || ''
+  const off = range.startOffset
+  const W = /[A-Za-zÀ-ÿ0-9º°ªₐ§/.-]/   // caracteres que formam "palavra" jurídica (inclui art./§/nº)
+  let a = off, b = off
+  while (a > 0 && W.test(txt[a - 1])) a--
+  while (b < txt.length && W.test(txt[b])) b++
+  const word = txt.slice(a, b).trim()
+  if (!word) return null
+  return { text: word, node, start: a, end: b }
 }
 
 /* ════════════════════════════════════════════════════════════════════════ */
@@ -363,6 +472,16 @@ export default function AnalisePDF() {
 
   /* ── visão do painel inferior: nota (editor) · arvore (mapa textual) · mapa (visual) ── */
   const [bottomView, setBottomView] = useState<'nota' | 'arvore' | 'mapa'>('arvore')
+
+  /* ── Mapa Mental Textual ── */
+  const [mmNodes, setMmNodes] = useState<any[]>([])               // lista plana { id, texto, tipo, paiId, ordem, pagina, contexto, colapsado, criadoEm }
+  const [mmActiveId, setMmActiveId] = useState<string | null>(null) // nó-pai ativo (novas capturas entram como filho dele)
+  const [captureMode, setCaptureMode] = useState(false)            // liga o "mouse de captura" sobre o PDF
+  const [mmMenu, setMmMenu] = useState<{ x: number; y: number; text: string; pagina?: number; contexto?: string } | null>(null)
+  const mmNodesRef = useRef<any[]>([]); useEffect(() => { mmNodesRef.current = mmNodes }, [mmNodes])
+  const mmActiveRef = useRef<string | null>(null); useEffect(() => { mmActiveRef.current = mmActiveId }, [mmActiveId])
+  const captureModeRef = useRef(false); useEffect(() => { captureModeRef.current = captureMode }, [captureMode])
+  const mmDownRef = useRef<{ x: number; y: number } | null>(null)
 
   /* ── busca ── */
   const [query, setQuery] = useState('')
@@ -849,6 +968,126 @@ export default function AnalisePDF() {
     if (s) { e.preventDefault(); insertExcerptToEditor(s.text); setClipBtn(null) }
   }, [clipMode, getViewerSelection, insertExcerptToEditor])
 
+  /* ════════════════════ MAPA MENTAL TEXTUAL: captura + persistência ════════════════════ */
+  const MM_LS_KEY = 'nexus_pdfmapa_v1'
+
+  /* página de origem a partir de um nó do DOM (sobe até .pdfa-page) */
+  const mmPageOf = (node: Node | null): number | undefined => {
+    let el: HTMLElement | null = (node && node.nodeType === 3 ? (node as Text).parentElement : (node as HTMLElement)) || null
+    while (el && !el.classList?.contains('pdfa-page')) el = el.parentElement
+    return el ? Number((el as HTMLElement).dataset.page) : undefined
+  }
+
+  /* frase de origem (contexto) ao redor de uma palavra capturada */
+  const mmSentenceAround = (node: Text, start: number): string | undefined => {
+    const t = node.textContent || ''
+    let a = start, b = start
+    while (a > 0 && !/[.;:!?]/.test(t[a - 1])) a--
+    while (b < t.length && !/[.;:!?]/.test(t[b])) b++
+    const s = mmNormalize(t.slice(a, b + 1))
+    return s && s.length > 3 ? s : undefined
+  }
+
+  /* abre o menu de classificação junto ao cursor */
+  const mmOpenMenu = useCallback((x: number, y: number, text: string, pagina?: number, contexto?: string) => {
+    const t = mmNormalize(text); if (!t) return
+    const mx = Math.max(8, Math.min(x, window.innerWidth - 312))
+    const my = Math.max(8, Math.min(y, window.innerHeight - 370))
+    setMmMenu({ x: mx, y: my, text: t, pagina, contexto })
+  }, [])
+
+  /* captura no mouseup do visualizador: clique = 1 palavra | arraste = trecho/frase */
+  const mmCaptureFromViewer = useCallback((e: React.MouseEvent) => {
+    if (!captureModeRef.current) return
+    const down = mmDownRef.current; mmDownRef.current = null
+    const dist = down ? Math.hypot(e.clientX - down.x, e.clientY - down.y) : 0
+    const sel = window.getSelection()
+    // ARRASTE → usa a seleção (trecho)
+    if (dist > 6 && sel && !sel.isCollapsed && sel.rangeCount) {
+      const range = sel.getRangeAt(0)
+      if (viewerRef.current?.contains(range.commonAncestorContainer)) {
+        const text = sel.toString(); const pagina = mmPageOf(range.startContainer)
+        sel.removeAllRanges()
+        if (text.trim()) mmOpenMenu(e.clientX, e.clientY, text, pagina)
+        return
+      }
+    }
+    // CLIQUE → só a palavra sob o cursor (corrige "seleciona várias de uma vez")
+    sel?.removeAllRanges()
+    const w = mmWordAtPoint(e.clientX, e.clientY)
+    if (w) mmOpenMenu(e.clientX, e.clientY, w.text, mmPageOf(w.node), mmSentenceAround(w.node, w.start))
+  }, [mmOpenMenu])
+
+  /* adiciona um nó do tipo escolhido, como filho do nó ativo; o novo vira o ativo */
+  const mmAddNode = useCallback((tipo: string) => {
+    const menu = mmMenu; if (!menu) return
+    const paiId = mmActiveRef.current
+    const irmaos = mmNodesRef.current.filter(n => n.paiId === paiId)
+    const node = {
+      id: newId(), texto: menu.text, tipo, paiId, ordem: irmaos.length,
+      pagina: menu.pagina, contexto: menu.contexto, colapsado: false,
+      criadoEm: new Date(Date.now() - 3 * 3600000).toISOString(),
+    }
+    setMmNodes(prev => [...prev, node])
+    setMmActiveId(node.id)
+    setMmMenu(null)
+    toast((MM_TIPO[tipo]?.label || 'Nó') + ' adicionado')
+  }, [mmMenu, toast])
+
+  /* exclui um nó e toda a subárvore abaixo dele */
+  const mmDeleteNode = useCallback((id: string) => {
+    setMmNodes(prev => {
+      const kill = new Set<string>([id]); let changed = true
+      while (changed) { changed = false; for (const n of prev) if (n.paiId && kill.has(n.paiId) && !kill.has(n.id)) { kill.add(n.id); changed = true } }
+      return prev.filter(n => !kill.has(n.id))
+    })
+    setMmActiveId(a => (a === id ? null : a))
+  }, [])
+
+  const mmToggleCollapse = useCallback((id: string) => {
+    setMmNodes(prev => prev.map(n => n.id === id ? { ...n, colapsado: !n.colapsado } : n))
+  }, [])
+
+  /* "voltar à origem": rola o PDF até a página do nó */
+  const mmGotoPage = useCallback((pn?: number) => {
+    if (!pn) return
+    const el = pageElsRef.current[pn]
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); renderPage(pn); setCurrentPage(pn) }
+  }, [renderPage])
+
+  /* restaura o mapa salvo ao abrir/identificar o PDF (por nome) */
+  useEffect(() => {
+    if (!pdfName) return
+    try {
+      const all = JSON.parse(localStorage.getItem(MM_LS_KEY) || '{}')
+      setMmNodes(all[pdfName]?.nos || [])
+    } catch { setMmNodes([]) }
+    setMmActiveId(null)
+  }, [pdfName])
+
+  /* auto-save (debounce ~800ms) no localStorage, por PDF */
+  const mmSaveTimer = useRef<any>(null)
+  useEffect(() => {
+    if (!pdfName) return
+    if (mmSaveTimer.current) clearTimeout(mmSaveTimer.current)
+    mmSaveTimer.current = setTimeout(() => {
+      try {
+        const all = JSON.parse(localStorage.getItem(MM_LS_KEY) || '{}')
+        all[pdfName] = { nos: mmNodes, atualizadoEm: new Date(Date.now() - 3 * 3600000).toISOString() }
+        localStorage.setItem(MM_LS_KEY, JSON.stringify(all))
+      } catch { }
+    }, 800)
+    return () => { if (mmSaveTimer.current) clearTimeout(mmSaveTimer.current) }
+  }, [mmNodes, pdfName])
+
+  /* fecha o menu de classificação ao apertar Esc */
+  useEffect(() => {
+    if (!mmMenu) return
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMmMenu(null) }
+    document.addEventListener('keydown', onEsc)
+    return () => document.removeEventListener('keydown', onEsc)
+  }, [mmMenu])
+
   const newNote = useCallback((folderId: string | null = null) => {
     flushPending()
     noteIdRef.current = null; noteTitleRef.current = ''; noteFolderIdRef.current = folderId
@@ -1093,8 +1332,9 @@ export default function AnalisePDF() {
             </div>
           </div>
           {/* visualizador */}
-          <div className="pdfa-viewer" ref={viewerRef} onMouseMove={onViewerMove} onMouseLeave={onViewerLeave}
-            onMouseDown={() => setClipBtn(null)} onMouseUp={onViewerMouseUp} onContextMenu={onViewerContextMenu}>
+          <div className={'pdfa-viewer' + (captureMode ? ' capturing' : '')} ref={viewerRef} onMouseMove={onViewerMove} onMouseLeave={onViewerLeave}
+            onMouseDown={(e) => { setClipBtn(null); if (captureMode) mmDownRef.current = { x: e.clientX, y: e.clientY } }}
+            onMouseUp={(e) => { onViewerMouseUp(); if (captureMode) mmCaptureFromViewer(e) }} onContextMenu={onViewerContextMenu}>
             {pdfName
               ? <div className="pdfa-pages" ref={pagesHostRef} />
               : <div className="pdfa-empty">
@@ -1158,6 +1398,33 @@ export default function AnalisePDF() {
           document.body
         )}
 
+        {/* ── menu de classificação do Mapa Mental (escolha do nível/tipo) ── */}
+        {mmMenu && createPortal(
+          <>
+            <div onMouseDown={() => setMmMenu(null)}
+              style={{ position: 'fixed', inset: 0, zIndex: 4990, background: 'transparent' }} />
+            <div className="pdfa-mm-menu" style={{ left: mmMenu.x, top: mmMenu.y }}
+              onMouseDown={e => e.stopPropagation()}>
+              <div className="cap"><b>“</b>{mmMenu.text}<b>”</b></div>
+              <div className="tgt">
+                {(() => { const a = mmNodes.find(n => n.id === mmActiveId); return a ? <>Entra como filho de <b>{a.texto}</b></> : <>Entra como <b>tópico (raiz)</b></> })()}
+                {mmMenu.pagina ? <> · pág. {mmMenu.pagina}</> : null}
+              </div>
+              <div className="pdfa-mm-grid">
+                {MM_TIPOS.map(t => (
+                  <button key={t.key} className="pdfa-mm-opt" onClick={() => mmAddNode(t.key)} title={'Classificar como ' + t.label}>
+                    <span className="dot" style={{ background: t.cor }} />{t.label}
+                  </button>
+                ))}
+              </div>
+              <div className="foot">
+                <button onClick={() => setMmMenu(null)}>Cancelar (Esc)</button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+
         {/* divisor (só no modo split) */}
         {viewMode === 'split' && <div className="pdfa-divider" onPointerDown={startDividerDrag} title="Arraste para redimensionar" />}
 
@@ -1212,17 +1479,66 @@ export default function AnalisePDF() {
             }} />
           </>}
 
-          {/* ── ÁRVORE (Mapa Mental Textual) — scaffold; conteúdo nas próximas etapas ── */}
-          {bottomView === 'arvore' && (
-            <div className="pdfa-mm-placeholder" style={{ flex: 1, minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--pa-faint)', textAlign: 'center', padding: 24 }}>
-              <div style={{ fontSize: 32 }}>🌲</div>
-              <b style={{ color: 'var(--pa-dim)' }}>Mapa Mental Textual</b>
-              <span style={{ fontSize: '.82rem', maxWidth: 420, lineHeight: 1.5 }}>
-                Aqui vai a árvore de captura: clique/arraste palavras no PDF para montar a hierarquia.
-                Estrutura pronta — captura e árvore chegam nas próximas etapas.
-              </span>
-            </div>
-          )}
+          {/* ── ÁRVORE (Mapa Mental Textual) ── */}
+          {bottomView === 'arvore' && (() => {
+            // monta as linhas respeitando colapso
+            const childrenOf = (pid: string | null) => mmNodes.filter(n => n.paiId === pid).sort((a, b) => a.ordem - b.ordem)
+            const rows: any[] = []
+            const walk = (pid: string | null, depth: number) => {
+              for (const n of childrenOf(pid)) {
+                const kids = childrenOf(n.id)
+                rows.push({ n, depth, hasKids: kids.length > 0 })
+                if (!n.colapsado) walk(n.id, depth + 1)
+              }
+            }
+            walk(null, 0)
+            const ativo = mmNodes.find(n => n.id === mmActiveId)
+            return (
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div className="pdfa-mm-head">
+                  <button className={'pdfa-btn' + (captureMode ? ' on' : '')} disabled={!pdfName}
+                    onClick={() => { setCaptureMode(v => !v); if (clipMode) setClipMode(false); window.getSelection()?.removeAllRanges() }}
+                    title="Liga o mouse de captura sobre o PDF: clique numa palavra ou arraste para um trecho">
+                    {captureMode ? '🖱️ Capturando…' : '🖱️ Ativar captura'}
+                  </button>
+                  <div className="pdfa-mm-active" title="Novas capturas entram como filho deste nó. Clique num nó da árvore para trocar.">
+                    {ativo ? <>→ filho de <b>{ativo.texto}</b></> : <>→ como <b>tópico (raiz)</b></>}
+                  </div>
+                  {mmActiveId && <button className="pdfa-btn icon" onClick={() => setMmActiveId(null)} title="Voltar a capturar na raiz">⤴ Raiz</button>}
+                  <span className="grow" />
+                  {mmNodes.length > 0 && <button className="pdfa-btn icon" title="Limpar todo o mapa"
+                    onClick={() => { if (confirm('Apagar todo o mapa mental deste PDF?')) { setMmNodes([]); setMmActiveId(null) } }}>🗑</button>}
+                </div>
+                <div className="pdfa-mm-tree">
+                  {rows.length === 0
+                    ? <div className="pdfa-mm-empty">
+                        <div style={{ fontSize: 30 }}>🌲</div>
+                        <b style={{ color: 'var(--pa-dim)' }}>Mapa vazio</b>
+                        <span style={{ fontSize: '.8rem', maxWidth: 420, lineHeight: 1.5 }}>
+                          {pdfName ? <>Clique em <b>🖱️ Ativar captura</b> e depois clique numa palavra (ou arraste um trecho) no PDF. Escolha o tipo no menu que abre.</> : 'Importe um PDF para começar a capturar.'}
+                        </span>
+                      </div>
+                    : rows.map(({ n, depth, hasKids }) => {
+                        const tp = MM_TIPO[n.tipo] || MM_TIPO['nota']
+                        return (
+                          <div key={n.id} className={'pdfa-mm-row' + (n.id === mmActiveId ? ' active' : '')}
+                            style={{ marginLeft: depth * 16 }}
+                            onClick={() => setMmActiveId(id => id === n.id ? id : n.id)}
+                            title="Clique para tornar este o nó-pai ativo (as próximas capturas entram aqui)">
+                            <span className="pdfa-mm-fold" onClick={(e) => { e.stopPropagation(); if (hasKids) mmToggleCollapse(n.id) }}>
+                              {hasKids ? (n.colapsado ? '▸' : '▾') : '•'}
+                            </span>
+                            <span className="pdfa-mm-badge" style={{ background: tp.cor }} title={tp.label}>{tp.sigla}</span>
+                            <span className="pdfa-mm-txt">{n.texto}</span>
+                            {n.pagina && <span className="pdfa-mm-pg" onClick={(e) => { e.stopPropagation(); mmGotoPage(n.pagina) }} title="Voltar à origem (página no PDF)">p.{n.pagina}</span>}
+                            <button className="pdfa-mm-x" onClick={(e) => { e.stopPropagation(); mmDeleteNode(n.id) }} title="Excluir nó (e filhos)">×</button>
+                          </div>
+                        )
+                      })}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* ── MAPA (visual) — scaffold; conteúdo na Etapa 5 ── */}
           {bottomView === 'mapa' && (
