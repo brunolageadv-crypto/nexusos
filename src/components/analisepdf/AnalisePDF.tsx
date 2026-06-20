@@ -353,6 +353,17 @@ const PDFA_CSS = `
 /* retângulo de seleção (marquee) */
 .pdfa-mm-marquee{ position:fixed; z-index:4980; pointer-events:none; border:1.5px solid var(--pa-accent);
   background:rgba(26,115,232,.16); border-radius:3px; box-shadow:0 0 0 1px rgba(255,255,255,.5) inset; }
+/* destaques persistentes dos trechos já marcados (modo "continuar marcação") */
+.pdfa-mm-acc{ position:fixed; z-index:4979; pointer-events:none; border:1.5px dashed var(--mm-exemplo);
+  background:rgba(22,163,74,.20); border-radius:3px; }
+/* botão Continuar marcação + aviso de junção no menu */
+.pdfa-mm-continue{ width:100%; display:flex; align-items:center; gap:6px; justify-content:center; flex-wrap:wrap;
+  border:1px dashed var(--mm-exemplo); background:rgba(22,163,74,.10); color:var(--mm-exemplo);
+  border-radius:9px; padding:8px; margin-bottom:9px; cursor:pointer; font:inherit; font-size:.78rem; font-weight:700; }
+.pdfa-mm-continue:hover{ background:rgba(22,163,74,.18); }
+.pdfa-mm-continue span{ font-weight:500; font-size:.68rem; opacity:.85; }
+.pdfa-mm-menu .joinhint{ font-size:.7rem; font-weight:700; color:var(--mm-exemplo); background:rgba(22,163,74,.10);
+  border-radius:7px; padding:5px 8px; margin-bottom:7px; text-align:center; }
 
 /* indicador de página atual (X de Y) */
 .pdfa-pageind{ display:inline-flex; align-items:center; gap:5px; font-size:.76rem; font-weight:700;
@@ -727,6 +738,11 @@ export default function AnalisePDF() {
   const [captureMode, setCaptureMode] = useState(false)            // liga o "mouse de captura" sobre o PDF
   const [mmMenu, setMmMenu] = useState<{ x: number; y: number; text: string; pagina?: number; contexto?: string } | null>(null)
   const [mmBox, setMmBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null) // marquee visual
+  const [mmAccumRects, setMmAccumRects] = useState<any[]>([])      // destaques persistentes do trecho em construção
+  const mmAccumRef = useRef<{ text: string; page?: number; rects: any[] } | null>(null) // pedaços já confirmados
+  const mmLastBoxRef = useRef<any>(null)                           // retângulo da última seleção (ainda não confirmada)
+  const mmLastTextRef = useRef<string>('')                         // texto da última seleção
+  const mmLastPageRef = useRef<number | undefined>(undefined)      // página da última seleção
   const [mmRename, setMmRename] = useState<string | null>(null)   // id do nó em edição inline
   const [mmQuery, setMmQuery] = useState('')                       // busca/filtro na árvore
   const [mmCtx, setMmCtx] = useState<{ x: number; y: number; id: string } | null>(null) // menu de contexto
@@ -1326,8 +1342,40 @@ export default function AnalisePDF() {
     }
     if (!words.length) { toast('Nada dentro do retângulo — desenhe sobre o texto'); return }
     const text = mmJoinWords(words.map(w => w.word))
-    mmOpenMenu(e.clientX, e.clientY, text, words[0].page, words.length > 1 ? text : undefined)
+    // guarda a última seleção (ainda não confirmada)
+    mmLastBoxRef.current = { left, top, width: Math.max(right - left, 6), height: Math.max(bottom - top, 10) }
+    mmLastTextRef.current = text
+    mmLastPageRef.current = words[0].page
+    // se há trechos já acumulados, mostra a PRÉVIA combinada
+    const acc = mmAccumRef.current
+    const shown = acc ? mmCombineTexts(acc.text, text) : text
+    const shownPage = acc ? (acc.page ?? words[0].page) : words[0].page
+    mmOpenMenu(e.clientX, e.clientY, shown, shownPage, shown.includes(' ') ? shown : undefined)
   }, [mmOpenMenu, toast])
+
+  /* junta dois trechos: emenda hifenização de quebra (consti- + tuição) ou separa por espaço */
+  const mmCombineTexts = (a: string, b: string): string => {
+    if (!a) return mmNormalize(b)
+    const merged = a.endsWith('-') && /^[a-zà-ÿ]/.test(b) ? a.slice(0, -1) + b : a + ' ' + b
+    return mmNormalize(merged)
+  }
+
+  /* "Continuar marcação": confirma o trecho atual e libera para marcar o próximo */
+  const mmContinueMark = useCallback(() => {
+    const acc = mmAccumRef.current
+    const next = acc
+      ? { text: mmCombineTexts(acc.text, mmLastTextRef.current), page: acc.page ?? mmLastPageRef.current, rects: [...acc.rects, mmLastBoxRef.current] }
+      : { text: mmLastTextRef.current, page: mmLastPageRef.current, rects: [mmLastBoxRef.current] }
+    mmAccumRef.current = next
+    setMmAccumRects(next.rects)
+    setMmMenu(null)
+    toast('Marque o próximo trecho — será juntado a este')
+  }, [toast])
+
+  /* limpa o menu e o acúmulo (cancelar/Esc) */
+  const mmCancelMenu = useCallback(() => {
+    setMmMenu(null); mmAccumRef.current = null; setMmAccumRects([])
+  }, [])
 
   /* ── histórico (desfazer/refazer) ── */
   const mmSnapshot = useCallback(() => {
@@ -1360,6 +1408,7 @@ export default function AnalisePDF() {
     setMmNodes(prev => [...prev, node])
     setMmActiveId(node.id)
     setMmMenu(null)
+    mmAccumRef.current = null; setMmAccumRects([])     // encerra o acúmulo de trechos
     toast((MM_TIPO[tipo]?.label || 'Nó') + ' adicionado')
   }, [mmMenu, mmSnapshot, toast])
 
@@ -1686,7 +1735,7 @@ export default function AnalisePDF() {
   /* teclado: Esc fecha menus/renome; Ctrl+Z/Y desfaz/refaz na árvore */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setMmMenu(null); setMmCtx(null); setMmRename(null); setMmManager(false); return }
+      if (e.key === 'Escape') { mmAccumRef.current = null; setMmAccumRects([]); setMmMenu(null); setMmCtx(null); setMmRename(null); setMmManager(false); return }
       const tag = (e.target as HTMLElement)?.tagName
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable
       if (bottomView === 'arvore' && (e.ctrlKey || e.metaKey) && !typing) {
@@ -2016,11 +2065,15 @@ export default function AnalisePDF() {
         {/* ── menu de classificação do Mapa Mental (escolha do nível/tipo) ── */}
         {mmMenu && createPortal(
           <>
-            <div onMouseDown={() => setMmMenu(null)}
+            <div onMouseDown={() => mmCancelMenu()}
               style={{ position: 'fixed', inset: 0, zIndex: 4990, background: 'rgba(15,23,42,.20)' }} />
             <div className="pdfa-mm-menu" style={{ left: mmMenu.x, top: mmMenu.y }}
               onMouseDown={e => e.stopPropagation()}>
+              {mmAccumRects.length > 0 && <div className="joinhint">🔗 juntando {mmAccumRects.length + 1} trecho(s) — marque mais ou classifique abaixo</div>}
               <div className="cap"><b>“</b>{mmMenu.text}<b>”</b></div>
+              <button className="pdfa-mm-continue" onClick={mmContinueMark} title="Marcar mais um trecho e juntar a este (ex.: frase que quebra de linha)">
+                ➕ Continuar marcação <span>(marcar outro trecho e juntar)</span>
+              </button>
               <div className="dest">
                 <div className="dest-line">📍 <span>vai entrar em:</span>{' '}
                   {(() => { const path: any[] = []; let c = mmNodes.find(n => n.id === mmActiveId); while (c) { path.unshift(c); c = mmNodes.find(n => n.id === c!.paiId) } return path.length ? <b>{path.map(p => p.texto.length > 16 ? p.texto.slice(0, 15) + '…' : p.texto).join(' › ')} › <span style={{ color: 'var(--pa-accent)' }}>novo</span></b> : <b>Raiz · novo tópico</b> })()}
@@ -2040,10 +2093,16 @@ export default function AnalisePDF() {
                 ))}
               </div>
               <div className="foot">
-                <button onClick={() => setMmMenu(null)}>Cancelar (Esc)</button>
+                <button onClick={() => mmCancelMenu()}>Cancelar (Esc)</button>
               </div>
             </div>
           </>,
+          document.body
+        )}
+
+        {/* ── destaques persistentes dos trechos já marcados (modo "continuar") ── */}
+        {mmAccumRects.length > 0 && createPortal(
+          <>{mmAccumRects.map((r, i) => r && <div key={i} className="pdfa-mm-acc" style={{ left: r.left, top: r.top, width: r.width, height: r.height }} />)}</>,
           document.body
         )}
 
@@ -2167,7 +2226,7 @@ export default function AnalisePDF() {
                 📁 {(() => { const m = mmMapas.find(x => x.id === mmDocId); const fp = m ? mmFolderPath(m.pastaId) : ''; return <>{fp ? <span style={{ color: 'var(--pa-faint)' }}>{fp} › </span> : null}<b>{m?.nome || 'Mapa'}</b></> })()} <span style={{ color: 'var(--pa-faint)' }}>▾</span>
               </button>
               <button className={'pdfa-btn' + (captureMode ? ' on' : '')} disabled={!pdfName}
-                onClick={() => { setCaptureMode(v => !v); if (clipMode) setClipMode(false); window.getSelection()?.removeAllRanges() }}
+                onClick={() => { setCaptureMode(v => { if (v) { mmAccumRef.current = null; setMmAccumRects([]); setMmMenu(null) } return !v }); if (clipMode) setClipMode(false); window.getSelection()?.removeAllRanges() }}
                 title="Ligar a captura: arraste um retângulo sobre o texto do PDF">
                 {captureMode ? '🖱️ Capturando…' : '🖱️ Capturar'}
               </button>
