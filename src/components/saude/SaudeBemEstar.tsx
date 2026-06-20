@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
+import ModulosSaude from './ModulosSaude'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 function clean<T extends object>(obj: T): T {
@@ -1293,7 +1294,7 @@ export default function SaudeBemEstar() {
   const uid = useUid()
   const [registros, setRegistros] = useState<RegistroSaude[]>([])
   const [loading, setLoading] = useState(true)
-  const [aba, setAba] = useState<'hoje'|'relatorios'|'historico'>('hoje')
+  const [aba, setAba] = useState<'hoje'|'relatorios'|'historico'|'modulos'>('hoje')
   const [dataSelecionada, setDataSelecionada] = useState(today())
   const [registroAtual, setRegistroAtual] = useState<RegistroSaude>(defaultRegistro(today()))
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -1408,7 +1409,7 @@ export default function SaudeBemEstar() {
 
       {/* ── ABAS ─────────────────────────────────────────────────────── */}
       <div style={{ padding:'0 28px',borderBottom:'1px solid var(--border-md)',display:'flex',gap:0 }}>
-        {[{id:'hoje',label:'🏠 Visão Geral'},{id:'relatorios',label:'📈 Relatórios'},{id:'historico',label:'📅 Histórico'}].map(a=>(
+        {[{id:'hoje',label:'🏠 Visão Geral'},{id:'relatorios',label:'📈 Relatórios'},{id:'historico',label:'📅 Histórico'},{id:'modulos',label:'🧩 Módulos'}].map(a=>(
           <button key={a.id} onClick={()=>setAba(a.id as any)}
             style={{ padding:'12px 18px',border:'none',background:'transparent',color:aba===a.id?'var(--text-primary)':'var(--text-muted)',fontFamily:'var(--font-display)',fontWeight:aba===a.id?700:500,fontSize:'0.82rem',cursor:'pointer',borderBottom:aba===a.id?`2px solid ${scoreCor}`:'2px solid transparent',marginBottom:-1,transition:'all 0.15s',whiteSpace:'nowrap' }}>
             {a.label}
@@ -1443,6 +1444,7 @@ export default function SaudeBemEstar() {
         )}
         {aba==='relatorios' && <Relatorios registros={registros} />}
         {aba==='historico' && <Historico registros={registros} onSelect={r=>{mudaData(r.data);setAba('hoje')}} />}
+        {aba==='modulos' && <ModulosSaude />}
       </div>
 
       {/* Gaveta */}
