@@ -1095,6 +1095,200 @@ function Historico({ registros, onSelect }: { registros:RegistroSaude[]; onSelec
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
+// ─── Estágio 1: Visão Geral (layout da imagem) ─────────────────────────────────
+const navBtn: React.CSSProperties = { width:26, height:26, borderRadius:8, border:'1px solid var(--border-md)', background:'transparent', color:'var(--text-secondary)', cursor:'pointer', fontSize:'0.85rem', lineHeight:1 }
+
+// Medidor circular completo (Wellness Hub)
+function RingGauge({ score, size=120 }: { score:number; size?:number }) {
+  const color = scoreColor(score)
+  const stroke = 12, r = (size-stroke)/2, c = 2*Math.PI*r
+  const dash = (score/100)*c
+  return (
+    <div style={{ position:'relative', width:size, height:size, flexShrink:0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform:'rotate(-90deg)' }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--border-md)" strokeWidth={stroke} opacity={0.4} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={`${dash} ${c}`} style={{ transition:'stroke-dasharray 0.9s ease', filter:`drop-shadow(0 0 6px ${color}70)` }} />
+      </svg>
+      <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:size*0.3, color, lineHeight:1 }}>{score}</div>
+        <div style={{ fontSize:'0.55rem', color:'var(--text-muted)', letterSpacing:'0.08em', textTransform:'uppercase', marginTop:2 }}>bem-estar</div>
+      </div>
+    </div>
+  )
+}
+
+// Gamificação: badges + progresso das rotinas + streak
+function Conquistas({ registros, streak }: { registros:RegistroSaude[]; streak:number }) {
+  const total = registros.length
+  const mes = today().slice(0,7)
+  const doMes = registros.filter(r=>r.data.startsWith(mes))
+  const diasMes = new Date(Number(mes.slice(0,4)), Number(mes.slice(5,7)), 0).getDate()
+  const pAgua = doMes.filter(r=>r.metaAgua>0 && r.agua>=r.metaAgua).length
+  const pSono = doMes.filter(r=>!!r.sono.inicio && !!r.sono.fim).length
+  const pTreino = doMes.filter(r=>r.treino.realizado).length
+  const badges = [
+    { nome:'Iniciante', icon:'🥉', ok: total>=1,   cor:'#cd7f32' },
+    { nome:'Constante', icon:'🥈', ok: streak>=7,  cor:'#9ca3af' },
+    { nome:'Mestre',    icon:'🥇', ok: streak>=30, cor:'#fbbf24' },
+  ]
+  const rotinas = [
+    { nome:'Hidratação', val:pAgua,   max:diasMes, cor:'#60a5fa' },
+    { nome:'Sono',       val:pSono,   max:diasMes, cor:'#a78bfa' },
+    { nome:'Treino',     val:pTreino, max:diasMes, cor:'#34d399' },
+  ]
+  return (
+    <Card style={{ display:'flex', flexDirection:'column', gap:16, height:'100%', boxSizing:'border-box' }}>
+      <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'0.95rem', color:'var(--text-primary)' }}>🏆 Conquistas da Rotina</div>
+      <div style={{ display:'flex', justifyContent:'space-around' }}>
+        {badges.map(b=>(
+          <div key={b.nome} style={{ textAlign:'center', opacity:b.ok?1:0.32 }}>
+            <div style={{ fontSize:'1.9rem', filter:b.ok?`drop-shadow(0 0 6px ${b.cor}80)`:'grayscale(1)' }}>{b.icon}</div>
+            <div style={{ fontSize:'0.62rem', fontWeight:700, color:b.ok?b.cor:'var(--text-muted)', marginTop:2 }}>{b.nome}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:11 }}>
+        {rotinas.map(rt=>(
+          <div key={rt.nome}>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.68rem', color:'var(--text-muted)', marginBottom:4 }}>
+              <span style={{ fontWeight:600 }}>{rt.nome}</span><span>{rt.val}/{rt.max} dias</span>
+            </div>
+            <ProgressBar value={rt.val} max={rt.max} color={rt.cor} />
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop:'auto', textAlign:'center', padding:'12px', borderRadius:12, background:PASTEL.amber.bg, border:`1px solid ${PASTEL.amber.border}` }}>
+        <div style={{ fontSize:'1.7rem' }}>🔥</div>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.7rem', color:'#f59e0b', lineHeight:1 }}>{streak}</div>
+        <div style={{ fontSize:'0.62rem', color:'var(--text-muted)', marginTop:2 }}>dias consecutivos</div>
+      </div>
+    </Card>
+  )
+}
+
+// Calendário de Consistência: ícones por hábito + destaque de metas batidas
+function CalendarioConsistencia({ registros, refMes, onPrev, onNext }: { registros:RegistroSaude[]; refMes:string; onPrev:()=>void; onNext:()=>void }) {
+  const y = Number(refMes.slice(0,4)), m = Number(refMes.slice(5,7))
+  const diasNoMes = new Date(y, m, 0).getDate()
+  const offset = new Date(y, m-1, 1).getDay()
+  const byData = new Map(registros.map(r=>[r.data, r]))
+  const cells: ({ dia:number; reg?:RegistroSaude } | null)[] = []
+  for (let i=0;i<offset;i++) cells.push(null)
+  for (let d=1; d<=diasNoMes; d++){
+    const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    cells.push({ dia:d, reg: byData.get(ds) })
+  }
+  const nomeMes = new Date(y, m-1, 1).toLocaleDateString('pt-BR',{ month:'long', year:'numeric' })
+  const semana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
+  return (
+    <Card style={{ display:'flex', flexDirection:'column', gap:12, height:'100%', boxSizing:'border-box' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap' }}>
+        <div style={{ fontFamily:'var(--font-display)', fontWeight:800, fontSize:'0.95rem', color:'var(--text-primary)' }}>📅 Calendário de Consistência</div>
+        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <button onClick={onPrev} style={navBtn}>‹</button>
+          <span style={{ fontSize:'0.74rem', fontWeight:700, color:'var(--text-secondary)', textTransform:'capitalize', minWidth:120, textAlign:'center' }}>{nomeMes}</span>
+          <button onClick={onNext} style={navBtn}>›</button>
+        </div>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:6 }}>
+        {semana.map(d=><div key={d} style={{ fontSize:'0.6rem', textAlign:'center', color:'var(--text-muted)', fontWeight:700 }}>{d}</div>)}
+        {cells.map((c,i)=>{
+          if(!c) return <div key={i} />
+          const r = c.reg
+          const sc = r ? scoreBestar(r) : -1
+          const meta = sc>=60
+          const icons:string[] = []
+          if(r){ if(r.agua>0)icons.push('💧'); if(r.sono.inicio)icons.push('😴'); if(r.treino.realizado)icons.push('🏋️'); if(r.peso>0)icons.push('⚖️') }
+          return (
+            <div key={i} title={r?`${c.dia} — bem-estar ${sc}`:`${c.dia} — sem registro`}
+              style={{ minHeight:48, borderRadius:10, padding:'4px 2px', display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+                background: meta ? `${scoreColor(sc)}1f` : (r ? 'var(--surface,rgba(125,125,125,0.06))' : 'transparent'),
+                border:`1px solid ${meta ? scoreColor(sc)+'66' : 'var(--border-md)'}` }}>
+              <span style={{ fontSize:'0.6rem', fontWeight:700, color: meta?scoreColor(sc):'var(--text-muted)' }}>{c.dia}</span>
+              <div style={{ fontSize:'0.6rem', lineHeight:1.05, textAlign:'center' }}>{icons.slice(0,4).join('')}</div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ display:'flex', gap:10, fontSize:'0.58rem', color:'var(--text-muted)', flexWrap:'wrap', alignItems:'center' }}>
+        <span>💧 Água</span><span>😴 Sono</span><span>🏋️ Treino</span><span>⚖️ Peso</span>
+        <span style={{ marginLeft:'auto' }}>Borda colorida = meta do dia (bem-estar ≥ 60)</span>
+      </div>
+    </Card>
+  )
+}
+
+// Gráficos comparativos (mês atual vs anterior) com filtros
+function metricaValor(r:RegistroSaude, met:string): number|undefined {
+  if(met==='peso')  return r.peso>0 ? r.peso : undefined
+  if(met==='agua')  return r.agua>0 ? r.agua : undefined
+  if(met==='sono')  { const h=calcSono(r.sono.inicio,r.sono.fim); return h>0?h:undefined }
+  if(met==='bestar')return scoreBestar(r)
+  return undefined
+}
+function serieMes(registros:RegistroSaude[], met:string, ym:string): {dia:number;val:number}[] {
+  return registros.filter(r=>r.data.startsWith(ym))
+    .map(r=>({ dia:Number(r.data.slice(8,10)), val:metricaValor(r,met) }))
+    .filter((p): p is {dia:number;val:number} => p.val!==undefined)
+    .sort((a,b)=>a.dia-b.dia)
+}
+function OverlayChart({ atual, anterior, color }: { atual:{dia:number;val:number}[]; anterior:{dia:number;val:number}[]; color:string }) {
+  const W=300, H=120, PAD=8
+  const all=[...atual,...anterior]
+  if(all.length<1) return <div style={{ fontSize:'0.72rem', color:'var(--text-muted)', padding:'22px 0', textAlign:'center' }}>Sem dados ainda neste período.</div>
+  const maxV=Math.max(...all.map(p=>p.val)), minV=Math.min(...all.map(p=>p.val)), range=maxV-minV||1
+  const xOf=(dia:number)=>PAD+((dia-1)/30)*(W-PAD*2)
+  const yOf=(v:number)=>H-PAD-((v-minV)/range)*(H-PAD*2)
+  const ln=(arr:{dia:number;val:number}[])=>arr.map(p=>`${xOf(p.dia)},${yOf(p.val)}`).join(' ')
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:'block' }}>
+      {[0,0.5,1].map(f=>{ const yy=PAD+(1-f)*(H-PAD*2); return <line key={f} x1={PAD} y1={yy} x2={W-PAD} y2={yy} stroke="var(--border-md)" strokeWidth={1} strokeDasharray="3,4" opacity={0.5} /> })}
+      {anterior.length>1 && <polyline points={ln(anterior)} fill="none" stroke="var(--text-muted)" strokeWidth={1.6} strokeDasharray="4,4" opacity={0.7} />}
+      {atual.length>1 && <>
+        <polygon points={`${xOf(atual[0].dia)},${H-PAD} ${ln(atual)} ${xOf(atual[atual.length-1].dia)},${H-PAD}`} fill={`${color}22`} />
+        <polyline points={ln(atual)} fill="none" stroke={color} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
+      </>}
+    </svg>
+  )
+}
+function PainelComparativo({ registros, refMes }: { registros:RegistroSaude[]; refMes:string }) {
+  const opts = [
+    { k:'peso',  l:'Peso',      c:'#5eead4' },
+    { k:'agua',  l:'Água',      c:'#60a5fa' },
+    { k:'sono',  l:'Sono',      c:'#a78bfa' },
+    { k:'bestar',l:'Bem-Estar', c:'#fbbf24' },
+  ]
+  const [filtros, setFiltros] = useState<string[]>(['peso','agua'])  // padrão exigido: Peso + Água
+  const y = Number(refMes.slice(0,4)), m = Number(refMes.slice(5,7))
+  const ant = new Date(y, m-2, 1)
+  const ymAnt = `${ant.getFullYear()}-${String(ant.getMonth()+1).padStart(2,'0')}`
+  const toggle = (k:string) => setFiltros(f => f.includes(k) ? (f.length>1 ? f.filter(x=>x!==k) : f) : [...f.slice(-1), k])
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {opts.map(o=>(
+          <button key={o.k} onClick={()=>toggle(o.k)}
+            style={{ padding:'5px 12px', borderRadius:20, fontSize:'0.72rem', fontWeight:700, cursor:'pointer',
+              border:`1px solid ${filtros.includes(o.k)?o.c:'var(--border-md)'}`, background:filtros.includes(o.k)?`${o.c}1f`:'transparent', color:filtros.includes(o.k)?o.c:'var(--text-muted)' }}>{o.l}</button>
+        ))}
+      </div>
+      {filtros.map(k=>{
+        const o = opts.find(x=>x.k===k)!
+        return (
+          <Card key={k} style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            <div style={{ fontSize:'0.82rem', fontWeight:800, color:'var(--text-primary)' }}>{o.l} <span style={{ fontSize:'0.62rem', color:'var(--text-muted)', fontWeight:500 }}>· mês atual vs anterior</span></div>
+            <OverlayChart atual={serieMes(registros,k,refMes)} anterior={serieMes(registros,k,ymAnt)} color={o.c} />
+            <div style={{ display:'flex', gap:14, fontSize:'0.6rem', color:'var(--text-muted)' }}>
+              <span style={{ color:o.c }}>━ Atual</span><span>┄ Anterior</span>
+            </div>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function SaudeBemEstar() {
   const uid = useUid()
   const [registros, setRegistros] = useState<RegistroSaude[]>([])
@@ -1141,6 +1335,12 @@ export default function SaudeBemEstar() {
     while(registros.find(r=>r.data===d.toISOString().slice(0,10))){s++;d.setDate(d.getDate()-1)}
     return s
   },[registros])
+  const [mesRef, setMesRef] = useState(today().slice(0,7))
+  const mudaMes = (delta:number) => {
+    const y=Number(mesRef.slice(0,4)), m=Number(mesRef.slice(5,7))
+    const d=new Date(y, m-1+delta, 1)
+    setMesRef(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`)
+  }
 
   if(loading) return (
     <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'60vh' }}>
@@ -1180,14 +1380,19 @@ export default function SaudeBemEstar() {
               ))}
             </div>
           </div>
+          {/* Wellness Hub (medidor em anel) */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, flexShrink:0 }}>
+            <div style={{ fontSize:'0.62rem', fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.08em' }}>Wellness Hub</div>
+            <RingGauge score={score} size={110} />
+          </div>
           {/* Ações */}
           <div style={{ display:'flex',flexDirection:'column',gap:8,flexShrink:0 }}>
             <button onClick={()=>setDrawerOpen(true)}
               style={{ padding:'10px 20px',borderRadius:12,border:'none',background:'linear-gradient(135deg,#059669,#10b981)',color:'#fff',fontFamily:'var(--font-display)',fontWeight:800,fontSize:'0.85rem',cursor:'pointer',boxShadow:'0 4px 14px rgba(16,185,129,0.3)',whiteSpace:'nowrap' }}>
-              📋 Registrar Rotina
+              📋 Registro Rápido
             </button>
             {streak > 0 && (
-              <div style={{ textAlign:'center',fontSize:'0.7rem',color:'#fbbf24',fontWeight:700 }}>🔥 {streak} dias consecutivos</div>
+              <div style={{ textAlign:'center',fontSize:'0.7rem',color:'#f59e0b',fontWeight:700 }}>🔥 {streak} dias consecutivos</div>
             )}
           </div>
         </div>
@@ -1214,14 +1419,26 @@ export default function SaudeBemEstar() {
       {/* ── BENTO GRID ───────────────────────────────────────────────── */}
       <div style={{ flex:1,padding:'20px 28px',overflowY:'auto' }}>
         {aba==='hoje' && (
-          <div style={{ display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14 }}>
-            <BentoAgua r={registroAtual} onUpdate={inlineUpdate} />
-            <BentoHumorEnergia r={registroAtual} historico={historico} />
-            <BentoPeso r={registroAtual} historico={historico} />
-            <BentoTreino r={registroAtual} historico={historico} />
-            <BentoSono r={registroAtual} historico={historico} />
-            <BentoAlergia r={registroAtual} historico={historico} />
-            <BentoSintomas r={registroAtual} historico={historico} />
+          <div style={{ display:'flex', flexDirection:'column', gap:18 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'minmax(210px,1fr) minmax(300px,2fr) minmax(230px,1fr)', gap:16, alignItems:'stretch' }}>
+              <Conquistas registros={registros} streak={streak} />
+              <CalendarioConsistencia registros={registros} refMes={mesRef} onPrev={()=>mudaMes(-1)} onNext={()=>mudaMes(1)} />
+              <PainelComparativo registros={registros} refMes={mesRef} />
+            </div>
+            <details>
+              <summary style={{ cursor:'pointer', fontFamily:'var(--font-display)', fontWeight:800, fontSize:'0.9rem', color:'var(--text-primary)', padding:'6px 0' }}>
+                📝 Registro de hoje — água, humor, peso, treino, sono, alergia, sintomas
+              </summary>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))', gap:14, marginTop:12 }}>
+                <BentoAgua r={registroAtual} onUpdate={inlineUpdate} />
+                <BentoHumorEnergia r={registroAtual} historico={historico} />
+                <BentoPeso r={registroAtual} historico={historico} />
+                <BentoTreino r={registroAtual} historico={historico} />
+                <BentoSono r={registroAtual} historico={historico} />
+                <BentoAlergia r={registroAtual} historico={historico} />
+                <BentoSintomas r={registroAtual} historico={historico} />
+              </div>
+            </details>
           </div>
         )}
         {aba==='relatorios' && <Relatorios registros={registros} />}
