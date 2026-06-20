@@ -419,6 +419,16 @@ const PDFA_CSS = `
 
 /* barra de mapas (pasta › mapa) */
 .pdfa-mm-mapsbar{ display:flex; align-items:center; gap:6px; padding:7px 10px; border-bottom:1px solid var(--pa-border); background:var(--pa-hover); }
+
+/* BARRA ÚNICA do painel inferior */
+.pdfa-mm-toolbar{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; padding:6px 9px; border-bottom:1px solid var(--pa-border); }
+.pdfa-mm-toolbar .grow{ flex:1 }
+.pdfa-mm-toolbar .sep{ width:1px; height:20px; background:var(--pa-border); margin:0 3px; }
+.pdfa-mm-toolbar .pdfa-btn{ padding:6px 9px; font-size:.75rem; }
+.pdfa-mm-toolbar .find{ display:flex; align-items:center; gap:5px; background:var(--pa-hover); border:1px solid var(--pa-border);
+  border-radius:8px; padding:3px 8px; min-width:110px; max-width:230px; flex:0 1 180px; }
+.pdfa-mm-toolbar .find input{ flex:1; min-width:40px; border:none; background:transparent; outline:none; font:inherit; font-size:.76rem; color:var(--pa-text); }
+.pdfa-mm-toolbar .pdfa-mm-mapsel{ max-width:38%; }
 .pdfa-mm-mapsel{ display:inline-flex; align-items:center; gap:4px; max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   border:1px solid var(--pa-border); background:var(--pa-panel); color:var(--pa-text); border-radius:9px; padding:6px 11px; cursor:pointer; font:inherit; font-size:.8rem; }
 .pdfa-mm-mapsel:hover{ border-color:var(--pa-border-md); }
@@ -2129,16 +2139,69 @@ export default function AnalisePDF() {
         {/* EDITOR */}
         <div className={'pdfa-editor-box' + (viewMode === 'note' ? ' fullnote' : '')}
           style={viewMode === 'split' ? { flex: 1 } : undefined}>
-          {/* ── seletor de visão do painel inferior (Árvore · Mapa · Nota) ── */}
-          <div className="pdfa-mm-tabs" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: '1px solid var(--pa-border)' }}>
-            <button className={'pdfa-btn' + (bottomView === 'arvore' ? ' on' : '')} onClick={() => setBottomView('arvore')} title="Mapa mental textual — árvore de captura">🌲 Árvore</button>
+          {/* ── BARRA ÚNICA do painel inferior (abas + contexto + ações) ── */}
+          <div className="pdfa-mm-toolbar">
+            <button className={'pdfa-btn' + (bottomView === 'arvore' ? ' on' : '')} onClick={() => setBottomView('arvore')} title="Mapa mental textual — árvore">🌲 Árvore</button>
             <button className={'pdfa-btn' + (bottomView === 'mapa' ? ' on' : '')} onClick={() => setBottomView('mapa')} title="Mapa mental visual">🗺 Mapa</button>
-            <span className="sep" />
             <button className={'pdfa-btn' + (bottomView === 'nota' ? ' on' : '')} onClick={() => setBottomView('nota')} title="Editor de anotações">✍ Nota</button>
-            <span className="grow" style={{ flex: 1 }} />
-            <span style={{ fontSize: '.72rem', color: 'var(--pa-faint)', fontWeight: 600 }}>
-              {bottomView === 'nota' ? 'Anotações (rich text)' : bottomView === 'arvore' ? 'Captura de palavras-chave do PDF' : 'Visualização do mapa'}
-            </span>
+
+            {bottomView === 'arvore' && <>
+              <span className="sep" />
+              <button className="pdfa-mm-mapsel" disabled={!pdfName} onClick={() => setMmManager(true)} title="Mapas, pastas e subpastas">
+                📁 {(() => { const m = mmMapas.find(x => x.id === mmDocId); const fp = m ? mmFolderPath(m.pastaId) : ''; return <>{fp ? <span style={{ color: 'var(--pa-faint)' }}>{fp} › </span> : null}<b>{m?.nome || 'Mapa'}</b></> })()} <span style={{ color: 'var(--pa-faint)' }}>▾</span>
+              </button>
+              <button className={'pdfa-btn' + (captureMode ? ' on' : '')} disabled={!pdfName}
+                onClick={() => { setCaptureMode(v => !v); if (clipMode) setClipMode(false); window.getSelection()?.removeAllRanges() }}
+                title="Ligar a captura: arraste um retângulo sobre o texto do PDF">
+                {captureMode ? '🖱️ Capturando…' : '🖱️ Capturar'}
+              </button>
+              {pdfName && <span className="pdfa-mm-pagetag" title="Página atual do PDF">📄 {String(currentPage).padStart(2, '0')}/{String(numPages).padStart(2, '0')}</span>}
+              <span className="grow" style={{ flex: 1 }} />
+              <div className="find">
+                <span style={{ color: 'var(--pa-faint)', fontSize: '.8rem' }}>🔍</span>
+                <input placeholder="Buscar…" value={mmQuery} onChange={e => setMmQuery(e.target.value)} />
+                {mmQuery && <span style={{ cursor: 'pointer', color: 'var(--pa-faint)' }} onClick={() => setMmQuery('')}>✕</span>}
+              </div>
+              <button className="pdfa-btn icon" onClick={mmUndo} title="Desfazer (Ctrl+Z)">↶</button>
+              <button className="pdfa-btn icon" onClick={mmRedo} title="Refazer (Ctrl+Y)">↷</button>
+              <button className="pdfa-btn icon" onClick={() => mmAddChild(mmActiveId)} disabled={!pdfName} title="Adicionar nó no ponto de inserção">＋</button>
+              <button className="pdfa-btn icon" disabled={!pdfName} onClick={() => mmNewMap(mmMapas.find(x => x.id === mmDocId)?.pastaId ?? null)} title="Novo mapa">＋🗺</button>
+              <div style={{ position: 'relative' }}>
+                <button className={'pdfa-btn' + (mmExportOpen ? ' on' : '')} disabled={mmNodes.length === 0} onClick={() => setMmExportOpen(v => !v)} title="Exportar">⤓</button>
+                {mmExportOpen && (
+                  <div className="pdfa-mm-ctx" style={{ position: 'absolute', right: 0, top: '110%', left: 'auto' }} onMouseLeave={() => setMmExportOpen(false)}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', fontSize: '.74rem', color: 'var(--pa-dim)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={mmIncluirPag} onChange={e => setMmIncluirPag(e.target.checked)} /> incluir páginas (p. N)
+                    </label>
+                    <div className="div" />
+                    <button onClick={() => mmDoExport('md')}>⬇ Markdown hierárquico</button>
+                    <button onClick={() => mmDoExport('mdbadge')}>⬇ Markdown com badges</button>
+                    <button onClick={() => mmDoExport('txt')}>⬇ Texto indentado (.txt)</button>
+                    <button onClick={() => mmDoExport('outline')}>⬇ Outline numerado</button>
+                    <button onClick={() => mmDoExport('json')}>⬇ JSON (round-trip)</button>
+                    <button onClick={() => mmDoExport('opml')}>⬇ OPML (MindNode/XMind)</button>
+                    <button onClick={() => mmDoExport('anki')}>⬇ Anki / Flashcards (TSV)</button>
+                    <button onClick={mmExportMapaPDF}>⬇ PDF visual do mapa</button>
+                    <div className="div" />
+                    <button onClick={() => mmDoExport('copy')}>📋 Copiar Markdown</button>
+                  </div>
+                )}
+              </div>
+            </>}
+
+            {bottomView === 'mapa' && <>
+              <span className="grow" style={{ flex: 1 }} />
+              <button className="pdfa-btn icon" onClick={() => setMmZoom(z => Math.max(0.4, +(z - 0.1).toFixed(2)))} title="Diminuir">－</button>
+              <span style={{ fontSize: '.72rem', color: 'var(--pa-faint)', minWidth: 38, textAlign: 'center' }}>{Math.round(mmZoom * 100)}%</span>
+              <button className="pdfa-btn icon" onClick={() => setMmZoom(z => Math.min(2.5, +(z + 0.1).toFixed(2)))} title="Aumentar">＋</button>
+              <button className="pdfa-btn icon" onClick={() => setMmZoom(1)} title="100%">⟳</button>
+              <button className="pdfa-btn icon" onClick={mmExportMapaPDF} disabled={mmNodes.length === 0} title="Exportar o mapa em PDF">⤓ PDF</button>
+            </>}
+
+            {bottomView === 'nota' && <>
+              <span className="grow" style={{ flex: 1 }} />
+              <span style={{ fontSize: '.72rem', color: 'var(--pa-faint)', fontWeight: 600 }}>Anotações (rich text)</span>
+            </>}
           </div>
 
           {/* ── NOTA (editor rich-text existente) ── */}
@@ -2205,74 +2268,22 @@ export default function AnalisePDF() {
             const insertPath = ativo ? pathOf(ativo.id) : []
             return (
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                {/* barra de mapas (pasta › subpasta / nome do mapa) */}
-                <div className="pdfa-mm-mapsbar">
-                  <button className="pdfa-mm-mapsel" disabled={!pdfName} onClick={() => setMmManager(true)} title="Gerenciar mapas, pastas e subpastas">
-                    📁 {fpath ? <span style={{ color: 'var(--pa-faint)' }}>{fpath} › </span> : null}<b>{curMap?.nome || 'Mapa'}</b> <span style={{ color: 'var(--pa-faint)' }}>▾</span>
-                  </button>
-                  <span className="grow" style={{ flex: 1 }} />
-                  <button className="pdfa-btn icon" disabled={!pdfName} onClick={() => mmNewMap(curMap?.pastaId ?? null)} title="Criar um novo mapa">＋ Mapa</button>
-                  <button className="pdfa-btn icon" disabled={!pdfName} onClick={() => setMmManager(true)} title="Gerenciar mapas / pastas">📁 Pastas</button>
-                </div>
-
-                {/* cabeçalho de captura + indicação de ONDE vai entrar */}
-                <div className="pdfa-mm-head">
-                  <button className={'pdfa-btn' + (captureMode ? ' on' : '')} disabled={!pdfName}
-                    onClick={() => { setCaptureMode(v => !v); if (clipMode) setClipMode(false); window.getSelection()?.removeAllRanges() }}
-                    title="Liga o mouse de captura: arraste um retângulo sobre o texto (ou clique numa palavra)">
-                    {captureMode ? '🖱️ Capturando…' : '🖱️ Ativar captura'}
-                  </button>
-                  {pdfName && <span className="pdfa-mm-pagetag" title="Página atual do PDF">📄 {String(currentPage).padStart(2, '0')} de {String(numPages).padStart(2, '0')}</span>}
-                  <span className="grow" style={{ flex: 1 }} />
-                  {mmNodes.length > 0 && <button className="pdfa-btn icon" title="Limpar este mapa"
-                    onClick={() => { if (confirm('Apagar TODO o conteúdo deste mapa?')) { mmSnapshot(); setMmNodes([]); setMmActiveId(null); setMmSelId(null) } }}>🗑</button>}
-                </div>
-
-                {/* faixa de destino da próxima captura */}
-                <div className={'pdfa-mm-insert' + (captureMode ? ' on' : '')}>
-                  <span className="lbl">↳ próxima captura entra em:</span>
-                  {insertPath.length === 0
-                    ? <b className="raiz">Raiz · novo tópico</b>
-                    : <span className="crumb">{insertPath.map((p, i) => {
-                        const tp = MM_TIPO[p.tipo] || MM_TIPO['nota']
-                        return <span key={p.id}>{i > 0 ? ' › ' : ''}<span className="dot" style={{ background: tp.cor }} />{p.texto.length > 18 ? p.texto.slice(0, 17) + '…' : p.texto}</span>
-                      })}<span className="arrow"> › novo filho</span></span>}
-                  {mmActiveId && <button className="pdfa-btn icon" onClick={() => setMmActiveId(null)} title="Inserir na raiz">↺ raiz</button>}
-                </div>
-
-                {/* toolbar: busca + desfazer/refazer + novo tópico + exportar */}
-                <div className="pdfa-mm-bar">
-                  <div className="find">
-                    <span style={{ color: 'var(--pa-faint)', fontSize: '.8rem' }}>🔍</span>
-                    <input placeholder="Buscar nó…" value={mmQuery} onChange={e => setMmQuery(e.target.value)} />
-                    {mmQuery && <span style={{ cursor: 'pointer', color: 'var(--pa-faint)' }} onClick={() => setMmQuery('')}>✕</span>}
+                {/* faixa de destino — só aparece com a captura LIGADA, para não ocupar espaço */}
+                {captureMode && (
+                  <div className="pdfa-mm-insert on">
+                    <span className="lbl">↳ entra em:</span>
+                    {insertPath.length === 0
+                      ? <b className="raiz">Raiz · novo tópico</b>
+                      : <span className="crumb">{insertPath.map((p, i) => {
+                          const tp = MM_TIPO[p.tipo] || MM_TIPO['nota']
+                          return <span key={p.id}>{i > 0 ? ' › ' : ''}<span className="dot" style={{ background: tp.cor }} />{p.texto.length > 18 ? p.texto.slice(0, 17) + '…' : p.texto}</span>
+                        })}<span className="arrow"> › novo filho</span></span>}
+                    {mmActiveId && <button className="pdfa-btn icon" onClick={() => setMmActiveId(null)} title="Inserir na raiz">↺ raiz</button>}
+                    <span className="grow" style={{ flex: 1 }} />
+                    {mmNodes.length > 0 && <button className="pdfa-btn icon" title="Limpar este mapa"
+                      onClick={() => { if (confirm('Apagar TODO o conteúdo deste mapa?')) { mmSnapshot(); setMmNodes([]); setMmActiveId(null); setMmSelId(null) } }}>🗑 limpar</button>}
                   </div>
-                  <button className="pdfa-btn icon" onClick={mmUndo} title="Desfazer (Ctrl+Z)">↶</button>
-                  <button className="pdfa-btn icon" onClick={mmRedo} title="Refazer (Ctrl+Y)">↷</button>
-                  <button className="pdfa-btn icon" onClick={() => mmAddChild(mmActiveId)} disabled={!pdfName} title="Adicionar nó manual no ponto de inserção">＋</button>
-                  <div style={{ position: 'relative' }}>
-                    <button className={'pdfa-btn' + (mmExportOpen ? ' on' : '')} disabled={mmNodes.length === 0}
-                      onClick={() => setMmExportOpen(v => !v)} title="Exportar o mapa">⤓ Exportar</button>
-                    {mmExportOpen && (
-                      <div className="pdfa-mm-ctx" style={{ position: 'absolute', right: 0, top: '110%', left: 'auto' }} onMouseLeave={() => setMmExportOpen(false)}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', fontSize: '.74rem', color: 'var(--pa-dim)', cursor: 'pointer' }}>
-                          <input type="checkbox" checked={mmIncluirPag} onChange={e => setMmIncluirPag(e.target.checked)} /> incluir páginas (p. N)
-                        </label>
-                        <div className="div" />
-                        <button onClick={() => mmDoExport('md')}>⬇ Markdown hierárquico</button>
-                        <button onClick={() => mmDoExport('mdbadge')}>⬇ Markdown com badges</button>
-                        <button onClick={() => mmDoExport('txt')}>⬇ Texto indentado (.txt)</button>
-                        <button onClick={() => mmDoExport('outline')}>⬇ Outline numerado</button>
-                        <button onClick={() => mmDoExport('json')}>⬇ JSON (round-trip)</button>
-                        <button onClick={() => mmDoExport('opml')}>⬇ OPML (MindNode/XMind)</button>
-                        <button onClick={() => mmDoExport('anki')}>⬇ Anki / Flashcards (TSV)</button>
-                        <button onClick={mmExportMapaPDF}>⬇ PDF visual do mapa</button>
-                        <div className="div" />
-                        <button onClick={() => mmDoExport('copy')}>📋 Copiar Markdown</button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                )}
 
                 <div className="pdfa-mm-tree"
                   onDragOver={e => e.preventDefault()}
@@ -2370,15 +2381,6 @@ export default function AnalisePDF() {
             const H = Math.max(leaf, 1) * ROW + PAD * 2
             return (
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <div className="pdfa-mm-bar">
-                  <span style={{ fontSize: '.74rem', color: 'var(--pa-dim)', fontWeight: 700 }}>🗺 Mapa visual</span>
-                  <span className="grow" style={{ flex: 1 }} />
-                  <button className="pdfa-btn icon" onClick={() => setMmZoom(z => Math.max(0.4, +(z - 0.1).toFixed(2)))} title="Diminuir">－</button>
-                  <span style={{ fontSize: '.72rem', color: 'var(--pa-faint)', minWidth: 38, textAlign: 'center' }}>{Math.round(mmZoom * 100)}%</span>
-                  <button className="pdfa-btn icon" onClick={() => setMmZoom(z => Math.min(2.5, +(z + 0.1).toFixed(2)))} title="Aumentar">＋</button>
-                  <button className="pdfa-btn icon" onClick={() => setMmZoom(1)} title="100%">⟳</button>
-                  <button className="pdfa-btn" onClick={mmExportMapaPDF} disabled={ids.length === 0} title="Exportar o mapa em PDF">⤓ PDF</button>
-                </div>
                 <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: 'var(--pa-bg)' }}>
                   {ids.length === 0
                     ? <div className="pdfa-mm-empty" style={{ height: '100%' }}>
