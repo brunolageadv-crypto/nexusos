@@ -741,6 +741,7 @@ export default function AnalisePDF() {
   const [mmManager, setMmManager] = useState(false)                // modal "Gerenciar mapas"
   const [mmSelId, setMmSelId] = useState<string | null>(null)      // nó selecionado (mostra a barra de ações)
   const [mmRenameMapa, setMmRenameMapa] = useState<string | null>(null) // id de mapa/pasta em renomeação no gerenciador
+  const [mmExpanded, setMmExpanded] = useState<Record<string, boolean>>({}) // pastas abertas no painel direito
   const mmNodesRef = useRef<any[]>([]); useEffect(() => { mmNodesRef.current = mmNodes }, [mmNodes])
   const mmActiveRef = useRef<string | null>(null); useEffect(() => { mmActiveRef.current = mmActiveId }, [mmActiveId])
   const captureModeRef = useRef(false); useEffect(() => { captureModeRef.current = captureMode }, [captureMode])
@@ -1645,6 +1646,21 @@ export default function AnalisePDF() {
     setMmMapas(prev => prev.map(m => m.id === id ? { ...m, pastaId } : m))
   }, [])
 
+  /* mover uma PASTA para dentro de outra (com guarda anti-ciclo) */
+  const mmMovePasta = useCallback((id: string, paiId: string | null) => {
+    if (id === paiId) return
+    const isDesc = (anc: string, x: string | null): boolean => { let c = mmPastasRef.current.find(p => p.id === x); while (c) { if (c.id === anc) return true; c = mmPastasRef.current.find(p => p.id === c!.paiId) } return false }
+    if (paiId && isDesc(id, paiId)) { toast('Não dá para mover para dentro da própria pasta'); return }
+    setMmPastas(prev => prev.map(p => p.id === id ? { ...p, paiId } : p))
+  }, [toast])
+
+  /* mover item (pasta ou mapa) para uma pasta — usado no drag-and-drop do painel direito */
+  const mmMoveItem = useCallback((drag: any, pastaId: string | null) => {
+    if (!drag) return
+    if (drag.type === 'folder') mmMovePasta(drag.id, pastaId)
+    else mmMoveMapa(drag.id, pastaId)
+  }, [mmMovePasta, mmMoveMapa])
+
   const mmDeleteMapa = useCallback((id: string) => {
     const rest = mmMapasRef.current.filter(m => m.id !== id)
     if (!rest.length) { toast('Deixe ao menos um mapa'); return }
@@ -2147,7 +2163,7 @@ export default function AnalisePDF() {
 
             {bottomView === 'arvore' && <>
               <span className="sep" />
-              <button className="pdfa-mm-mapsel" disabled={!pdfName} onClick={() => setMmManager(true)} title="Mapas, pastas e subpastas">
+              <button className="pdfa-mm-mapsel" disabled={!pdfName} onClick={() => setShowSide(true)} title="Mostrar mapas/pastas no painel direito">
                 📁 {(() => { const m = mmMapas.find(x => x.id === mmDocId); const fp = m ? mmFolderPath(m.pastaId) : ''; return <>{fp ? <span style={{ color: 'var(--pa-faint)' }}>{fp} › </span> : null}<b>{m?.nome || 'Mapa'}</b></> })()} <span style={{ color: 'var(--pa-faint)' }}>▾</span>
               </button>
               <button className={'pdfa-btn' + (captureMode ? ' on' : '')} disabled={!pdfName}
@@ -2419,33 +2435,71 @@ export default function AnalisePDF() {
         </div>
       </div>
 
-      {/* ════ COLUNA DIREITA: PASTAS / ANOTAÇÕES ════ */}
+      {/* ════ COLUNA DIREITA: alterna entre MAPAS (Árvore/Mapa) e ANOTAÇÕES (Nota) ════ */}
       <div className={'pdfa-side' + (showSide ? '' : ' hide')}>
-        <div className="pdfa-side-head">
-          <div className="ttl">🗂 Anotações</div>
-          <div className="sub">Organize em pastas — só as anotações são salvas</div>
-          <div className="pdfa-side-actions">
-            <button className="pdfa-btn primary" onClick={() => newNote(noteFolderId)}>＋ Anotação</button>
-            <button className="pdfa-btn" onClick={() => addFolder(null)}>＋ Pasta</button>
+        {bottomView === 'nota' ? <>
+          <div className="pdfa-side-head">
+            <div className="ttl">🗂 Anotações</div>
+            <div className="sub">Organize em pastas — só as anotações são salvas</div>
+            <div className="pdfa-side-actions">
+              <button className="pdfa-btn primary" onClick={() => newNote(noteFolderId)}>＋ Anotação</button>
+              <button className="pdfa-btn" onClick={() => addFolder(null)}>＋ Pasta</button>
+            </div>
           </div>
-        </div>
-        <div className="pdfa-tree"
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => { e.preventDefault(); const d = dragRef.current; dragRef.current = null; if (d) void moveItem(d, null) }}>
-          {folders.length === 0 && notes.filter(n => !n.folderId).length === 0
-            ? <div className="pdfa-tree-empty">Nenhuma anotação ainda.<br />Crie uma pasta ou comece a escrever abaixo — ela aparece aqui ao salvar.</div>
-            : <FolderTree
-                parentId={null} folders={folders} notes={notes} expanded={expanded}
-                activeNoteId={noteId}
-                onToggle={(id) => setExpanded(e => ({ ...e, [id]: !e[id] }))}
-                onOpenNote={openNote} onDeleteNote={deleteNote}
-                onAddFolder={addFolder} onRenameFolder={renameFolder} onDeleteFolder={deleteFolder}
-                onNewNoteIn={(fid) => newNote(fid)}
-                onRenameNote={async (n, title) => { if (uid) await setDoc(doc(db, 'users', uid, 'pdfNotes', n.id), { title: title || n.title }, { merge: true }) }}
-                onDragStart={(payload) => { dragRef.current = payload }}
-                onDropInto={(fid) => { const d = dragRef.current; dragRef.current = null; if (d) void moveItem(d, fid) }}
-              />}
-        </div>
+          <div className="pdfa-tree"
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); const d = dragRef.current; dragRef.current = null; if (d) void moveItem(d, null) }}>
+            {folders.length === 0 && notes.filter(n => !n.folderId).length === 0
+              ? <div className="pdfa-tree-empty">Nenhuma anotação ainda.<br />Crie uma pasta ou comece a escrever abaixo — ela aparece aqui ao salvar.</div>
+              : <FolderTree
+                  parentId={null} folders={folders} notes={notes} expanded={expanded}
+                  activeNoteId={noteId}
+                  onToggle={(id) => setExpanded(e => ({ ...e, [id]: !e[id] }))}
+                  onOpenNote={openNote} onDeleteNote={deleteNote}
+                  onAddFolder={addFolder} onRenameFolder={renameFolder} onDeleteFolder={deleteFolder}
+                  onNewNoteIn={(fid) => newNote(fid)}
+                  onRenameNote={async (n, title) => { if (uid) await setDoc(doc(db, 'users', uid, 'pdfNotes', n.id), { title: title || n.title }, { merge: true }) }}
+                  onDragStart={(payload) => { dragRef.current = payload }}
+                  onDropInto={(fid) => { const d = dragRef.current; dragRef.current = null; if (d) void moveItem(d, fid) }}
+                />}
+          </div>
+        </> : <>
+          {/* MAPAS — espelho das anotações, alimentado pelo acervo de mapas/pastas do PDF */}
+          {(() => {
+            const mfolders = mmPastas.map(p => ({ id: p.id, name: p.nome, parentId: p.paiId }))
+            const mnotes = mmMapas.map(m => ({ id: m.id, title: m.nome, folderId: m.pastaId }))
+            return <>
+              <div className="pdfa-side-head">
+                <div className="ttl">🌲 Mapas mentais</div>
+                <div className="sub">{pdfName ? 'Pastas e subpastas deste PDF' : 'Importe um PDF para começar'}</div>
+                <div className="pdfa-side-actions">
+                  <button className="pdfa-btn primary" disabled={!pdfName} onClick={() => mmNewMap(null)}>＋ Mapa</button>
+                  <button className="pdfa-btn" disabled={!pdfName} onClick={() => mmNewPasta(null)}>＋ Pasta</button>
+                </div>
+              </div>
+              <div className="pdfa-tree"
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); const d = dragRef.current; dragRef.current = null; if (d) mmMoveItem(d, null) }}>
+                {!pdfName
+                  ? <div className="pdfa-tree-empty">Nenhum PDF aberto.</div>
+                  : <FolderTree
+                      parentId={null} folders={mfolders} notes={mnotes} expanded={mmExpanded}
+                      activeNoteId={mmDocId} itemIcon="🗺" itemAddGlyph="＋🗺" itemAddTitle="Novo mapa nesta pasta"
+                      onToggle={(id) => setMmExpanded(e => ({ ...e, [id]: !e[id] }))}
+                      onOpenNote={(n) => mmOpenMap(n.id)}
+                      onDeleteNote={(n) => { if (confirm('Excluir o mapa "' + n.title + '"?')) mmDeleteMapa(n.id) }}
+                      onAddFolder={(pid) => mmNewPasta(pid)}
+                      onRenameFolder={(f, name) => mmRenameMapaCommit(f.id, name, true)}
+                      onDeleteFolder={(f) => { if (confirm('Excluir a pasta "' + f.name + '"? Os mapas dentro voltam para a raiz.')) mmDeletePasta(f.id) }}
+                      onNewNoteIn={(fid) => mmNewMap(fid)}
+                      onRenameNote={(n, title) => mmRenameMapaCommit(n.id, title, false)}
+                      onDragStart={(payload) => { dragRef.current = payload }}
+                      onDropInto={(fid) => { const d = dragRef.current; dragRef.current = null; if (d) mmMoveItem(d, fid) }}
+                    />}
+              </div>
+            </>
+          })()}
+        </>}
       </div>
 
       {/* overlay de exportação + toast */}
@@ -2561,7 +2615,8 @@ function OutlineTree({ items, onGo, depth = 0 }: any) {
 /* ───────────────────────── árvore de pastas/anotações ───────────────────────── */
 function FolderTree(props: any) {
   const { parentId, folders, notes, expanded, activeNoteId, onToggle, onOpenNote, onDeleteNote,
-    onAddFolder, onRenameFolder, onDeleteFolder, onNewNoteIn, onRenameNote, onDragStart, onDropInto } = props
+    onAddFolder, onRenameFolder, onDeleteFolder, onNewNoteIn, onRenameNote, onDragStart, onDropInto,
+    itemIcon = '📝' } = props
   const subFolders = folders.filter((f: any) => (f.parentId ?? null) === parentId).sort((a: any, b: any) => a.name.localeCompare(b.name))
   const subNotes = notes.filter((n: any) => (n.folderId ?? null) === parentId).sort((a: any, b: any) => (a.title || '').localeCompare(b.title || ''))
   return (
@@ -2570,7 +2625,7 @@ function FolderTree(props: any) {
         <FolderRow key={f.id} folder={f} {...props} />
       ))}
       {subNotes.map((n: any) => (
-        <NoteRow key={n.id} note={n} active={n.id === activeNoteId}
+        <NoteRow key={n.id} note={n} active={n.id === activeNoteId} icon={itemIcon}
           onOpen={() => onOpenNote(n)} onDelete={() => onDeleteNote(n)}
           onRename={(t: string) => onRenameNote(n, t)}
           onDragStart={() => onDragStart({ type: 'note', id: n.id })} />
@@ -2580,7 +2635,8 @@ function FolderTree(props: any) {
 }
 
 function FolderRow(props: any) {
-  const { folder: f, expanded, onToggle, onAddFolder, onRenameFolder, onDeleteFolder, onNewNoteIn, onDropInto, onDragStart } = props
+  const { folder: f, expanded, onToggle, onAddFolder, onRenameFolder, onDeleteFolder, onNewNoteIn, onDropInto, onDragStart,
+    itemAddGlyph = '＋▤', itemAddTitle = 'Nova anotação aqui' } = props
   const open = !!expanded[f.id]
   const [renaming, setRenaming] = useState(false)
   const [dropHover, setDropHover] = useState(false)
@@ -2601,7 +2657,7 @@ function FolderRow(props: any) {
               onBlur={e => { onRenameFolder(f, e.target.value.trim()); setRenaming(false) }}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setRenaming(false) }} />
           : <span className="lbl">{f.name}</span>}
-        <span className="mini" title="Nova anotação aqui" onClick={e => { e.stopPropagation(); onNewNoteIn(f.id) }}>＋▤</span>
+        <span className="mini" title={itemAddTitle} onClick={e => { e.stopPropagation(); onNewNoteIn(f.id) }}>{itemAddGlyph}</span>
         <span className="mini" title="Nova subpasta" onClick={e => { e.stopPropagation(); onAddFolder(f.id) }}>＋📁</span>
         <span className="mini" title="Renomear" onClick={e => { e.stopPropagation(); setRenaming(true) }}>✎</span>
         <span className="mini" title="Excluir" onClick={e => { e.stopPropagation(); onDeleteFolder(f) }}>🗑</span>
@@ -2611,7 +2667,7 @@ function FolderRow(props: any) {
   )
 }
 
-function NoteRow({ note, active, onOpen, onDelete, onRename, onDragStart }: any) {
+function NoteRow({ note, active, onOpen, onDelete, onRename, onDragStart, icon = '📝' }: any) {
   const [renaming, setRenaming] = useState(false)
   return (
     <div className={'pdfa-row' + (active ? ' active' : '')}
@@ -2619,7 +2675,7 @@ function NoteRow({ note, active, onOpen, onDelete, onRename, onDragStart }: any)
       onDragStart={e => { e.stopPropagation(); onDragStart() }}
       onClick={() => !renaming && onOpen()}>
       <span className="tw" style={{ visibility: 'hidden' }}>▶</span>
-      <span className="ico">📝</span>
+      <span className="ico">{icon}</span>
       {renaming
         ? <input className="rename" autoFocus defaultValue={note.title}
             onClick={e => e.stopPropagation()}
