@@ -508,7 +508,15 @@ const PDFA_CSS = `
 
 /* menu de classificação (popup junto ao cursor) */
 .pdfa-mm-menu{ position:fixed; z-index:5000; background:var(--pa-panel); border:1px solid var(--pa-border-md);
-  border-radius:12px; box-shadow:var(--pa-shadow); padding:10px; width:300px; max-width:92vw; }
+  border-radius:12px; box-shadow:var(--pa-shadow); padding:0; width:300px; max-width:92vw;
+  display:flex; flex-direction:column; max-height:90vh; }
+.pdfa-mm-menu .drag{ display:flex; align-items:center; gap:6px; padding:8px 10px; cursor:move; flex:none;
+  border-bottom:1px solid var(--pa-border); border-radius:12px 12px 0 0; background:var(--pa-hover); user-select:none; }
+.pdfa-mm-menu .drag .grip{ font-size:.72rem; font-weight:800; color:var(--pa-dim); }
+.pdfa-mm-menu .drag .mv{ color:var(--pa-faint); font-size:.85rem; padding:0 2px; }
+.pdfa-mm-menu .drag .cl{ color:var(--pa-faint); cursor:pointer; font-size:.82rem; padding:0 4px; border-radius:6px; }
+.pdfa-mm-menu .drag .cl:hover{ background:var(--mm-excecao); color:#fff; }
+.pdfa-mm-menu .body{ flex:1; overflow:auto; padding:10px; }
 .pdfa-mm-menu .cap{ font-size:.74rem; color:var(--pa-text); background:var(--pa-hover); border-radius:8px;
   padding:7px 9px; margin-bottom:8px; max-height:64px; overflow:auto; line-height:1.35; }
 .pdfa-mm-menu .cap b{ color:var(--pa-accent); }
@@ -1377,6 +1385,34 @@ export default function AnalisePDF() {
     setMmMenu(null); mmAccumRef.current = null; setMmAccumRects([])
   }, [])
 
+  /* ref do menu + reposiciona para dentro da tela se nascer cortado */
+  const mmMenuRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!mmMenu) return
+    const el = mmMenuRef.current; if (!el) return
+    const r = el.getBoundingClientRect()
+    let nx = mmMenu.x, ny = mmMenu.y
+    if (r.bottom > window.innerHeight - 8) ny = Math.max(8, window.innerHeight - r.height - 8)
+    if (r.right > window.innerWidth - 8) nx = Math.max(8, window.innerWidth - r.width - 8)
+    if (nx !== mmMenu.x || ny !== mmMenu.y) setMmMenu(m => m ? { ...m, x: nx, y: ny } : m)
+  }, [mmMenu])
+
+  /* arrastar o menu pela alça do topo */
+  const mmMenuDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    const startX = e.clientX, startY = e.clientY
+    const el = mmMenuRef.current
+    const ox = el ? el.getBoundingClientRect().left : 0
+    const oy = el ? el.getBoundingClientRect().top : 0
+    const move = (ev: MouseEvent) => {
+      const nx = Math.max(0, Math.min(window.innerWidth - 80, ox + ev.clientX - startX))
+      const ny = Math.max(0, Math.min(window.innerHeight - 40, oy + ev.clientY - startY))
+      setMmMenu(m => m ? { ...m, x: nx, y: ny } : m)
+    }
+    const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up) }
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up)
+  }, [])
+
   /* ── histórico (desfazer/refazer) ── */
   const mmSnapshot = useCallback(() => {
     mmPast.current.push(JSON.stringify(mmNodesRef.current))
@@ -2067,33 +2103,41 @@ export default function AnalisePDF() {
           <>
             <div onMouseDown={() => mmCancelMenu()}
               style={{ position: 'fixed', inset: 0, zIndex: 4990, background: 'rgba(15,23,42,.20)' }} />
-            <div className="pdfa-mm-menu" style={{ left: mmMenu.x, top: mmMenu.y }}
+            <div className="pdfa-mm-menu" ref={mmMenuRef} style={{ left: mmMenu.x, top: mmMenu.y }}
               onMouseDown={e => e.stopPropagation()}>
-              {mmAccumRects.length > 0 && <div className="joinhint">🔗 juntando {mmAccumRects.length + 1} trecho(s) — marque mais ou classifique abaixo</div>}
-              <div className="cap"><b>“</b>{mmMenu.text}<b>”</b></div>
-              <button className="pdfa-mm-continue" onClick={mmContinueMark} title="Marcar mais um trecho e juntar a este (ex.: frase que quebra de linha)">
-                ➕ Continuar marcação <span>(marcar outro trecho e juntar)</span>
-              </button>
-              <div className="dest">
-                <div className="dest-line">📍 <span>vai entrar em:</span>{' '}
-                  {(() => { const path: any[] = []; let c = mmNodes.find(n => n.id === mmActiveId); while (c) { path.unshift(c); c = mmNodes.find(n => n.id === c!.paiId) } return path.length ? <b>{path.map(p => p.texto.length > 16 ? p.texto.slice(0, 15) + '…' : p.texto).join(' › ')} › <span style={{ color: 'var(--pa-accent)' }}>novo</span></b> : <b>Raiz · novo tópico</b> })()}
+              <div className="drag" onMouseDown={mmMenuDragStart} title="Arraste para mover a janela">
+                <span className="grip">⠿ Classificar trecho</span>
+                <span className="grow" style={{ flex: 1 }} />
+                <span className="mv" title="Arraste para mover">✥</span>
+                <span className="cl" onMouseDown={e => e.stopPropagation()} onClick={() => mmCancelMenu()} title="Fechar (Esc)">✕</span>
+              </div>
+              <div className="body">
+                {mmAccumRects.length > 0 && <div className="joinhint">🔗 juntando {mmAccumRects.length + 1} trecho(s) — marque mais ou classifique abaixo</div>}
+                <div className="cap"><b>“</b>{mmMenu.text}<b>”</b></div>
+                <button className="pdfa-mm-continue" onClick={mmContinueMark} title="Marcar mais um trecho e juntar a este (ex.: frase que quebra de linha)">
+                  ➕ Continuar marcação <span>(marcar outro trecho e juntar)</span>
+                </button>
+                <div className="dest">
+                  <div className="dest-line">📍 <span>vai entrar em:</span>{' '}
+                    {(() => { const path: any[] = []; let c = mmNodes.find(n => n.id === mmActiveId); while (c) { path.unshift(c); c = mmNodes.find(n => n.id === c!.paiId) } return path.length ? <b>{path.map(p => p.texto.length > 16 ? p.texto.slice(0, 15) + '…' : p.texto).join(' › ')} › <span style={{ color: 'var(--pa-accent)' }}>novo</span></b> : <b>Raiz · novo tópico</b> })()}
+                  </div>
+                  <select className="parentsel" value={mmActiveId || ''} onChange={e => setMmActiveId(e.target.value || null)} title="Escolha em qual nó este item vai entrar">
+                    <option value="">⬛ Raiz (novo tópico)</option>
+                    {(() => { const out: any[] = []; const ch = (pid: string | null) => mmNodes.filter(n => n.paiId === pid).sort((a, b) => a.ordem - b.ordem); const w = (pid: string | null, d: number) => { for (const n of ch(pid)) { out.push({ n, d }); w(n.id, d + 1) } }; w(null, 0); return out.map(({ n, d }) => <option key={n.id} value={n.id}>{'\u00A0\u00A0'.repeat(d) + '└ ' + (MM_TIPO[n.tipo] || MM_TIPO['nota']).sigla + ' ' + n.texto.slice(0, 42)}</option>) })()}
+                  </select>
+                  {mmMenu.pagina ? <div className="pg">📄 origem: pág. {String(mmMenu.pagina).padStart(2, '0')} de {String(numPages).padStart(2, '0')}</div> : null}
                 </div>
-                <select className="parentsel" value={mmActiveId || ''} onChange={e => setMmActiveId(e.target.value || null)} title="Escolha em qual nó este item vai entrar">
-                  <option value="">⬛ Raiz (novo tópico)</option>
-                  {(() => { const out: any[] = []; const ch = (pid: string | null) => mmNodes.filter(n => n.paiId === pid).sort((a, b) => a.ordem - b.ordem); const w = (pid: string | null, d: number) => { for (const n of ch(pid)) { out.push({ n, d }); w(n.id, d + 1) } }; w(null, 0); return out.map(({ n, d }) => <option key={n.id} value={n.id}>{'\u00A0\u00A0'.repeat(d) + '└ ' + (MM_TIPO[n.tipo] || MM_TIPO['nota']).sigla + ' ' + n.texto.slice(0, 42)}</option>) })()}
-                </select>
-                {mmMenu.pagina ? <div className="pg">📄 origem: pág. {String(mmMenu.pagina).padStart(2, '0')} de {String(numPages).padStart(2, '0')}</div> : null}
-              </div>
-              <div className="ttl2">Classificar como:</div>
-              <div className="pdfa-mm-grid">
-                {MM_TIPOS.map(t => (
-                  <button key={t.key} className="pdfa-mm-opt" onClick={() => mmAddNode(t.key)} title={'Classificar como ' + t.label}>
-                    <span className="dot" style={{ background: t.cor }} />{t.label}
-                  </button>
-                ))}
-              </div>
-              <div className="foot">
-                <button onClick={() => mmCancelMenu()}>Cancelar (Esc)</button>
+                <div className="ttl2">Classificar como:</div>
+                <div className="pdfa-mm-grid">
+                  {MM_TIPOS.map(t => (
+                    <button key={t.key} className="pdfa-mm-opt" onClick={() => mmAddNode(t.key)} title={'Classificar como ' + t.label}>
+                      <span className="dot" style={{ background: t.cor }} />{t.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="foot">
+                  <button onClick={() => mmCancelMenu()}>Cancelar (Esc)</button>
+                </div>
               </div>
             </div>
           </>,
