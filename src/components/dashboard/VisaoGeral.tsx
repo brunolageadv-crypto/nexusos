@@ -20,7 +20,7 @@ import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEdital, useEditaisCadastrados } from '../../hooks/useEdital'
 import { EDITAIS_BUILTIN, EDITAIS_FIXOS_IDS } from '../editais/GestorEditais'
-import { PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, ComposedChart, BarChart, Bar, ReferenceLine, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, ComposedChart, BarChart, Bar, ReferenceLine, LabelList, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import PainelArcade from './Arcade'
 
 /* ───────────────────────── helpers de data ───────────────────────── */
@@ -985,27 +985,67 @@ function PesoCard({ peso, delta, onNavigate }: any) {
       <Empty icon="⚖" msg="Sem registros de peso ainda" />
     </CardShell>
   )
-  const ult = peso[peso.length - 1].peso
   const vals = peso.map((p: any) => p.peso)
   const mn = Math.min(...vals), mx = Math.max(...vals)
-  const pad = Math.max(0.2, (mx - mn) * 0.3)           // padding mínimo de 200 g
-  const dom = [+(mn - pad).toFixed(2), +(mx + pad).toFixed(2)]
+  const avg = +(vals.reduce((a: number, b: number) => a + b, 0) / vals.length).toFixed(2)
+  const range = +(mx - mn).toFixed(2)
+  // domínio justo, arredondado a 0,5 kg, folga pequena → amplia variações pequenas
+  const m = Math.max(0.25, range * 0.18)
+  const lo = Math.floor((mn - m) * 2) / 2
+  const hi = Math.ceil((mx + m) * 2) / 2
+  const span = hi - lo
+  const step = span <= 3 ? 0.5 : span <= 10 ? 1 : 2
+  const ticks: number[] = []
+  for (let v = lo; v <= hi + 1e-9; v = +(v + step).toFixed(2)) ticks.push(+v.toFixed(2))
+  // direção de cada ponto vs anterior
+  const data = peso.map((p: any, i: number) => ({ ...p, dir: i === 0 ? 0 : Math.sign(+(p.peso - peso[i - 1].peso).toFixed(2)) }))
+  const ult = vals[vals.length - 1]
   const down = delta <= 0
+  const denso = peso.length > 14
+  const C_SOBE = '#D93025', C_CAI = '#0F9D58', C_IGUAL = '#9aa0a6'
+  const PesoDot = (props: any) => {
+    const { cx, cy, payload } = props; if (cx == null || cy == null) return null
+    const ext = payload.peso === mn || payload.peso === mx
+    const c = payload.dir > 0 ? C_SOBE : payload.dir < 0 ? C_CAI : C_IGUAL
+    return <circle cx={cx} cy={cy} r={ext ? 4.4 : 3.2} fill={c} stroke="#fff" strokeWidth={1.3} />
+  }
+  const PesoLabel = (props: any) => {
+    const { x, y, value, index } = props
+    const show = !denso || index === 0 || index === data.length - 1 || value === mn || value === mx
+    if (!show || x == null || y == null) return null
+    const c = value === mn ? C_CAI : value === mx ? C_SOBE : 'var(--text-secondary)'
+    return <text x={x} y={y - 9} textAnchor="middle" fontSize={9} fontWeight={700} fill={c}>{Number(value).toFixed(1)}</text>
+  }
   return (
     <CardShell icon="⚖" title="Peso · Tendência" color="#0F9D58" badge={`${peso.length} regs`} footer="Abrir Saúde" navTo="saude" onNavigate={onNavigate}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 2, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{ult} kg</div>
-        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: down ? '#0F9D58' : '#D93025' }}>{delta > 0 ? '+' : ''}{delta} kg <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>no período</span></div>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: down ? C_CAI : C_SOBE }}>{delta > 0 ? '+' : ''}{delta} kg <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>no período</span></div>
       </div>
-      <div style={{ height: 150 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
+        {[
+          { l: 'mín', v: `${mn}`, c: C_CAI },
+          { l: 'máx', v: `${mx}`, c: C_SOBE },
+          { l: 'média', v: `${avg}`, c: '#0F9D58' },
+          { l: 'amplitude', v: `${range} kg`, c: '#5b5bd6' },
+        ].map(s => (
+          <span key={s.l} style={{ fontSize: '0.6rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', padding: '2px 7px', borderRadius: 6, background: `${s.c}12`, border: `1px solid ${s.c}26` }}>
+            {s.l} <b style={{ color: s.c }}>{s.v}</b>
+          </span>
+        ))}
+      </div>
+      <div style={{ height: 172 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={peso} margin={{ top: 6, right: 8, bottom: 0, left: -14 }}>
-            <defs><linearGradient id="gPeso" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0F9D58" stopOpacity={0.35} /><stop offset="100%" stopColor="#0F9D58" stopOpacity={0} /></linearGradient></defs>
+          <AreaChart data={data} margin={{ top: 16, right: 12, bottom: 0, left: -8 }}>
+            <defs><linearGradient id="gPeso" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0F9D58" stopOpacity={0.22} /><stop offset="100%" stopColor="#0F9D58" stopOpacity={0} /></linearGradient></defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={22} />
-            <YAxis domain={dom} allowDecimals tickCount={6} tickFormatter={(v: any) => Number(v).toFixed(1)} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={38} />
+            <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={20} />
+            <YAxis domain={[lo, hi]} ticks={ticks} tickFormatter={(v: any) => Number(v).toFixed(1)} tick={{ fontSize: 9.5, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={36} />
             <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} kg`, 'Peso']} contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-            <Area type="monotone" dataKey="peso" stroke="#0F9D58" strokeWidth={2.4} fill="url(#gPeso)" dot={{ r: 2.6, fill: '#0F9D58' }} activeDot={{ r: 4.5 }} isAnimationActive={false} />
+            <ReferenceLine y={avg} stroke="#0F9D58" strokeDasharray="5 4" strokeOpacity={0.45} />
+            <Area type="monotone" dataKey="peso" stroke="#0F9D58" strokeWidth={2.6} fill="url(#gPeso)" dot={<PesoDot />} activeDot={{ r: 5 }} isAnimationActive={false}>
+              <LabelList dataKey="peso" content={PesoLabel} />
+            </Area>
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -1083,7 +1123,7 @@ export function PaginaInicial({ onNavigate }: { onNavigate: (id: string) => void
   </>
   const colSaude = <>
     <div style={{ flexShrink: 0 }}><SaudeHero reg={saude.reg} streak={saude.streak} onNavigate={onNavigate} /></div>
-    <Slot h={252}><PesoCard peso={peso} delta={pesoDelta} onNavigate={onNavigate} /></Slot>
+    <Slot h={300}><PesoCard peso={peso} delta={pesoDelta} onNavigate={onNavigate} /></Slot>
     <Slot h={ativHoje.length && passosSerie.length ? 270 : ativHoje.length ? 168 : passosSerie.length ? 212 : 150}><AtividadeCard ativHoje={ativHoje} passosSerie={passosSerie} onNavigate={onNavigate} /></Slot>
     <Slot h={172}><SaudeHoje saude={saude} onNavigate={onNavigate} /></Slot>
     {agua.length ? <Slot h={208}><AguaSerieCard agua={agua} onNavigate={onNavigate} /></Slot> : null}
