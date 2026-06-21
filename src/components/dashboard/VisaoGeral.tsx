@@ -408,36 +408,100 @@ function skyTheme(h: number) {
   if (h < 20) return { key: 'entardecer', icon: '🌇', gradient: 'linear-gradient(165deg,#272a63 0%,#9a4a72 38%,#e6694a 74%,#ffc06a 100%)', deco: 'sunset', sun: '#ffd189' }
   return { key: 'noite', icon: '✨', gradient: 'linear-gradient(165deg,#0a1430 0%,#142a55 50%,#2f285c 100%)', deco: 'stars', sun: '' }
 }
+/* relógio analógico — ponteiros giram via CSS (delay negativo sincroniza com o horário real) */
+function RelogioAnalogico({ accent = '#ffd27a' }: any) {
+  const { sDelay, mDelay, hDelay } = useMemo(() => {
+    const d = new Date()
+    const s = d.getSeconds() + d.getMilliseconds() / 1000
+    const m = d.getMinutes() * 60 + s
+    const hr = (d.getHours() % 12) * 3600 + m
+    return { sDelay: s, mDelay: m, hDelay: hr }
+  }, [])
+  const hands = { transformBox: 'view-box', transformOrigin: '100px 100px' } as any
+  return (
+    <svg viewBox="0 0 200 200" width="100%" height="100%" style={{ display: 'block' }}>
+      <circle cx="100" cy="100" r="93" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.16)" strokeWidth="7" />
+      <circle cx="100" cy="100" r="93" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2" />
+      {Array.from({ length: 12 }).map((_, i) => {
+        const a = i * 30 * Math.PI / 180, big = i % 3 === 0
+        const r1 = big ? 73 : 80, r2 = 87
+        return <line key={i} x1={100 + r1 * Math.sin(a)} y1={100 - r1 * Math.cos(a)} x2={100 + r2 * Math.sin(a)} y2={100 - r2 * Math.cos(a)} stroke="rgba(255,255,255,0.8)" strokeWidth={big ? 3 : 1.4} strokeLinecap="round" />
+      })}
+      <g style={{ ...hands, animation: 'nx-rot 43200s linear infinite', animationDelay: `-${hDelay}s` }}>
+        <line x1="100" y1="108" x2="100" y2="54" stroke="#fff" strokeWidth="6" strokeLinecap="round" />
+      </g>
+      <g style={{ ...hands, animation: 'nx-rot 3600s linear infinite', animationDelay: `-${mDelay}s` }}>
+        <line x1="100" y1="110" x2="100" y2="32" stroke="rgba(255,255,255,0.94)" strokeWidth="4" strokeLinecap="round" />
+      </g>
+      <g style={{ ...hands, animation: 'nx-rot 60s linear infinite', animationDelay: `-${sDelay}s` }}>
+        <line x1="100" y1="118" x2="100" y2="26" stroke={accent} strokeWidth="2" strokeLinecap="round" />
+        <circle cx="100" cy="26" r="3" fill={accent} />
+      </g>
+      <circle cx="100" cy="100" r="6.5" fill="#fff" />
+      <circle cx="100" cy="100" r="3" fill={accent} />
+    </svg>
+  )
+}
 function Saudacao() {
   const [now, setNow] = useState(new Date())
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), 20000); return () => clearInterval(t) }, [])
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
   const h = now.getHours()
   const theme = useMemo(() => skyTheme(h), [h])
-  const stars = useMemo(() => Array.from({ length: 30 }, () => ({ top: Math.random() * 78, left: Math.random() * 100, s: Math.random() * 1.6 + 0.7, d: (Math.random() * 3.2).toFixed(2), o: (Math.random() * 0.5 + 0.4).toFixed(2) })), [])
+  const accent = theme.sun || '#ffd27a'
   const saud = h < 5 ? 'Boa madrugada' : h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
   const showStars = theme.deco === 'stars'
-  const sunPos: React.CSSProperties = theme.deco === 'sunrise' ? { bottom: -46, left: '8%' } : theme.deco === 'sunset' ? { bottom: -52, right: '10%' } : { top: -44, right: '12%' }
+  const stars = useMemo(() => Array.from({ length: 36 }, (_, i) => ({
+    top: Math.random() * 84, left: Math.random() * 100, s: +(Math.random() * 1.7 + 0.6).toFixed(1),
+    tw: +(Math.random() * 2.4 + 1.8).toFixed(2), dl: +(Math.random() * 3).toFixed(2),
+    o: +(Math.random() * 0.5 + 0.4).toFixed(2), v: i % 3,
+  })), [])
+  const sunPos: any = theme.deco === 'sunrise' ? { bottom: -54, left: '10%' } : theme.deco === 'sunset' ? { bottom: -60, right: '13%' } : { top: -52, right: '15%' }
   return (
     <div style={{ position: 'relative', overflow: 'hidden', height: '100%', borderRadius: 16, boxShadow: 'var(--shadow-card)', background: theme.gradient }}>
-      {/* sol (nascente / alto / poente) */}
-      {theme.sun && <div style={{ position: 'absolute', width: 150, height: 150, borderRadius: '50%', background: `radial-gradient(circle, ${theme.sun} 0%, ${theme.sun}88 32%, transparent 68%)`, filter: 'blur(1px)', animation: 'sgSun 6s ease-in-out infinite', ...sunPos }} />}
-      {/* lua + estrelas (madrugada / noite) */}
-      {showStars && <>
-        <div style={{ position: 'absolute', top: 14, right: 20, width: 34, height: 34, borderRadius: '50%', background: 'radial-gradient(circle at 38% 38%, #fdf6e3 0%, #e8e6d0 55%, transparent 72%)', boxShadow: '0 0 26px rgba(253,246,227,0.35)', opacity: 0.92 }} />
-        {stars.map((st, i) => <span key={i} style={{ position: 'absolute', top: `${st.top}%`, left: `${st.left}%`, width: st.s, height: st.s, borderRadius: '50%', background: '#fff', opacity: Number(st.o), animation: `sgTwinkle 3s ease-in-out ${st.d}s infinite` }} />)}
+      {/* brilho difuso flutuando (sempre ativo) */}
+      <div style={{ position: 'absolute', width: 200, height: 140, borderRadius: '50%', left: '22%', top: '-30%', background: 'radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%)', filter: 'blur(10px)', animation: 'nx-float 11s ease-in-out infinite', pointerEvents: 'none' }} />
+      {/* sol pulsante + raios girando */}
+      {theme.sun && <>
+        <div style={{ position: 'absolute', ...sunPos, width: 170, height: 170, borderRadius: '50%', background: `radial-gradient(circle, ${theme.sun} 0%, ${theme.sun}88 30%, transparent 66%)`, filter: 'blur(1px)', animation: 'nx-sunpulse 4.5s ease-in-out infinite', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', ...sunPos, width: 170, height: 170, borderRadius: '50%', opacity: 0.4, mixBlendMode: 'screen', background: `conic-gradient(from 0deg, transparent 0deg, ${theme.sun}66 10deg, transparent 22deg, transparent 88deg, ${theme.sun}55 100deg, transparent 112deg, transparent 178deg, ${theme.sun}66 190deg, transparent 202deg, transparent 268deg, ${theme.sun}55 280deg, transparent 292deg)`, animation: 'nx-rays 22s linear infinite', pointerEvents: 'none' }} />
       </>}
-      {/* scrim p/ legibilidade do texto em qualquer fundo */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.06) 46%, transparent 76%)' }} />
-      {/* conteúdo */}
-      <div style={{ position: 'relative', zIndex: 2, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '18px 22px', color: '#fff', textShadow: '0 1px 10px rgba(0,0,0,0.38)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.66rem', opacity: .92, letterSpacing: '0.06em', textTransform: 'capitalize' }}>{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
-          <span style={{ fontSize: '0.6rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)', borderRadius: 20, padding: '2px 9px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{theme.icon} {theme.key}</span>
-        </div>
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.7rem', lineHeight: 1.1 }}>{saud}, Bruno</div>
-        <div style={{ fontSize: '0.8rem', opacity: .95 }}>{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · Central de Gestão NEXUS</div>
+      {/* estrelas: cintilam + flutuam (madrugada / noite) */}
+      {showStars && <>
+        <div style={{ position: 'absolute', top: 12, left: '6%', width: 30, height: 30, borderRadius: '50%', background: 'radial-gradient(circle at 38% 38%, #fdf6e3 0%, #e8e6d0 55%, transparent 72%)', boxShadow: '0 0 26px rgba(253,246,227,0.4)', animation: 'nx-moon 5s ease-in-out infinite', pointerEvents: 'none' }} />
+        {stars.map((st, i) => <span key={i} style={{ position: 'absolute', top: `${st.top}%`, left: `${st.left}%`, width: st.s, height: st.s, borderRadius: '50%', background: '#fff', opacity: st.o, animation: `nx-tw ${st.tw}s ease-in-out ${st.dl}s infinite, nx-drift${st.v} ${st.tw * 3}s ease-in-out infinite`, pointerEvents: 'none' }} />)}
+      </>}
+      {/* facho de luz varrendo o card (sempre ativo) */}
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <div style={{ position: 'absolute', top: 0, bottom: 0, width: '42%', left: '-50%', background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)', filter: 'blur(2px)', animation: 'nx-sheen 7.5s ease-in-out infinite' }} />
       </div>
-      <style>{`@keyframes sgTwinkle{0%,100%{opacity:.2}50%{opacity:1}}@keyframes sgSun{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}`}</style>
+      {/* scrim p/ legibilidade */}
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(100deg, rgba(0,0,0,0.34) 0%, rgba(0,0,0,0.12) 42%, transparent 70%)', pointerEvents: 'none' }} />
+      {/* conteúdo + relógio */}
+      <div style={{ position: 'relative', zIndex: 3, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0 18px', color: '#fff', textShadow: '0 1px 10px rgba(0,0,0,0.4)' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', opacity: .92, letterSpacing: '0.05em', textTransform: 'capitalize' }}>{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</span>
+            <span style={{ fontSize: '0.55rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{theme.icon} {theme.key}</span>
+          </div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.45rem', lineHeight: 1.05 }}>{saud}, Bruno</div>
+          <div style={{ fontSize: '0.72rem', opacity: .95, marginTop: 2 }}>{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · Central de Gestão NEXUS</div>
+        </div>
+        <div style={{ width: 86, height: 86, flexShrink: 0, filter: 'drop-shadow(0 4px 14px rgba(0,0,0,0.35))' }}>
+          <RelogioAnalogico accent={accent} />
+        </div>
+      </div>
+      <style>{`
+        @keyframes nx-rot{to{transform:rotate(360deg)}}
+        @keyframes nx-tw{0%,100%{opacity:.22}50%{opacity:1}}
+        @keyframes nx-drift0{0%,100%{transform:translate(0,0)}50%{transform:translate(3px,-2px)}}
+        @keyframes nx-drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(-2px,2px)}}
+        @keyframes nx-drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(2px,3px)}}
+        @keyframes nx-sunpulse{0%,100%{transform:scale(1);opacity:.95}50%{transform:scale(1.06);opacity:1}}
+        @keyframes nx-rays{to{transform:rotate(360deg)}}
+        @keyframes nx-float{0%,100%{transform:translate(0,0)}50%{transform:translate(42px,18px)}}
+        @keyframes nx-moon{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}
+        @keyframes nx-sheen{0%{transform:translateX(-20%);opacity:0}12%{opacity:1}55%{opacity:1}72%,100%{transform:translateX(380%);opacity:0}}
+      `}</style>
     </div>
   )
 }
@@ -923,7 +987,9 @@ function PesoCard({ peso, delta, onNavigate }: any) {
   )
   const ult = peso[peso.length - 1].peso
   const vals = peso.map((p: any) => p.peso)
-  const dom = [Math.floor(Math.min(...vals) - 1), Math.ceil(Math.max(...vals) + 1)]
+  const mn = Math.min(...vals), mx = Math.max(...vals)
+  const pad = Math.max(0.2, (mx - mn) * 0.3)           // padding mínimo de 200 g
+  const dom = [+(mn - pad).toFixed(2), +(mx + pad).toFixed(2)]
   const down = delta <= 0
   return (
     <CardShell icon="⚖" title="Peso · Tendência" color="#0F9D58" badge={`${peso.length} regs`} footer="Abrir Saúde" navTo="saude" onNavigate={onNavigate}>
@@ -933,13 +999,13 @@ function PesoCard({ peso, delta, onNavigate }: any) {
       </div>
       <div style={{ height: 150 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={peso} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
+          <AreaChart data={peso} margin={{ top: 6, right: 8, bottom: 0, left: -14 }}>
             <defs><linearGradient id="gPeso" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0F9D58" stopOpacity={0.35} /><stop offset="100%" stopColor="#0F9D58" stopOpacity={0} /></linearGradient></defs>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
             <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={22} />
-            <YAxis domain={dom} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={30} />
-            <Tooltip formatter={(v: any) => [`${v} kg`, 'Peso']} contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
-            <Area type="monotone" dataKey="peso" stroke="#0F9D58" strokeWidth={2.4} fill="url(#gPeso)" dot={{ r: 2.4, fill: '#0F9D58' }} activeDot={{ r: 4 }} />
+            <YAxis domain={dom} allowDecimals tickCount={6} tickFormatter={(v: any) => Number(v).toFixed(1)} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={38} />
+            <Tooltip formatter={(v: any) => [`${Number(v).toFixed(2)} kg`, 'Peso']} contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+            <Area type="monotone" dataKey="peso" stroke="#0F9D58" strokeWidth={2.4} fill="url(#gPeso)" dot={{ r: 2.6, fill: '#0F9D58' }} activeDot={{ r: 4.5 }} isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -1026,7 +1092,7 @@ export function PaginaInicial({ onNavigate }: { onNavigate: (id: string) => void
   if (narrow) {
     return (
       <div style={{ height: '100%', overflowY: 'auto', padding: '14px 14px 28px' }}>
-        <div style={{ height: 132, marginBottom: 14 }}><Saudacao /></div>
+        <div style={{ height: 118, marginBottom: 14 }}><Saudacao /></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>{colProd}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>{colSaude}</div>
         <div style={{ height: 420 }}><ColAcessoRapido onNavigate={onNavigate} /></div>
@@ -1034,13 +1100,15 @@ export function PaginaInicial({ onNavigate }: { onNavigate: (id: string) => void
     )
   }
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 14, padding: '14px 0 0' }}>
-      <div style={{ padding: '0 20px', height: 132, flexShrink: 0 }}><Saudacao /></div>
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(230px, 0.95fr) minmax(0, 1.3fr) minmax(290px, 1.05fr)', gap: 14, padding: '0 20px 14px' }}>
-        <div style={{ minHeight: 0 }}><ColAcessoRapido onNavigate={onNavigate} /></div>
-        <div style={{ minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colProd}</div>
-        <div style={{ minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colSaude}</div>
-      </div>
+    <div style={{ height: '100%', display: 'grid', gridTemplateColumns: 'minmax(230px, 0.95fr) minmax(0, 1.3fr) minmax(290px, 1.05fr)', gridTemplateRows: '104px 1fr', gap: 14, padding: '14px 20px' }}>
+      {/* Saudação · cobre apenas as colunas 1–2 */}
+      <div style={{ gridColumn: '1 / span 2', gridRow: 1, minHeight: 0 }}><Saudacao /></div>
+      {/* Coluna 1 · Acesso Rápido */}
+      <div style={{ gridColumn: 1, gridRow: 2, minHeight: 0 }}><ColAcessoRapido onNavigate={onNavigate} /></div>
+      {/* Coluna 2 · Produtividade */}
+      <div style={{ gridColumn: 2, gridRow: 2, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colProd}</div>
+      {/* Coluna 3 · Saúde — sobe ao topo, ocupa as 2 linhas */}
+      <div style={{ gridColumn: 3, gridRow: '1 / span 2', minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colSaude}</div>
     </div>
   )
 }
