@@ -20,7 +20,7 @@ import { useEditaisAGU } from '../../hooks/useEditaisAGU'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEdital, useEditaisCadastrados } from '../../hooks/useEdital'
 import { EDITAIS_BUILTIN, EDITAIS_FIXOS_IDS } from '../editais/GestorEditais'
-import { PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, ComposedChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, ComposedChart, BarChart, Bar, ReferenceLine, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import PainelArcade from './Arcade'
 
 /* ───────────────────────── helpers de data ───────────────────────── */
@@ -772,4 +772,275 @@ function useLogsData() {
 function useViagensData() {
   const rows = useCol('viagens')
   return rows.filter((v: any) => v.status === 'Confirmada').sort((a: any, b: any) => (a.dataInicio || '').localeCompare(b.dataInicio || ''))
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PÁGINA INICIAL  ·  modo 🏠 "home" do Dashboard
+   --------------------------------------------------------------------
+   3 colunas que esticam na altura (sem espaços vazios), saudação animada
+   no topo e BarraInferior fixa (essa fica no NexusDashboard).
+   Reaproveita TODOS os componentes/hooks já existentes neste arquivo:
+   Saudacao, ATALHOS, CardShell, Kpi, Linha, Ring, AguRevisoes,
+   AgendaHojeLista, AgendaSemana, SaudeHoje, useAguData, useAgendaData,
+   useSaudeData. Só adiciona o gráfico de Horas/semana e a coluna de Saúde.
+   ═══════════════════════════════════════════════════════════════════════ */
+const _pad2 = (n: number) => String(n).padStart(2, '0')
+const _fmtISO = (d: Date) => `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())}`
+const _WD = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']
+const Slot = ({ h, children }: any) => <div style={{ flexShrink: 0, height: h, minHeight: h }}>{children}</div>
+
+/* horas trabalhadas da SEMANA atual (seg→dom), em buckets por dia */
+function useHorasSemana() {
+  const reg = useCol('ponto', 'data')
+  return useMemo(() => {
+    const base = new Date(hojeISO() + 'T12:00:00')
+    const dow = (base.getDay() + 6) % 7           // 0 = segunda
+    const mon = new Date(base); mon.setDate(base.getDate() - dow)
+    const hojeStr = hojeISO()
+    const data = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(mon); d.setDate(mon.getDate() + i)
+      const ds = _fmtISO(d)
+      const min = reg.filter((r: any) => (r.data || '') === ds).reduce((a: number, r: any) => a + (r.minutos || 0), 0)
+      return { dia: _WD[i], ds, min, h: +(min / 60).toFixed(2), hoje: ds === hojeStr }
+    })
+    const totalMin = data.reduce((a, d) => a + d.min, 0)
+    return { data, totalMin, totalH: Math.floor(totalMin / 60), totalM: totalMin % 60, saldoMin: totalMin - 40 * 60 }
+  }, [reg])
+}
+
+/* séries de saúde derivadas de users/{uid}/saude (peso, água, atividade adaptativa) */
+const _ATIV_FIELDS = [
+  { k: 'passos', l: 'Passos', u: '', icon: '👟' },
+  { k: 'atividade', l: 'Atividade', u: 'min', icon: '🏃' },
+  { k: 'exercicio', l: 'Exercício', u: 'min', icon: '🏋️' },
+  { k: 'minutosAtividade', l: 'Atividade', u: 'min', icon: '🏃' },
+  { k: 'treino', l: 'Treino', u: 'min', icon: '💪' },
+  { k: 'caloriasGastas', l: 'Calorias', u: 'kcal', icon: '🔥' },
+  { k: 'distanciaKm', l: 'Distância', u: 'km', icon: '📍' },
+  { k: 'distancia', l: 'Distância', u: 'km', icon: '📍' },
+]
+function useSaudeSeries() {
+  const rows = useCol('saude')
+  return useMemo(() => {
+    const sorted = [...rows].sort((a: any, b: any) => (a.data || '').localeCompare(b.data || ''))
+    const peso = sorted.filter((r: any) => r.peso != null && r.peso !== '')
+      .map((r: any) => ({ data: r.data, label: fmtData(r.data), peso: Number(r.peso) }))
+      .filter((p: any) => !isNaN(p.peso)).slice(-21)
+    const agua = sorted.slice(-7).map((r: any) => ({
+      label: fmtData(r.data),
+      agua: Math.round((r.agua || 0) / 1000 * 10) / 10,
+      meta: Math.round((r.metaAgua || 2000) / 1000 * 10) / 10,
+    }))
+    const pesoDelta = peso.length >= 2 ? +(peso[peso.length - 1].peso - peso[0].peso).toFixed(1) : 0
+    const today = sorted.find((r: any) => r.data === hojeISO()) || sorted[sorted.length - 1] || {}
+    const ativHoje = _ATIV_FIELDS
+      .filter(a => today[a.k] != null && today[a.k] !== '' && typeof today[a.k] !== 'object')
+      .filter((a, i, arr) => arr.findIndex(x => x.l === a.l) === i)
+      .map(a => ({ ...a, v: today[a.k] }))
+    const temPassos = sorted.some((r: any) => r.passos != null && r.passos !== '')
+    const passosSerie = temPassos
+      ? sorted.slice(-7).map((r: any) => ({ label: fmtData(r.data), passos: Number(r.passos) || 0 }))
+      : []
+    return { peso, pesoDelta, agua, ativHoje, passosSerie }
+  }, [rows])
+}
+
+/* ── COLUNA 1 · Acesso Rápido (hover premium por categoria) ── */
+function ColAcessoRapido({ onNavigate }: any) {
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(90deg,#5b5bd610,transparent 70%)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span style={{ color: '#5b5bd6' }}>▦</span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Acesso Rápido</span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px,1fr))', gap: 10, alignContent: 'start' }}>
+        {ATALHOS.map(a => (
+          <button key={a.id} onClick={() => onNavigate(a.id)}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '16px 8px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all .18s cubic-bezier(.4,0,.2,1)', minHeight: 86 }}
+            onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${a.c}22, ${a.c}0a)`; el.style.borderColor = a.c; el.style.color = a.c; el.style.transform = 'translateY(-3px) scale(1.03)'; el.style.boxShadow = `0 12px 26px ${a.c}40`; const ic = el.querySelector('.ar-ic') as HTMLElement; if (ic) ic.style.transform = 'scale(1.18)' }}
+            onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'var(--surface)'; el.style.borderColor = 'var(--border)'; el.style.color = 'var(--text-secondary)'; el.style.transform = 'none'; el.style.boxShadow = 'none'; const ic = el.querySelector('.ar-ic') as HTMLElement; if (ic) ic.style.transform = 'none' }}>
+            <span className="ar-ic" style={{ fontSize: '1.55rem', transition: 'transform .18s' }}>{a.i}</span>
+            <span style={{ fontSize: '0.68rem', fontWeight: 700, textAlign: 'center', lineHeight: 1.15 }}>{a.l}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ── COLUNA 2 · Horas Trabalhadas (semana) ── */
+function HorasSemanaCard({ onNavigate }: any) {
+  const { data, totalH, totalM, saldoMin } = useHorasSemana()
+  const saldoH = Math.trunc(Math.abs(saldoMin) / 60), saldoM = Math.abs(saldoMin) % 60
+  const pos = saldoMin >= 0
+  return (
+    <CardShell icon="⊙" title="Horas Trabalhadas · Semana" color="#EA580C" badge={`${totalH}h${totalM ? ` ${totalM}m` : ''}`} footer="Abrir Ponto" navTo="ponto" onNavigate={onNavigate}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 2, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{totalH}h{totalM ? ` ${totalM}m` : ''}</div>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: pos ? '#0F9D58' : '#D93025' }}>{pos ? '+' : '−'}{saldoH}h{saldoM ? ` ${saldoM}m` : ''} <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>vs 40h</span></div>
+      </div>
+      <div style={{ height: 150 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: -24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="dia" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={28} />
+            <Tooltip cursor={{ fill: 'rgba(234,88,12,0.06)' }} formatter={(v: any) => [`${v} h`, 'Horas']} contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+            <ReferenceLine y={8} stroke="#EA580C" strokeDasharray="4 4" strokeOpacity={0.5} />
+            <Bar dataKey="h" radius={[5, 5, 0, 0]} maxBarSize={34}>
+              {data.map((d: any, i: number) => (<Cell key={i} fill={d.hoje ? '#EA580C' : '#EA580C88'} />))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </CardShell>
+  )
+}
+
+/* ── COLUNA 3 · Saúde ── */
+function SaudeHero({ reg, streak, onNavigate }: any) {
+  const a = reg?.agua ?? 0, m = reg?.metaAgua ?? 2000
+  const pct = m ? Math.min(100, Math.round(a / m * 100)) : 0
+  return (
+    <div style={{ display: 'flex', gap: 12, padding: '14px 16px', borderRadius: 16, background: 'linear-gradient(135deg,#0F9D5814,#039BE50a)', border: '1px solid #0F9D5826' }}>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <Ring pct={pct} color="#039BE5" size={66} />
+        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 800, color: '#039BE5' }}>{pct}%</span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.15rem', color: 'var(--text-primary)' }}>Bem-Estar</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>Streak de {streak} dia{streak !== 1 ? 's' : ''} · água {(a / 1000).toFixed(1)}/{(m / 1000).toFixed(1)} L</div>
+        <button onClick={() => onNavigate('saude')} style={{ marginTop: 9, padding: '5px 12px', borderRadius: 8, border: '1px solid #0F9D5840', background: '#0F9D580c', color: '#0F9D58', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer' }}>Registro rápido →</button>
+      </div>
+    </div>
+  )
+}
+function PesoCard({ peso, delta, onNavigate }: any) {
+  if (!peso.length) return (
+    <CardShell icon="⚖" title="Peso · Tendência" color="#0F9D58" footer="Abrir Saúde" navTo="saude" onNavigate={onNavigate}>
+      <Empty icon="⚖" msg="Sem registros de peso ainda" />
+    </CardShell>
+  )
+  const ult = peso[peso.length - 1].peso
+  const vals = peso.map((p: any) => p.peso)
+  const dom = [Math.floor(Math.min(...vals) - 1), Math.ceil(Math.max(...vals) + 1)]
+  const down = delta <= 0
+  return (
+    <CardShell icon="⚖" title="Peso · Tendência" color="#0F9D58" badge={`${peso.length} regs`} footer="Abrir Saúde" navTo="saude" onNavigate={onNavigate}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 2, flexWrap: 'wrap' }}>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.5rem', color: 'var(--text-primary)' }}>{ult} kg</div>
+        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: down ? '#0F9D58' : '#D93025' }}>{delta > 0 ? '+' : ''}{delta} kg <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>no período</span></div>
+      </div>
+      <div style={{ height: 150 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={peso} margin={{ top: 6, right: 8, bottom: 0, left: -20 }}>
+            <defs><linearGradient id="gPeso" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0F9D58" stopOpacity={0.35} /><stop offset="100%" stopColor="#0F9D58" stopOpacity={0} /></linearGradient></defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={22} />
+            <YAxis domain={dom} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={30} />
+            <Tooltip formatter={(v: any) => [`${v} kg`, 'Peso']} contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+            <Area type="monotone" dataKey="peso" stroke="#0F9D58" strokeWidth={2.4} fill="url(#gPeso)" dot={{ r: 2.4, fill: '#0F9D58' }} activeDot={{ r: 4 }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </CardShell>
+  )
+}
+function AtividadeCard({ ativHoje, passosSerie, onNavigate }: any) {
+  const has = ativHoje.length || passosSerie.length
+  return (
+    <CardShell icon="🏃" title="Atividade Física" color="#2563EB" footer="Abrir Saúde" navTo="saude" onNavigate={onNavigate}>
+      {!has ? <Empty icon="🏃" msg="Registre passos/atividade na aba Saúde" /> : <>
+        {ativHoje.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginBottom: passosSerie.length ? 8 : 0 }}>
+            {ativHoje.map((a: any) => (
+              <div key={a.k} style={{ padding: '9px 11px', borderRadius: 10, background: '#2563EB0c', border: '1px solid #2563EB22' }}>
+                <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>{a.icon} {a.l}</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>{a.v}{a.u ? ` ${a.u}` : ''}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {passosSerie.length > 0 && (
+          <div style={{ height: 118 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={passosSerie} margin={{ top: 4, right: 6, bottom: 0, left: -28 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={36} />
+                <Tooltip formatter={(v: any) => [v, 'Passos']} contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+                <Bar dataKey="passos" radius={[5, 5, 0, 0]} fill="#2563EB" maxBarSize={30} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </>}
+    </CardShell>
+  )
+}
+function AguaSerieCard({ agua, onNavigate }: any) {
+  if (!agua.length) return null
+  const meta = agua[agua.length - 1]?.meta || 2
+  return (
+    <CardShell icon="💧" title="Água · 7 dias" color="#039BE5" footer="Abrir Saúde" navTo="saude" onNavigate={onNavigate}>
+      <div style={{ height: 126 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={agua} margin={{ top: 6, right: 6, bottom: 0, left: -26 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 9, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={30} unit="L" />
+            <Tooltip formatter={(v: any) => [`${v} L`, 'Água']} contentStyle={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+            <ReferenceLine y={meta} stroke="#039BE5" strokeDasharray="4 4" strokeOpacity={0.5} />
+            <Bar dataKey="agua" radius={[5, 5, 0, 0]} fill="#039BE5" maxBarSize={30} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </CardShell>
+  )
+}
+
+/* ── MONTAGEM DA PÁGINA INICIAL ── */
+export function PaginaInicial({ onNavigate }: { onNavigate: (id: string) => void }) {
+  const [narrow, setNarrow] = useState(typeof window !== 'undefined' && window.innerWidth < 980)
+  useEffect(() => { const fn = () => setNarrow(window.innerWidth < 980); window.addEventListener('resize', fn); return () => window.removeEventListener('resize', fn) }, [])
+
+  const agu = useAguData()
+  const agenda = useAgendaData()
+  const saude = useSaudeData()
+  const { peso, pesoDelta, agua, ativHoje, passosSerie } = useSaudeSeries()
+
+  const colProd = <>
+    <Slot h={250}><HorasSemanaCard onNavigate={onNavigate} /></Slot>
+    <Slot h={232}><AgendaHojeLista agenda={agenda} onNavigate={onNavigate} /></Slot>
+    <Slot h={212}><AgendaSemana agenda={agenda} onNavigate={onNavigate} /></Slot>
+    <Slot h={212}><AguRevisoes agu={agu} onNavigate={onNavigate} /></Slot>
+  </>
+  const colSaude = <>
+    <div style={{ flexShrink: 0 }}><SaudeHero reg={saude.reg} streak={saude.streak} onNavigate={onNavigate} /></div>
+    <Slot h={252}><PesoCard peso={peso} delta={pesoDelta} onNavigate={onNavigate} /></Slot>
+    <Slot h={ativHoje.length && passosSerie.length ? 270 : ativHoje.length ? 168 : passosSerie.length ? 212 : 150}><AtividadeCard ativHoje={ativHoje} passosSerie={passosSerie} onNavigate={onNavigate} /></Slot>
+    <Slot h={172}><SaudeHoje saude={saude} onNavigate={onNavigate} /></Slot>
+    {agua.length ? <Slot h={208}><AguaSerieCard agua={agua} onNavigate={onNavigate} /></Slot> : null}
+  </>
+
+  if (narrow) {
+    return (
+      <div style={{ height: '100%', overflowY: 'auto', padding: '14px 14px 28px' }}>
+        <div style={{ height: 132, marginBottom: 14 }}><Saudacao /></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>{colProd}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>{colSaude}</div>
+        <div style={{ height: 420 }}><ColAcessoRapido onNavigate={onNavigate} /></div>
+      </div>
+    )
+  }
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', gap: 14, padding: '14px 0 0' }}>
+      <div style={{ padding: '0 20px', height: 132, flexShrink: 0 }}><Saudacao /></div>
+      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(230px, 0.95fr) minmax(0, 1.3fr) minmax(290px, 1.05fr)', gap: 14, padding: '0 20px 14px' }}>
+        <div style={{ minHeight: 0 }}><ColAcessoRapido onNavigate={onNavigate} /></div>
+        <div style={{ minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colProd}</div>
+        <div style={{ minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colSaude}</div>
+      </div>
+    </div>
+  )
 }

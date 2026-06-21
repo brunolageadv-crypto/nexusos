@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import PainelChecklistDia from './ChecklistDia'
 import PainelArcade from './Arcade'
 import PainelGeosfera from './GeosferaCard'
-import VisaoGeral from './VisaoGeral'
+import VisaoGeral, { PaginaInicial } from './VisaoGeral'
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import { AGU_DISCIPLINAS, TOTAL_SUBTOPICOS } from '../editais/aguData'
 import { useEditaisCadastrados, useEdital } from '../../hooks/useEdital'
@@ -12,7 +12,7 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import { collection, query, orderBy, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore'
 
-interface Props { onNavigate: (id: string) => void; dashView?: 'noticias' | 'visual' }
+interface Props { onNavigate: (id: string) => void; dashView?: 'noticias' | 'visual' | 'home' }
 
 interface Widget {
   id: string; col: number; row: number; w: number; h: number; visible: boolean
@@ -3098,6 +3098,16 @@ export default function NexusDashboard({ onNavigate, dashView = 'visual' }: Prop
     }
   }
 
+  if (dashView === 'home') {
+    return (
+      <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+        <div style={{ flex:1, minHeight:0 }}>
+          <PaginaInicial onNavigate={onNavigate} />
+        </div>
+        <BarraInferior />
+      </div>
+    )
+  }
   if (dashView === 'visual') {
     return (
       <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>

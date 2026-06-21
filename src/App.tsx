@@ -129,11 +129,12 @@ function AppShell() {
   const [sidebarMode, setSidebarMode] = useState<'fixed' | 'auto'>(
     () => (localStorage.getItem('nexusos-sidebar-mode') as 'fixed' | 'auto') ?? 'fixed'
   )
-  const [dashView, setDashView] = useState<'noticias' | 'visual'>(
-    () => (localStorage.getItem('nexusos-dash-view') as 'noticias' | 'visual') ?? 'visual'
+  // Modos do Dashboard: 'home' (Página Inicial) · 'visual' (Visão Geral) · 'noticias'
+  // Para abrir SEMPRE no Visual em vez da Página Inicial, troque 'home' por 'visual' abaixo.
+  const [dashView, setDashView] = useState<'noticias' | 'visual' | 'home'>(
+    () => (localStorage.getItem('nexusos-dash-view') as 'noticias' | 'visual' | 'home') ?? 'home'
   )
-  const toggleDashView = () => {
-    const next = dashView === 'noticias' ? 'visual' : 'noticias'
+  const setDash = (next: 'noticias' | 'visual' | 'home') => {
     setDashView(next)
     localStorage.setItem('nexusos-dash-view', next)
   }
@@ -219,20 +220,29 @@ function AppShell() {
             <div className="sync-dot" />
             {/* Check list do dia */}
             <ChecklistTopbar />
-            {/* Botão troca de visualização do dashboard */}
+            {/* Seletor de modo do Dashboard (só na aba dashboard) */}
             {active === 'dashboard' && (
-              <button onClick={toggleDashView}
-                className={`desktop-only topbar-btn${dashView==='visual'?' active':''}`}
-                title={dashView === 'noticias' ? 'Modo visual' : 'Modo notícias'}>
-                {dashView === 'noticias' ? '◧ Visual' : '📰 Notícias'}
-              </button>
+              <div className="desktop-only" style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 10, border: '1px solid var(--border-md)', background: 'var(--surface)' }}>
+                {([
+                  { id: 'home', label: '🏠 Início', t: 'Página inicial' },
+                  { id: 'visual', label: '◧ Visual', t: 'Visão geral em cards' },
+                  { id: 'noticias', label: '📰 Notícias', t: 'Modo notícias' },
+                ] as const).map(m => (
+                  <button key={m.id} onClick={() => setDash(m.id)} title={m.t}
+                    className={`topbar-btn${dashView === m.id ? ' active' : ''}`}
+                    style={{ border: 'none', background: dashView === m.id ? undefined : 'transparent' }}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
             )}
-              <button
-                className="desktop-only topbar-btn"
-                title="Ir para Visão Geral"
-                onClick={() => { setActive('dashboard'); localStorage.setItem('nexusos-dash-view','visual'); setDashView('visual'); }}>
-                ◈ Visão Geral
-              </button>
+            {/* Atalho 🏠 (qualquer aba) → volta para a Página Inicial */}
+            <button
+              className="desktop-only topbar-btn"
+              title="Ir para a Página Inicial"
+              onClick={() => { setActive('dashboard'); setDash('home'); }}>
+              🏠 Início
+            </button>
             {/* Botão tema — só aparece no mobile */}
             <button onClick={toggle} className="mobile-only"
               style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid var(--border-md)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem' }}>
