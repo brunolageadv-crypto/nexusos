@@ -707,6 +707,54 @@ function mmExportAnki(nodes: MmNode[]): string {
   return cards.join('\n')
 }
 
+/* ───────────────────────── ÁRVORE → WORD (.doc via HTML) ───────────────────────── */
+/* catálogo de marcadores (igual à biblioteca de marcadores do Word) */
+const MM_MARCADORES = [
+  { c: '●', l: 'Bola' }, { c: '○', l: 'Círculo' }, { c: '■', l: 'Quadrado' },
+  { c: '□', l: 'Quadrado vazado' }, { c: '▸', l: 'Seta' }, { c: '➤', l: 'Seta cheia' },
+  { c: '»', l: 'Seta dupla' }, { c: '–', l: 'Traço' }, { c: '◦', l: 'Anel' },
+  { c: '·', l: 'Ponto médio' }, { c: '✦', l: 'Estrela' }, { c: '◆', l: 'Losango' },
+]
+const MM_MARK_PADRAO = ['●', '○', '■', '▸', '–']
+
+/* rótulo do nó para o Word: texto base (+ sigla opcional, + página opcional) */
+function mmWordLabel(n: MmNode, opts: any = {}): string {
+  let s = mmLabel(n, { incluirPaginas: false })
+  if (opts.incluirSigla) { const tp = MM_TIPO[n.tipo] || MM_TIPO['nota']; s = `[${tp.sigla}] ${s}` }
+  if (opts.incluirPag && n.pagina) s += ` (p. ${n.pagina})`
+  return s
+}
+
+/* monta o HTML da árvore (mesma renderização da prévia e do .doc) */
+function mmBuildTreeHTML(nodes: MmNode[], opts: any = {}): string {
+  const esc = (s = '') => s.replace(/[&<>]/g, (c: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]!))
+  const marks: string[] = (opts.marcadores && opts.marcadores.length) ? opts.marcadores : MM_MARK_PADRAO
+  const markFor = (d: number) => marks[Math.min(d, marks.length - 1)] || '•'
+  const rows: string[] = []
+  const walk = (pid: string | null, d: number) => {
+    for (const n of mmChildrenOf(nodes, pid)) {
+      const bold = opts.negritoTopicos && (n.tipo === 'topico' || n.tipo === 'subtopico')
+      const txt = esc(mmWordLabel(n, opts))
+      rows.push(
+        `<p style="margin:0 0 3px 0;padding-left:${d * 22}px;line-height:1.5;">` +
+        `<span style="color:#7a7f87;">${markFor(d)}</span>&nbsp;` +
+        `<span style="${bold ? 'font-weight:700;' : ''}">${txt}</span></p>`
+      )
+      walk(n.id, d + 1)
+    }
+  }
+  walk(null, 0)
+  return rows.join('\n')
+}
+
+/* embrulha o HTML num documento que o Word abre como .doc */
+function mmTreeWordDoc(innerHTML: string, titulo: string): string {
+  const t = (titulo || 'Árvore').replace(/[<>]/g, '')
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${t}</title>` +
+    `<style>body{font-family:Calibri,'Segoe UI',Arial,sans-serif;font-size:11pt;color:#1a1a1a;}h1{font-size:15pt;margin:0 0 12px;}p{margin:0;}</style></head>` +
+    `<body><h1>${t}</h1>${innerHTML}</body></html>`
+}
+
 /* ════════════════════════════════════════════════════════════════════════ */
 export default function AnalisePDF() {
   const uid = useUid()
@@ -756,7 +804,22 @@ export default function AnalisePDF() {
   const [mmCtx, setMmCtx] = useState<{ x: number; y: number; id: string } | null>(null) // menu de contexto
   const [mmDropTarget, setMmDropTarget] = useState<{ id: string; zone: 'before' | 'into' | 'after' } | null>(null)
   const [mmExportOpen, setMmExportOpen] = useState(false)         // menu Exportar aberto
-  const [mmIncluirPag, setMmIncluirPag] = useState(true)          // sufixo "(p. N)" nas exportações
+  /* preferências de exportação lembradas (localStorage) */
+  const PA_PREFS_KEY = 'nexus_pdf_export_prefs_v1'
+  const _prefs0 = (() => { try { return JSON.parse(localStorage.getItem(PA_PREFS_KEY) || '{}') } catch { return {} } })()
+  const [mmIncluirPag, setMmIncluirPag] = useState(_prefs0.incluirPag !== false)   // sufixo "(p. N)" / página no mapa
+  const [mmMostrarSigla, setMmMostrarSigla] = useState(_prefs0.mostrarSigla !== false) // letra de referência (T/S…) no mapa
+  const [mmMapOptsOpen, setMmMapOptsOpen] = useState(false)       // popover de opções no toolbar do mapa
+  const [wordOpen, setWordOpen] = useState(false)                // modal de prévia/exportação Word
+  const [wordOpts, setWordOpts] = useState<any>(() => ({
+    incluirPag: _prefs0.word?.incluirPag ?? false,
+    incluirSigla: _prefs0.word?.incluirSigla ?? false,
+    negritoTopicos: _prefs0.word?.negritoTopicos ?? true,
+    marcadores: Array.isArray(_prefs0.word?.marcadores) && _prefs0.word.marcadores.length ? _prefs0.word.marcadores : [...MM_MARK_PADRAO],
+  }))
+  useEffect(() => {
+    try { localStorage.setItem(PA_PREFS_KEY, JSON.stringify({ incluirPag: mmIncluirPag, mostrarSigla: mmMostrarSigla, word: wordOpts })) } catch {}
+  }, [mmIncluirPag, mmMostrarSigla, wordOpts])
   const [mmZoom, setMmZoom] = useState(1)                          // zoom do mapa visual
   // ── múltiplos mapas por PDF, em pastas/subpastas ──
   const [mmPastas, setMmPastas] = useState<any[]>([])              // { id, nome, paiId }
@@ -1620,6 +1683,17 @@ export default function AnalisePDF() {
     if (fmt !== 'copy') toast('Exportado: ' + fmt.toUpperCase())
   }, [pdfName, mmIncluirPag, mmDownload, toast])
 
+  /* exporta a Árvore em Word (.doc via HTML), usando as opções/marcadores atuais */
+  const mmExportWord = useCallback(() => {
+    const nodes = mmNodesRef.current
+    if (!nodes.length) { toast('Mapa vazio'); return }
+    const base = (pdfName || 'arvore').replace(/[^\w\-]+/g, '_').slice(0, 40)
+    const inner = mmBuildTreeHTML(nodes, wordOpts)
+    const docHtml = mmTreeWordDoc(inner, pdfName || 'Árvore')
+    mmDownload(`${base}_arvore.doc`, docHtml, 'application/msword;charset=utf-8')
+    toast('Word exportado')
+  }, [pdfName, wordOpts, mmDownload, toast])
+
   /* PDF visual do mapa (Etapa 5) — reaproveita jsPDF + html2canvas */
   const mmMapRef = useRef<HTMLDivElement>(null)
   const mmExportMapaPDF = useCallback(async () => {
@@ -2182,6 +2256,56 @@ export default function AnalisePDF() {
         )}
 
         {/* ── modal: Gerenciar mapas, pastas e subpastas ── */}
+        {wordOpen && createPortal(
+          <>
+            <div className="pdfa-mm-backdrop" onMouseDown={() => setWordOpen(false)} />
+            <div className="pdfa-mm-modal" onMouseDown={e => e.stopPropagation()} style={{ width: 'min(920px, 95vw)', height: 'min(660px, 90vh)', maxHeight: '90vh' }}>
+              <div className="hd">
+                <b>📄 Exportar Árvore em Word {pdfName ? <span style={{ color: 'var(--pa-faint)', fontWeight: 600 }}>· {pdfName}</span> : null}</b>
+                <span className="grow" style={{ flex: 1 }} />
+                <button className="pdfa-btn primary" onClick={mmExportWord} disabled={mmNodes.length === 0}>⬇ Exportar Word (.doc)</button>
+                <button className="pdfa-btn icon" onClick={() => setWordOpen(false)} title="Fechar">✕</button>
+              </div>
+              <div style={{ display: 'flex', gap: 14, flex: 1, minHeight: 0, padding: 14 }}>
+                {/* opções */}
+                <div style={{ width: 250, flexShrink: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 11 }}>
+                  <div style={{ fontSize: '.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--pa-faint)' }}>Conteúdo</div>
+                  {[
+                    { lbl: 'Remover número da página', get: !wordOpts.incluirPag, set: (v: boolean) => setWordOpts((o: any) => ({ ...o, incluirPag: !v })) },
+                    { lbl: 'Incluir sigla do tipo ([T]/[S]…)', get: wordOpts.incluirSigla, set: (v: boolean) => setWordOpts((o: any) => ({ ...o, incluirSigla: v })) },
+                    { lbl: 'Negrito em tópicos/subtópicos', get: wordOpts.negritoTopicos, set: (v: boolean) => setWordOpts((o: any) => ({ ...o, negritoTopicos: v })) },
+                  ].map((it, i) => (
+                    <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.78rem', color: 'var(--pa-text)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={it.get} onChange={e => it.set(e.target.checked)} /> {it.lbl}
+                    </label>
+                  ))}
+                  <div style={{ fontSize: '.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--pa-faint)', marginTop: 5 }}>Marcadores por nível</div>
+                  {[0, 1, 2, 3, 4].map(lvl => (
+                    <div key={lvl} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '.74rem', color: 'var(--pa-dim)', width: 74, flexShrink: 0 }}>{lvl < 4 ? `Nível ${lvl + 1}` : 'Demais'}</span>
+                      <select value={(wordOpts.marcadores && wordOpts.marcadores[lvl]) ?? MM_MARK_PADRAO[lvl]}
+                        onChange={e => setWordOpts((o: any) => { const m = [...(o.marcadores || MM_MARK_PADRAO)]; while (m.length < 5) m.push(MM_MARK_PADRAO[m.length]); m[lvl] = e.target.value; return { ...o, marcadores: m } })}
+                        style={{ flex: 1, padding: '5px 7px', borderRadius: 7, border: '1px solid var(--pa-border)', background: 'var(--pa-bg)', color: 'var(--pa-text)', fontSize: '.82rem', cursor: 'pointer' }}>
+                        {MM_MARCADORES.map(mk => <option key={mk.c} value={mk.c}>{mk.c}   {mk.l}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                  <button className="pdfa-btn" onClick={() => setWordOpts((o: any) => ({ ...o, marcadores: [...MM_MARK_PADRAO] }))} style={{ marginTop: 2, justifyContent: 'center' }}>↺ Marcadores padrão</button>
+                </div>
+                {/* prévia */}
+                <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ fontSize: '.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--pa-faint)' }}>Pré-visualização (idêntica ao Word)</div>
+                  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: '#fff', color: '#1a1a1a', border: '1px solid var(--pa-border)', borderRadius: 10, padding: '20px 22px', fontFamily: "Calibri,'Segoe UI',Arial,sans-serif", fontSize: '11pt' }}>
+                    <div style={{ fontSize: '15pt', fontWeight: 700, marginBottom: 10 }}>{pdfName || 'Árvore'}</div>
+                    {mmNodes.length === 0
+                      ? <div style={{ color: '#888', fontSize: '.85rem' }}>Capture nós na aba 🌲 Árvore para ver a prévia.</div>
+                      : <div dangerouslySetInnerHTML={{ __html: mmBuildTreeHTML(mmNodes, wordOpts) }} />}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>, document.body)}
+
         {mmManager && createPortal(
           <>
             <div className="pdfa-mm-backdrop" onMouseDown={() => setMmManager(false)} />
@@ -2292,6 +2416,11 @@ export default function AnalisePDF() {
                     <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', fontSize: '.74rem', color: 'var(--pa-dim)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={mmIncluirPag} onChange={e => setMmIncluirPag(e.target.checked)} /> incluir páginas (p. N)
                     </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', fontSize: '.74rem', color: 'var(--pa-dim)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={mmMostrarSigla} onChange={e => setMmMostrarSigla(e.target.checked)} /> sigla do tipo no mapa (T/S…)
+                    </label>
+                    <div className="div" />
+                    <button onClick={() => { setMmExportOpen(false); setWordOpen(true) }} style={{ fontWeight: 700 }}>📄 Word — visualizar e exportar</button>
                     <div className="div" />
                     <button onClick={() => mmDoExport('md')}>⬇ Markdown hierárquico</button>
                     <button onClick={() => mmDoExport('mdbadge')}>⬇ Markdown com badges</button>
@@ -2314,6 +2443,19 @@ export default function AnalisePDF() {
               <span style={{ fontSize: '.72rem', color: 'var(--pa-faint)', minWidth: 38, textAlign: 'center' }}>{Math.round(mmZoom * 100)}%</span>
               <button className="pdfa-btn icon" onClick={() => setMmZoom(z => Math.min(2.5, +(z + 0.1).toFixed(2)))} title="Aumentar">＋</button>
               <button className="pdfa-btn icon" onClick={() => setMmZoom(1)} title="100%">⟳</button>
+              <div style={{ position: 'relative' }}>
+                <button className={'pdfa-btn icon' + (mmMapOptsOpen ? ' on' : '')} onClick={() => setMmMapOptsOpen(v => !v)} title="Opções do mapa (página / sigla)">⚙</button>
+                {mmMapOptsOpen && (
+                  <div className="pdfa-mm-ctx" style={{ position: 'absolute', right: 0, top: '110%', left: 'auto', minWidth: 180 }} onMouseLeave={() => setMmMapOptsOpen(false)}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', fontSize: '.74rem', color: 'var(--pa-dim)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={mmIncluirPag} onChange={e => setMmIncluirPag(e.target.checked)} /> mostrar página (p.N)
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 9px', fontSize: '.74rem', color: 'var(--pa-dim)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={mmMostrarSigla} onChange={e => setMmMostrarSigla(e.target.checked)} /> mostrar sigla (T/S…)
+                    </label>
+                  </div>
+                )}
+              </div>
               <button className="pdfa-btn icon" onClick={mmExportMapaPDF} disabled={mmNodes.length === 0} title="Exportar o mapa em PDF">⤓ PDF</button>
             </>}
 
@@ -2523,8 +2665,8 @@ export default function AnalisePDF() {
                             return (
                               <g key={id} style={{ cursor: 'pointer' }} onClick={() => { setBottomView('arvore'); setMmActiveId(id) }}>
                                 <rect x={x} y={y} width={BW} height={BH} rx={7} fill={tp.cor} />
-                                <text x={x + 9} y={y + 13} fill="#fff" fontSize={9} fontWeight={800} fontFamily="Arial">{tp.sigla}</text>
-                                <text x={x + 9} y={y + 23} fill="#fff" fontSize={10.5} fontFamily="Arial">{label}</text>
+                                {mmMostrarSigla && <text x={x + 9} y={y + 13} fill="#fff" fontSize={9} fontWeight={800} fontFamily="Arial">{tp.sigla}</text>}
+                                <text x={x + 9} y={mmMostrarSigla ? y + 23 : y + 17} fill="#fff" fontSize={10.5} fontFamily="Arial">{label}</text>
                                 {mmIncluirPag && p.n.pagina ? <text x={x + BW - 6} y={y + 11} fill="rgba(255,255,255,.85)" fontSize={8} textAnchor="end" fontFamily="Arial">p.{p.n.pagina}</text> : null}
                               </g>
                             )
