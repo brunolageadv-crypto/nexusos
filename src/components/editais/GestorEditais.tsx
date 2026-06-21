@@ -8,6 +8,7 @@ import { AGU_DISCIPLINAS } from './aguData'
 import { PGM_BH_DISCIPLINAS } from './pgmBhData'
 import { PGM_CWB_DISCIPLINAS } from './pgmCuritibaData'
 import EditalDetalhe from './EditalDetalhe'
+import SimilaridadeEditais from './SimilaridadeEditais'
 import { useUid } from '../../hooks/useUid'
 
 // ─── Converte dados AGU hardcoded para o formato genérico ─────────────────────
@@ -575,6 +576,7 @@ export default function GestorEditais() {
   const [editalAberto, setEditalAberto] = useState<EditalCadastrado | null>(null)
   const [modalEdital, setModalEdital] = useState(false)
   const [editandoEdital, setEditandoEdital] = useState<EditalCadastrado | null>(null)
+  const [verSim, setVerSim] = useState(false)
 
   useEffect(() => {
     if (!uid) return
@@ -593,6 +595,9 @@ export default function GestorEditais() {
   // Se há um edital aberto, mostrar o detalhe
   if (editalAberto) {
     return <EditalDetalhe edital={editalAberto} onVoltar={() => setEditalAberto(null)} />
+  }
+  if (verSim) {
+    return <div style={{ padding: '24px 28px', overflowY: 'auto' }}><SimilaridadeEditais onVoltar={() => setVerSim(false)} /></div>
   }
 
   if (loading) return (
@@ -614,10 +619,16 @@ export default function GestorEditais() {
               {todosEditais.length} edital{todosEditais.length !== 1 ? 'is' : ''} cadastrado{todosEditais.length !== 1 ? 's' : ''}
             </p>
           </div>
-          <button onClick={() => { setEditandoEdital(null); setModalEdital(true) }}
-            style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#4f46e5,#6366f1)', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.35)' }}>
-            + Novo Edital
-          </button>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button onClick={() => setVerSim(true)}
+              style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid var(--border-md)', background: 'var(--surface)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }}>
+              🔗 Similaridade
+            </button>
+            <button onClick={() => { setEditandoEdital(null); setModalEdital(true) }}
+              style={{ padding: '10px 20px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#4f46e5,#6366f1)', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.35)' }}>
+              + Novo Edital
+            </button>
+          </div>
         </div>
 
         {/* KPIs globais */}

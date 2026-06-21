@@ -2,6 +2,7 @@
 import { useState, useMemo } from 'react'
 import { useEdital } from '../../hooks/useEdital'
 import type { EditalCadastrado } from '../../hooks/useEdital'
+import { useSimilaridade } from './similaridade'
 
 interface Props {
   edital: EditalCadastrado
@@ -208,7 +209,25 @@ function TopicBlock({ nome, subtopicos, cor, hooks }: {
 
 export default function EditalDetalhe({ edital, onVoltar }: Props) {
   const [activeDisciplinaId, setActiveDisciplinaId] = useState(edital.disciplinas[0]?.id || '')
-  const hooks = useEdital(edital.id)
+  const _hooks = useEdital(edital.id)
+  const sim = useSimilaridade()
+  // envolve o hook: ao alterar um subtópico, propaga o mesmo estado aos equivalentes nos outros editais
+  const hooks = useMemo(() => {
+    if (!sim.syncOn) return _hooks
+    const hoje = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+    return {
+      ..._hooks,
+      updateField: ((id: string, field: any, value: any) => { _hooks.updateField(id, field, value); void sim.propagate(edital.id, id, { [field]: value }) }) as typeof _hooks.updateField,
+      cycleStatus: (id: string) => {
+        const cur = _hooks.getState(id)
+        const cycle = ['pendente', 'em_andamento', 'concluido'] as const
+        const next = cycle[(cycle.indexOf(cur.statusMaterial) + 1) % cycle.length]
+        const dataFinalizacao = next === 'concluido' ? (cur.dataFinalizacao || hoje()) : next === 'pendente' ? '' : cur.dataFinalizacao
+        _hooks.cycleStatus(id)
+        void sim.propagate(edital.id, id, { statusMaterial: next, dataFinalizacao })
+      },
+    }
+  }, [_hooks, sim, edital.id])
 
   const allIds = useMemo(
     () => edital.disciplinas.flatMap(d => d.topicos.flatMap(t => t.subtopicos.map(s => s.id))),
