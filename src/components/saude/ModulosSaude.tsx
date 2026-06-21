@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
@@ -345,25 +345,362 @@ function Alimentos({ uid }: { uid: string | null }) {
   )
 }
 
+// ─── helpers extras (lotes 1 e 3) ────────────────────────────────────────────
+function addMonths(d: string, m: number): string {
+  const dt = new Date(d + 'T00:00:00'); dt.setMonth(dt.getMonth() + m)
+  return dt.toISOString().slice(0, 10)
+}
+function diasAte(d: string): number {
+  const a = new Date(today() + 'T00:00:00').getTime(), b = new Date(d + 'T00:00:00').getTime()
+  return Math.round((b - a) / 86400000)
+}
+function Spark({ valores, cor, alto, baixo }: { valores: number[]; cor: string; alto?: number; baixo?: number }) {
+  if (valores.length < 2) return <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>poucos dados para tendência</div>
+  const W = 240, H = 46, P = 4
+  const max = Math.max(...valores, alto ?? -Infinity), min = Math.min(...valores, baixo ?? Infinity), r = max - min || 1
+  const pts = valores.map((v, i) => `${P + (i / (valores.length - 1)) * (W - P * 2)},${H - P - ((v - min) / r) * (H - P * 2)}`).join(' ')
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: 'block' }}>
+      {alto != null && <line x1={P} x2={W - P} y1={H - P - ((alto - min) / r) * (H - P * 2)} y2={H - P - ((alto - min) / r) * (H - P * 2)} stroke="#f87171" strokeWidth={1} strokeDasharray="3,3" opacity={0.6} />}
+      <polyline points={pts} fill="none" stroke={cor} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+function addBtn(): React.CSSProperties { return { padding: '9px 16px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#059669,#10b981)', color: '#fff', fontWeight: 800, fontSize: '0.78rem', cursor: 'pointer' } }
+function badge(texto: string, cor: string): React.ReactNode { return <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#fff', background: cor, borderRadius: 5, padding: '2px 6px', whiteSpace: 'nowrap' }}>{texto}</span> }
+
+// ═══ MÓDULO — Inventário de Medicamentos ═══════════════════════════════════════
+interface Medicamento { id: string; nome: string; dosagem: string; estoque: number; porDia: number; validade: string }
+function Medicamentos({ uid }: { uid: string | null }) {
+  const [itens, setItens] = useState<Medicamento[]>([])
+  const [form, setForm] = useState<Medicamento>({ id: '', nome: '', dosagem: '', estoque: 0, porDia: 0, validade: '' })
+  useEffect(() => { if (!uid) return; return onSnapshot(doc(db, 'users', uid, 'saudeModulos', 'medicamentos'), s => setItens((s.data()?.itens as Medicamento[]) || [])) }, [uid])
+  const persist = async (lista: Medicamento[]) => { setItens(lista); if (uid) await setDoc(doc(db, 'users', uid, 'saudeModulos', 'medicamentos'), { itens: lista }) }
+  const add = () => { if (!form.nome.trim()) return; persist([...itens, { ...form, id: newId() }]); setForm({ id: '', nome: '', dosagem: '', estoque: 0, porDia: 0, validade: '' }) }
+  const statusOf = (m: Medicamento): React.ReactNode[] => {
+    const out: React.ReactNode[] = []
+    if (m.validade) { const d = diasAte(m.validade); if (d < 0) out.push(badge('VENCIDO', '#dc2626')); else if (d <= 30) out.push(badge(`vence em ${d}d`, '#f59e0b')) }
+    const dias = m.porDia > 0 ? Math.floor(m.estoque / m.porDia) : (m.estoque <= 3 ? 0 : 99)
+    if (dias <= 0) out.push(badge('SEM ESTOQUE', '#dc2626')); else if (dias < 7) out.push(badge(`repor (${dias}d)`, '#f59e0b'))
+    return out
+  }
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 0.8fr 0.8fr 1fr auto', gap: 8, alignItems: 'end' }}>
+        <div><Lbl>Medicamento</Lbl><input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} style={fieldStyle} /></div>
+        <div><Lbl>Dosagem</Lbl><input value={form.dosagem} onChange={e => setForm({ ...form, dosagem: e.target.value })} placeholder="500mg" style={fieldStyle} /></div>
+        <div><Lbl>Estoque</Lbl><input type="number" value={form.estoque || ''} onChange={e => setForm({ ...form, estoque: Number(e.target.value) })} style={fieldStyle} /></div>
+        <div><Lbl>/dia</Lbl><input type="number" value={form.porDia || ''} onChange={e => setForm({ ...form, porDia: Number(e.target.value) })} style={fieldStyle} /></div>
+        <div><Lbl>Validade</Lbl><input type="date" value={form.validade} onChange={e => setForm({ ...form, validade: e.target.value })} style={fieldStyle} /></div>
+        <button onClick={add} style={addBtn()}>＋</button>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14 }}>
+        {itens.length === 0 && <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nenhum medicamento cadastrado.</div>}
+        {itens.map(m => (
+          <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, background: 'var(--surface,rgba(125,125,125,0.05))', border: '1px solid var(--border-md)' }}>
+            <span style={{ fontSize: '1.1rem' }}>💊</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)' }}>{m.nome}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 8 }}>{m.dosagem} · {m.estoque} un{m.porDia > 0 ? ` · ${m.porDia}/dia` : ''}{m.validade ? ` · val. ${m.validade.split('-').reverse().join('/')}` : ''}</span>
+            </span>
+            <span style={{ display: 'flex', gap: 5 }}>{statusOf(m)}</span>
+            <button onClick={() => persist(itens.filter(x => x.id !== m.id))} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.95rem' }}>×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ═══ MÓDULO — Sinais Vitais (PA + FC) ══════════════════════════════════════════
+interface Vital { id: string; data: string; sis: number; dia: number; fc: number }
+function corPA(sis: number, dia: number) { if (sis >= 140 || dia >= 90) return '#dc2626'; if (sis >= 130 || dia >= 80) return '#f59e0b'; if (sis >= 120) return '#fbbf24'; return '#10b981' }
+function corFC(fc: number) { return fc >= 60 && fc <= 100 ? '#10b981' : '#dc2626' }
+function SinaisVitais({ uid }: { uid: string | null }) {
+  const [regs, setRegs] = useState<Vital[]>([])
+  const [f, setF] = useState({ sis: 0, dia: 0, fc: 0 })
+  useEffect(() => { if (!uid) return; return onSnapshot(doc(db, 'users', uid, 'saudeModulos', 'sinaisVitais'), s => setRegs(((s.data()?.registros as Vital[]) || []).sort((a, b) => a.data.localeCompare(b.data)))) }, [uid])
+  const persist = async (lista: Vital[]) => { setRegs(lista); if (uid) await setDoc(doc(db, 'users', uid, 'saudeModulos', 'sinaisVitais'), { registros: lista }) }
+  const add = () => { if (!f.sis && !f.fc) return; persist([...regs, { id: newId(), data: new Date(Date.now() - 3 * 3600000).toISOString(), sis: f.sis, dia: f.dia, fc: f.fc }]); setF({ sis: 0, dia: 0, fc: 0 }) }
+  const ult = regs[regs.length - 1]
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' }}>
+      <div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+          <div><Lbl>Sistólica</Lbl><input type="number" value={f.sis || ''} onChange={e => setF({ ...f, sis: Number(e.target.value) })} placeholder="120" style={fieldStyle} /></div>
+          <div><Lbl>Diastólica</Lbl><input type="number" value={f.dia || ''} onChange={e => setF({ ...f, dia: Number(e.target.value) })} placeholder="80" style={fieldStyle} /></div>
+          <div><Lbl>FC (bpm)</Lbl><input type="number" value={f.fc || ''} onChange={e => setF({ ...f, fc: Number(e.target.value) })} placeholder="72" style={fieldStyle} /></div>
+          <button onClick={add} style={addBtn()}>＋</button>
+        </div>
+        {regs.length > 0 && <div style={{ marginTop: 14 }}>
+          <Lbl>Tendência da pressão (sistólica)</Lbl>
+          <Spark valores={regs.slice(-14).map(r => r.sis)} cor="#60a5fa" alto={130} />
+        </div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 12, maxHeight: 150, overflowY: 'auto' }}>
+          {regs.slice().reverse().slice(0, 8).map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
+              <span style={{ color: 'var(--text-muted)', minWidth: 70 }}>{r.data.slice(8, 10)}/{r.data.slice(5, 7)} {r.data.slice(11, 16)}</span>
+              <span style={{ color: corPA(r.sis, r.dia), fontWeight: 700 }}>{r.sis}/{r.dia}</span>
+              <span style={{ color: corFC(r.fc) }}>♥ {r.fc}</span>
+              <button onClick={() => persist(regs.filter(x => x.id !== r.id))} style={{ marginLeft: 'auto', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>×</button>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ background: 'var(--surface,rgba(125,125,125,0.05))', border: '1px solid var(--border-md)', borderRadius: 14, padding: 16, textAlign: 'center' }}>
+        <Lbl>Última aferição</Lbl>
+        {ult ? <>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '2rem', color: corPA(ult.sis, ult.dia), lineHeight: 1 }}>{ult.sis}/{ult.dia}</div>
+          <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 2 }}>mmHg</div>
+          <div style={{ marginTop: 10, fontSize: '1.1rem', fontWeight: 800, color: corFC(ult.fc) }}>♥ {ult.fc} bpm</div>
+          <div style={{ marginTop: 10, fontSize: '0.62rem', color: corPA(ult.sis, ult.dia), fontWeight: 700 }}>
+            {ult.sis >= 140 || ult.dia >= 90 ? 'Pressão alta — atenção' : ult.sis >= 130 || ult.dia >= 80 ? 'Pressão elevada' : 'Pressão normal'}
+          </div>
+        </> : <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', padding: '24px 0' }}>Registre sua primeira aferição.</div>}
+      </div>
+    </div>
+  )
+}
+
+// ═══ MÓDULO — Vacinação ════════════════════════════════════════════════════════
+interface Vacina { id: string; nome: string; data: string; reforcoMeses: number }
+function Vacinas({ uid }: { uid: string | null }) {
+  const [itens, setItens] = useState<Vacina[]>([])
+  const [f, setF] = useState<Vacina>({ id: '', nome: '', data: today(), reforcoMeses: 0 })
+  useEffect(() => { if (!uid) return; return onSnapshot(doc(db, 'users', uid, 'saudeModulos', 'vacinas'), s => setItens(((s.data()?.itens as Vacina[]) || []).sort((a, b) => b.data.localeCompare(a.data)))) }, [uid])
+  const persist = async (lista: Vacina[]) => { setItens(lista); if (uid) await setDoc(doc(db, 'users', uid, 'saudeModulos', 'vacinas'), { itens: lista }) }
+  const add = () => { if (!f.nome.trim()) return; persist([...itens, { ...f, id: newId() }]); setF({ id: '', nome: '', data: today(), reforcoMeses: 0 }) }
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr auto', gap: 8, alignItems: 'end' }}>
+        <div><Lbl>Vacina</Lbl><input value={f.nome} onChange={e => setF({ ...f, nome: e.target.value })} placeholder="ex.: Influenza" style={fieldStyle} /></div>
+        <div><Lbl>Data</Lbl><input type="date" value={f.data} onChange={e => setF({ ...f, data: e.target.value })} style={fieldStyle} /></div>
+        <div><Lbl>Reforço (meses)</Lbl><input type="number" value={f.reforcoMeses || ''} onChange={e => setF({ ...f, reforcoMeses: Number(e.target.value) })} placeholder="0 = dose única" style={fieldStyle} /></div>
+        <button onClick={add} style={addBtn()}>＋</button>
+      </div>
+      <div style={{ marginTop: 16, position: 'relative', paddingLeft: 18 }}>
+        <div style={{ position: 'absolute', left: 5, top: 4, bottom: 4, width: 2, background: 'var(--border-md)' }} />
+        {itens.length === 0 && <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nenhuma vacina registrada.</div>}
+        {itens.map(v => {
+          const prox = v.reforcoMeses > 0 ? addMonths(v.data, v.reforcoMeses) : ''
+          const d = prox ? diasAte(prox) : 99
+          const cor = !prox ? '#10b981' : d < 0 ? '#dc2626' : d <= 60 ? '#f59e0b' : '#10b981'
+          return (
+            <div key={v.id} style={{ position: 'relative', marginBottom: 10 }}>
+              <span style={{ position: 'absolute', left: -17, top: 6, width: 10, height: 10, borderRadius: '50%', background: cor, border: '2px solid var(--card-bg,#1a1b26)' }} />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, background: 'var(--surface,rgba(125,125,125,0.05))', border: '1px solid var(--border-md)' }}>
+                <span style={{ flex: 1 }}>
+                  <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)' }}>{v.nome}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 8 }}>tomada em {v.data.split('-').reverse().join('/')}</span>
+                </span>
+                {prox ? badge(d < 0 ? `reforço atrasado` : `reforço ${prox.split('-').reverse().join('/')}`, cor) : badge('dose única', cor)}
+                <button onClick={() => persist(itens.filter(x => x.id !== v.id))} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.95rem' }}>×</button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ═══ MÓDULO — Hidratação Inteligente ═══════════════════════════════════════════
+function Hidratacao({ uid }: { uid: string | null }) {
+  const [dias, setDias] = useState<{ data: string; agua: number; meta: number }[]>([])
+  useEffect(() => {
+    if (!uid) return
+    return onSnapshot(collection(db, 'users', uid, 'saude'), snap => {
+      const list = snap.docs.map(d => { const x = d.data() as { data: string; agua?: number; metaAgua?: number }; return { data: x.data, agua: x.agua || 0, meta: x.metaAgua || 2000 } })
+        .filter(x => x.agua > 0).sort((a, b) => a.data.localeCompare(b.data))
+      setDias(list)
+    })
+  }, [uid])
+  const ultimos = dias.slice(-14)
+  const media = ultimos.length ? Math.round(ultimos.reduce((s, d) => s + d.agua, 0) / ultimos.length) : 0
+  const meta = dias.length ? dias[dias.length - 1].meta : 2000
+  const sugestao = media < meta * 0.8 ? Math.max(1500, Math.round(media / 100) * 100)
+    : media > meta * 1.15 ? Math.round(media / 100) * 100 : null
+  const max = Math.max(meta, ...ultimos.map(d => d.agua), 1)
+  return (
+    <div>
+      {ultimos.length === 0
+        ? <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Registre água na Visão Geral por alguns dias para a análise inteligente aparecer.</div>
+        : <>
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div><Lbl>Média (14 dias)</Lbl><div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.5rem', color: '#60a5fa' }}>{media} ml</div></div>
+            <div><Lbl>Meta atual</Lbl><div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.5rem', color: 'var(--text-secondary)' }}>{meta} ml</div></div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 70, marginBottom: 6 }}>
+            {ultimos.map(d => (
+              <div key={d.data} title={`${d.data.split('-').reverse().join('/')}: ${d.agua}ml`} style={{ flex: 1, background: d.agua >= meta ? '#10b981' : '#60a5fa', height: `${(d.agua / max) * 100}%`, borderRadius: '3px 3px 0 0', minHeight: 2, opacity: 0.85 }} />
+            ))}
+          </div>
+          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: 12 }}>consumo dos últimos {ultimos.length} dias (verde = bateu a meta)</div>
+          {sugestao ? (
+            <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(96,165,250,0.12)', border: '1px solid rgba(96,165,250,0.4)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              💡 Sua média ({media}ml) está {media < meta ? 'abaixo' : 'acima'} da meta ({meta}ml). Considere {media < meta ? 'reduzir a meta para algo mais realista' : 'aumentar a meta'}: <b style={{ color: '#60a5fa' }}>~{sugestao}ml/dia</b>. Ajuste a meta na Visão Geral (card Água).
+            </div>
+          ) : (
+            <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+              ✅ Seu consumo está alinhado com a meta. Continue assim!
+            </div>
+          )}
+        </>}
+    </div>
+  )
+}
+
+// ═══ MÓDULO — Jornal de Mindfulness & Humor ════════════════════════════════════
+interface Entrada { id: string; data: string; texto: string; humor: number; tags: string[] }
+const MOODS = ['😞', '😕', '😐', '🙂', '😄']
+const TAGS_SUGERIDAS = ['ansioso', 'cansado', 'estressado', 'feliz', 'dor de cabeça', 'insônia', 'motivado', 'irritado', 'calmo', 'produtivo']
+function Jornal({ uid }: { uid: string | null }) {
+  const [entradas, setEntradas] = useState<Entrada[]>([])
+  const [texto, setTexto] = useState('')
+  const [humor, setHumor] = useState(2)
+  const [tags, setTags] = useState<string[]>([])
+  const [tagLivre, setTagLivre] = useState('')
+  useEffect(() => { if (!uid) return; return onSnapshot(doc(db, 'users', uid, 'saudeModulos', 'jornal'), s => setEntradas(((s.data()?.entradas as Entrada[]) || []).sort((a, b) => b.data.localeCompare(a.data)))) }, [uid])
+  const persist = async (lista: Entrada[]) => { setEntradas(lista); if (uid) await setDoc(doc(db, 'users', uid, 'saudeModulos', 'jornal'), { entradas: lista }) }
+  const salvar = () => { if (!texto.trim() && tags.length === 0) return; persist([{ id: newId(), data: new Date(Date.now() - 3 * 3600000).toISOString(), texto: texto.trim(), humor, tags }, ...entradas]); setTexto(''); setTags([]); setHumor(2) }
+  const toggleTag = (t: string) => setTags(s => s.includes(t) ? s.filter(x => x !== t) : [...s, t])
+  // nuvem + correlação humor × tag
+  const freq = useMemo(() => { const m = new Map<string, { n: number; soma: number }>(); for (const e of entradas) for (const t of e.tags) { const c = m.get(t) || { n: 0, soma: 0 }; c.n++; c.soma += e.humor; m.set(t, c) } return m }, [entradas])
+  const nuvem = [...freq.entries()].sort((a, b) => b[1].n - a[1].n)
+  const maxN = Math.max(1, ...nuvem.map(([, c]) => c.n))
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr minmax(200px,300px)', gap: 18, alignItems: 'start' }}>
+      <div>
+        <Lbl>Como você está hoje?</Lbl>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          {MOODS.map((mo, i) => <button key={i} onClick={() => setHumor(i)} style={{ fontSize: '1.5rem', padding: '4px 8px', borderRadius: 10, cursor: 'pointer', border: `2px solid ${humor === i ? 'var(--accent,#10b981)' : 'transparent'}`, background: humor === i ? 'var(--surface,rgba(125,125,125,0.08))' : 'transparent', opacity: humor === i ? 1 : 0.55 }}>{mo}</button>)}
+        </div>
+        <textarea value={texto} onChange={e => setTexto(e.target.value)} placeholder="Escreva o que sentiu, pensou, o que aconteceu…" rows={4} style={{ ...fieldStyle, resize: 'vertical', fontFamily: 'inherit' }} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0' }}>
+          {TAGS_SUGERIDAS.map(t => <button key={t} onClick={() => toggleTag(t)} style={{ padding: '4px 10px', borderRadius: 16, fontSize: '0.7rem', cursor: 'pointer', border: `1px solid ${tags.includes(t) ? 'var(--accent,#10b981)' : 'var(--border-md)'}`, background: tags.includes(t) ? 'var(--accent,#10b981)' : 'transparent', color: tags.includes(t) ? '#fff' : 'var(--text-muted)' }}>{t}</button>)}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input value={tagLivre} onChange={e => setTagLivre(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && tagLivre.trim()) { toggleTag(tagLivre.trim().toLowerCase()); setTagLivre('') } }} placeholder="+ tag livre (Enter)" style={fieldStyle} />
+          <button onClick={salvar} style={addBtn()}>Salvar</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14, maxHeight: 220, overflowY: 'auto' }}>
+          {entradas.slice(0, 12).map(e => (
+            <div key={e.id} style={{ padding: '8px 12px', borderRadius: 10, background: 'var(--surface,rgba(125,125,125,0.05))', border: '1px solid var(--border-md)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.7rem', color: 'var(--text-muted)' }}><span style={{ fontSize: '1rem' }}>{MOODS[e.humor]}</span><span>{e.data.slice(8, 10)}/{e.data.slice(5, 7)}</span><span style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>{e.tags.map(t => <span key={t} style={{ color: 'var(--accent,#10b981)' }}>#{t}</span>)}</span><button onClick={() => persist(entradas.filter(x => x.id !== e.id))} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>×</button></div>
+              {e.texto && <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 4 }}>{e.texto}</div>}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <Lbl>Nuvem de sentimento</Lbl>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: 12, borderRadius: 12, background: 'var(--surface,rgba(125,125,125,0.05))', border: '1px solid var(--border-md)', minHeight: 60 }}>
+          {nuvem.length === 0 ? <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>As tags aparecem aqui conforme você registra.</span>
+            : nuvem.map(([t, c]) => { const m = c.soma / c.n; const cor = m < 1.5 ? '#f87171' : m < 2.5 ? '#fbbf24' : '#34d399'; return <span key={t} title={`humor médio ${m.toFixed(1)}/4`} style={{ fontSize: `${0.72 + (c.n / maxN) * 0.9}rem`, fontWeight: 700, color: cor }}>{t}</span> })}
+        </div>
+        {nuvem.length > 0 && <>
+          <Lbl>Correlação humor × sintoma</Lbl>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {nuvem.slice(0, 6).map(([t, c]) => { const m = c.soma / c.n; const cor = m < 1.5 ? '#f87171' : m < 2.5 ? '#fbbf24' : '#34d399'; return (
+              <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.74rem' }}>
+                <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{t} <span style={{ color: 'var(--text-muted)' }}>({c.n}×)</span></span>
+                <span style={{ color: cor, fontWeight: 700 }}>{MOODS[Math.round(m)]} {m.toFixed(1)}</span>
+              </div>
+            ) })}
+          </div>
+        </>}
+      </div>
+    </div>
+  )
+}
+
+// ═══ MÓDULO — Alertas Vitais Recorrentes ═══════════════════════════════════════
+interface Alerta { id: string; titulo: string; hora: string; dias: number[]; ativo: boolean }
+const DIAS_SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
+function Alertas({ uid }: { uid: string | null }) {
+  const [itens, setItens] = useState<Alerta[]>([])
+  const [f, setF] = useState<Alerta>({ id: '', titulo: '', hora: '08:00', dias: [1, 2, 3, 4, 5], ativo: true })
+  useEffect(() => { if (!uid) return; return onSnapshot(doc(db, 'users', uid, 'saudeModulos', 'alertas'), s => setItens((s.data()?.itens as Alerta[]) || [])) }, [uid])
+  const persist = async (lista: Alerta[]) => { setItens(lista); if (uid) await setDoc(doc(db, 'users', uid, 'saudeModulos', 'alertas'), { itens: lista }) }
+  const add = () => { if (!f.titulo.trim()) return; persist([...itens, { ...f, id: newId() }]); setF({ id: '', titulo: '', hora: '08:00', dias: [1, 2, 3, 4, 5], ativo: true }) }
+  const itensRef = useRef(itens); useEffect(() => { itensRef.current = itens }, [itens])
+  // notificador best-effort (só enquanto o app estiver aberto)
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission()
+    const fired = new Set<string>()
+    const tick = () => {
+      const now = new Date(Date.now() - 3 * 3600000)
+      const hhmm = now.toISOString().slice(11, 16), dow = now.getUTCDay()
+      const key = now.toISOString().slice(0, 16)
+      for (const a of itensRef.current) {
+        if (a.ativo && a.hora === hhmm && a.dias.includes(dow) && !fired.has(a.id + key)) {
+          fired.add(a.id + key)
+          if ('Notification' in window && Notification.permission === 'granted') new Notification('🔔 NEXUS Saúde', { body: a.titulo })
+          else alert('🔔 Lembrete: ' + a.titulo)
+        }
+      }
+    }
+    const iv = setInterval(tick, 20000); return () => clearInterval(iv)
+  }, [])
+  const toggleDia = (d: number) => setF(s => ({ ...s, dias: s.dias.includes(d) ? s.dias.filter(x => x !== d) : [...s.dias, d] }))
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.8fr auto', gap: 8, alignItems: 'end' }}>
+        <div><Lbl>Lembrete</Lbl><input value={f.titulo} onChange={e => setF({ ...f, titulo: e.target.value })} placeholder="ex.: Aferir pressão" style={fieldStyle} /></div>
+        <div><Lbl>Hora</Lbl><input type="time" value={f.hora} onChange={e => setF({ ...f, hora: e.target.value })} style={fieldStyle} /></div>
+        <button onClick={add} style={addBtn()}>＋</button>
+      </div>
+      <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
+        {DIAS_SEMANA.map((d, i) => <button key={i} onClick={() => toggleDia(i)} style={{ width: 30, height: 30, borderRadius: 8, fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', border: `1px solid ${f.dias.includes(i) ? 'var(--accent,#10b981)' : 'var(--border-md)'}`, background: f.dias.includes(i) ? 'var(--accent,#10b981)' : 'transparent', color: f.dias.includes(i) ? '#fff' : 'var(--text-muted)' }}>{d}</button>)}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 14 }}>
+        {itens.length === 0 && <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>Nenhum lembrete configurado.</div>}
+        {itens.map(a => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 10, background: 'var(--surface,rgba(125,125,125,0.05))', border: '1px solid var(--border-md)', opacity: a.ativo ? 1 : 0.5 }}>
+            <span style={{ fontSize: '1.1rem' }}>⏰</span>
+            <span style={{ flex: 1 }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)' }}>{a.titulo}</span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 8 }}>{a.hora} · {a.dias.map(d => DIAS_SEMANA[d]).join('')}</span>
+            </span>
+            <button onClick={() => persist(itens.map(x => x.id === a.id ? { ...x, ativo: !x.ativo } : x))} style={{ fontSize: '0.66rem', fontWeight: 700, color: a.ativo ? '#10b981' : 'var(--text-muted)', background: 'transparent', border: '1px solid var(--border-md)', borderRadius: 8, padding: '3px 9px', cursor: 'pointer' }}>{a.ativo ? 'ativo' : 'pausado'}</button>
+            <button onClick={() => persist(itens.filter(x => x.id !== a.id))} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.95rem' }}>×</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 10 }}>Os lembretes tocam enquanto o NEXUS estiver aberto no navegador (notificação local).</div>
+    </div>
+  )
+}
+
+function SecHead({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 8 }}>{children}</div>
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 export default function ModulosSaude() {
   const uid = useUid()
   const [open, setOpen] = useState<Record<string, boolean>>({ dor: true })
   const toggle = (id: string) => setOpen(o => ({ ...o, [id]: !o[id] }))
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1100 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 1100 }}>
       <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-        Módulos offline (dados salvos no seu NEXUS, em <code>users/{'{'}uid{'}'}/…</code>). Lote 2 — Corpo &amp; métricas.
+        Módulos da Saúde — dados salvos no seu NEXUS (Firestore). Clique para expandir cada um.
       </div>
-      <ModuleCard id="dor" icon="🧍" titulo="Mapa de Dor e Intensidade" desc="Clique no corpo para registrar onde dói e a intensidade (0–10)." open={!!open.dor} onToggle={toggle}>
-        <MapaDor uid={uid} />
-      </ModuleCard>
-      <ModuleCard id="medicoes" icon="📏" titulo="Medições Corporais & % de Gordura" desc="Fita métrica + estimativa de gordura corporal (US Navy)." open={!!open.medicoes} onToggle={toggle}>
-        <Medicoes uid={uid} />
-      </ModuleCard>
-      <ModuleCard id="alimentos" icon="🍽️" titulo="Alimentos & Estimador Calórico" desc="Base local de alimentos, log do dia e resumo de macronutrientes." open={!!open.alimentos} onToggle={toggle}>
-        <Alimentos uid={uid} />
-      </ModuleCard>
+
+      <SecHead>🩺 Clínico</SecHead>
+      <ModuleCard id="medicamentos" icon="💊" titulo="Inventário de Medicamentos" desc="Estoque, doses por dia e alertas de validade/reposição." open={!!open.medicamentos} onToggle={toggle}><Medicamentos uid={uid} /></ModuleCard>
+      <ModuleCard id="vitais" icon="🩸" titulo="Sinais Vitais (Pressão & FC)" desc="Registro de PA e frequência cardíaca com faixas e tendência." open={!!open.vitais} onToggle={toggle}><SinaisVitais uid={uid} /></ModuleCard>
+      <ModuleCard id="vacinas" icon="💉" titulo="Vacinação & Reforços" desc="Linha do tempo de vacinas com lembrete de reforço." open={!!open.vacinas} onToggle={toggle}><Vacinas uid={uid} /></ModuleCard>
+
+      <SecHead>🏃 Corpo &amp; métricas</SecHead>
+      <ModuleCard id="dor" icon="🧍" titulo="Mapa de Dor e Intensidade" desc="Clique no corpo para registrar onde dói e a intensidade (0–10)." open={!!open.dor} onToggle={toggle}><MapaDor uid={uid} /></ModuleCard>
+      <ModuleCard id="medicoes" icon="📏" titulo="Medições Corporais & % de Gordura" desc="Fita métrica + estimativa de gordura corporal (US Navy)." open={!!open.medicoes} onToggle={toggle}><Medicoes uid={uid} /></ModuleCard>
+      <ModuleCard id="alimentos" icon="🍽️" titulo="Alimentos & Estimador Calórico" desc="Base local de alimentos, log do dia e resumo de macronutrientes." open={!!open.alimentos} onToggle={toggle}><Alimentos uid={uid} /></ModuleCard>
+
+      <SecHead>🧠 Comportamento &amp; alertas</SecHead>
+      <ModuleCard id="hidratacao" icon="💧" titulo="Hidratação Inteligente" desc="Analisa seu histórico de água e sugere ajuste da meta." open={!!open.hidratacao} onToggle={toggle}><Hidratacao uid={uid} /></ModuleCard>
+      <ModuleCard id="jornal" icon="📓" titulo="Jornal de Mindfulness & Humor" desc="Journaling com humor, tags e nuvem de sentimento (humor × sintoma)." open={!!open.jornal} onToggle={toggle}><Jornal uid={uid} /></ModuleCard>
+      <ModuleCard id="alertas" icon="⏰" titulo="Alertas Vitais Recorrentes" desc="Agende lembretes locais (ex.: aferir pressão às 10h)." open={!!open.alertas} onToggle={toggle}><Alertas uid={uid} /></ModuleCard>
     </div>
   )
 }
