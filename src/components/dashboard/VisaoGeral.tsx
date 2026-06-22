@@ -13,6 +13,7 @@
      então os dados são reais.
    ════════════════════════════════════════════════════════════════════ */
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
@@ -401,12 +402,14 @@ function MapasKpi({ mm, onNavigate }: any) { return <Kpi icon="🧠" label="Mapa
 
 // — Saudação / relógio (fundo temático por horário) —
 function skyTheme(h: number) {
-  if (h < 5)  return { key: 'madrugada',  icon: '🌙', gradient: 'linear-gradient(165deg,#070b1f 0%,#10183a 45%,#241640 100%)', deco: 'stars',   sun: '' }
-  if (h < 8)  return { key: 'amanhecer',  icon: '🌅', gradient: 'linear-gradient(165deg,#3a2e63 0%,#8a5a9e 32%,#f48aa0 68%,#ffd3a3 100%)', deco: 'sunrise', sun: '#ffe2b3' }
-  if (h < 12) return { key: 'manhã',      icon: '☀️', gradient: 'linear-gradient(165deg,#1c7fe0 0%,#48b4f4 52%,#a9e1ff 100%)', deco: 'sunhigh', sun: '#fff6da' }
-  if (h < 17) return { key: 'tarde',      icon: '🌤️', gradient: 'linear-gradient(165deg,#0f5cb4 0%,#2a86d6 45%,#7ec1f0 100%)', deco: 'sunhigh', sun: '#fff0c6' }
-  if (h < 20) return { key: 'entardecer', icon: '🌇', gradient: 'linear-gradient(165deg,#272a63 0%,#9a4a72 38%,#e6694a 74%,#ffc06a 100%)', deco: 'sunset', sun: '#ffd189' }
-  return { key: 'noite', icon: '✨', gradient: 'linear-gradient(165deg,#0a1430 0%,#142a55 50%,#2f285c 100%)', deco: 'stars', sun: '' }
+  // 7 períodos · paletas e cena (per = índice usado pelo motor de partículas)
+  if (h < 6)  return { key: 'madrugada',   per: 0, icon: '🌙', accent: '#cdd6ff', gradient: 'linear-gradient(165deg,#070b24 0%,#141a45 48%,#2a1a52 100%)' }
+  if (h < 9)  return { key: 'amanhecer',   per: 1, icon: '🌅', accent: '#ffe2b3', gradient: 'linear-gradient(165deg,#3a3e7a 0%,#c98aa8 38%,#ffb98a 70%,#ffe0b0 100%)' }
+  if (h < 12) return { key: 'manhã',       per: 2, icon: '☀️', accent: '#fff2c0', gradient: 'linear-gradient(165deg,#1c7fe0 0%,#48b4f4 52%,#bfe7ff 100%)' }
+  if (h < 16) return { key: 'tarde',       per: 3, icon: '🌤️', accent: '#fff6da', gradient: 'linear-gradient(165deg,#0b8fd6 0%,#19b3e6 48%,#9fe4f7 100%)' }
+  if (h < 18) return { key: 'golden hour', per: 4, icon: '🌇', accent: '#ffd189', gradient: 'linear-gradient(165deg,#7a2a6a 0%,#e0623f 42%,#f59331 72%,#ffcf6a 100%)' }
+  if (h < 20) return { key: 'crepúsculo',  per: 5, icon: '🌆', accent: '#ffd27a', gradient: 'linear-gradient(165deg,#0e1338 0%,#33285f 45%,#6b3a63 100%)' }
+  return { key: 'noite', per: 6, icon: '✨', accent: '#ffd27a', gradient: 'linear-gradient(165deg,#04060f 0%,#0a1330 52%,#161a40 100%)' }
 }
 /* relógio analógico — ponteiros giram via CSS (delay negativo sincroniza com o horário real) */
 function RelogioAnalogico({ accent = '#ffd27a' }: any) {
@@ -442,42 +445,266 @@ function RelogioAnalogico({ accent = '#ffd27a' }: any) {
     </svg>
   )
 }
+/* ───────── Card de Saudação: fundo dinâmico por período (Canvas, escala 0–5) ─────────
+   7 períodos (madrugada · amanhecer · manhã · tarde · golden hour · crepúsculo · noite).
+   Cada efeito tem um peso-alvo por período (tabela W7); os pesos são interpolados a cada
+   quadro → transição suave ao virar o relógio. O slider (0–5) é multiplicador global. */
+const clampN = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+const lerpN = (a: number, b: number, t: number) => a + (b - a) * t
+const gate01 = (k: number, lo: number) => clampN((k - lo) / (1 - lo + 1e-6), 0, 1)
+const SAUD_NIVEIS = [
+  { n: 'Estático', d: 'Sem movimento · apenas o gradiente do horário. Consumo zero de CPU/GPU.' },
+  { n: 'Minimalista', d: 'Poucos elementos, ultralento. O gradiente pulsa quase imperceptivelmente.' },
+  { n: 'Sutil', d: 'Movimentos suaves e previsíveis.' },
+  { n: 'Moderado', d: 'Experiência equilibrada, sem distração (padrão).' },
+  { n: 'Imersivo', d: 'Parallax em camadas e efeitos pesados ativados.' },
+  { n: 'Ultra', d: 'Capacidade visual máxima — experiência cinematográfica.' },
+]
+/* peso-alvo de cada efeito por período  [madrugada,amanhecer,manhã,tarde,golden,crepúsculo,noite] */
+const W7: any = {
+  stars:  [1, 0, 0, 0, 0, 0.55, 1],
+  fog:    [1, 0.25, 0, 0, 0, 0, 0],
+  moon:   [1, 0, 0, 0, 0, 0, 0.35],
+  sunrise:[0, 1, 0, 0, 0, 0, 0],
+  clouds: [0, 0.5, 1, 0.45, 0.25, 0, 0],
+  rays:   [0, 0.35, 1, 0.55, 0.4, 0, 0],
+  lens:   [0, 0, 0, 1, 0.35, 0, 0],
+  breeze: [0, 0, 0.4, 1, 0.6, 0, 0],
+  dust:   [0, 0, 0.35, 0.65, 0.85, 0.2, 0],
+  gold:   [0, 0, 0, 0, 1, 0.35, 0],
+  bokeh:  [0, 0, 0, 0, 0, 1, 0.25],
+  shoot:  [0, 0, 0, 0, 0, 0, 1],
+  aurora: [0, 0, 0, 0, 0, 0.2, 0.6],
+  space:  [0, 0, 0, 0, 0, 0, 1],
+}
+
+function SaudacaoFX({ level, period }: any) {
+  const cvRef = useRef<HTMLCanvasElement>(null)
+  const levelRef = useRef(level); const perRef = useRef(period)
+  const ctrlRef = useRef<any>({ running: false, start: () => {} })
+  useEffect(() => { levelRef.current = level; if (level > 0) ctrlRef.current.start() }, [level])
+  useEffect(() => { perRef.current = period }, [period])
+
+  useEffect(() => {
+    const canvas = cvRef.current; if (!canvas) return
+    const ctx = canvas.getContext('2d'); if (!ctx) return
+    const host = canvas.parentElement as HTMLElement
+    const dpr = Math.min(2, window.devicePixelRatio || 1)
+    let W = 1, H = 1, T = 0
+    const resize = () => { const r = host.getBoundingClientRect(); W = Math.max(1, r.width); H = Math.max(1, r.height); canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0) }
+    const ro = new ResizeObserver(resize); ro.observe(host); resize()
+
+    const mouse = { x: -9, y: -9, on: false }
+    const onMove = (e: any) => { const r = canvas.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; mouse.on = true }
+    const onLeave = () => { mouse.on = false }
+    host.addEventListener('pointermove', onMove); host.addEventListener('pointerleave', onLeave)
+
+    const rnd = (a: number, b: number) => a + Math.random() * (b - a)
+    const MAX = { star: 120, breeze: 22, dust: 64, mw: 70, bokeh: 14 }
+    const stars = Array.from({ length: MAX.star }, () => ({ x: rnd(0, 1), y: rnd(0, 1), r: rnd(.4, 1.5), ph: rnd(0, 6.28), sp: rnd(.5, 2.3) }))
+    const mwStars = Array.from({ length: MAX.mw }, () => ({ t: rnd(0, 1), off: rnd(-.06, .06), r: rnd(.4, 1.3), ph: rnd(0, 6.28) }))
+    const breeze = Array.from({ length: MAX.breeze }, () => ({ x: rnd(0, 1), y: rnd(0, 1), vx: rnd(.05, .12), ph: rnd(0, 6.28), sway: rnd(.5, 1.3), sz: rnd(4, 8), rot: rnd(0, 6.28), vr: rnd(-.03, .03), depth: rnd(.5, 1), petal: Math.random() < 0.4 }))
+    const dust = Array.from({ length: MAX.dust }, () => ({ x: rnd(0, 1), y: rnd(0, 1), vx: rnd(-.02, .02), vy: rnd(-.04, -.005), r: rnd(.5, 1.8), ph: rnd(0, 6.28), hue: rnd(38, 52) }))
+    const bokeh = Array.from({ length: MAX.bokeh }, () => ({ x: rnd(0, 1), y: rnd(.62, .98), r: rnd(8, 22), ph: rnd(0, 6.28), sp: rnd(.4, 1.4), hue: [40, 200, 320, 50, 170][Math.floor(rnd(0, 5))] }))
+    const planets = [
+      { x: rnd(.1, .9), y: rnd(.18, .5), r: rnd(7, 11), sp: rnd(.004, .01), col: '#c9a36b', ring: true },
+      { x: rnd(.1, .9), y: rnd(.2, .6), r: rnd(5, 8), sp: rnd(.004, .012), col: '#7fa6d8', ring: false },
+      { x: rnd(.1, .9), y: rnd(.15, .45), r: rnd(4, 6), sp: rnd(.005, .013), col: '#d88f7f', ring: false },
+    ]
+    const nebs = [280, 200, 330].map(hue => ({ x: rnd(.15, .85), y: rnd(.2, .7), r: rnd(60, 120), ph: rnd(0, 6.28), hue }))
+    let shoot: any = null
+
+    const w: any = {}; for (const k in W7) w[k] = W7[k][period] || 0
+    let kEff = 0, last = performance.now(), raf = 0, alive = true, shootAcc = 0
+
+    function frame(now: number) {
+      if (!alive) return
+      const ms = Math.min(60, now - last); const dt = ms / 16.67; last = now; T = now / 1000
+      const L = levelRef.current, per = perRef.current
+      kEff = lerpN(kEff, L / 5, clampN(0.05 * dt, 0, 1))
+      for (const k in W7) w[k] = lerpN(w[k], W7[k][per] || 0, clampN(0.03 * dt, 0, 1))
+      ctx.clearRect(0, 0, W, H)
+      const k = kEff
+      if (k > 0.012) {
+        const A = (key: string) => w[key] * k
+        // ── camadas de fundo ──
+        if (A('gold') > 0.01) goldWaves(A('gold'))
+        if (A('space') > 0.01 && k > 0.55) deepSpace(gate01(k, 0.55) * w['space'])
+        if (A('aurora') > 0.01) aurora(A('aurora'))
+        if (A('sunrise') > 0.01) sunrise(A('sunrise'))
+        if (A('fog') > 0.01) fog(A('fog'))
+        if (A('moon') > 0.01) moon(A('moon'))
+        // ── meio ──
+        if (A('clouds') > 0.01) clouds(A('clouds'))
+        if (A('rays') > 0.01) rays(A('rays'))
+        // ── partículas / luzes ──
+        if (A('stars') > 0.01) drawStars(A('stars'))
+        if (A('dust') > 0.01) drawDust(w['dust'] * k)
+        if (A('breeze') > 0.01) drawBreeze(w['breeze'] * k, dt)
+        if (A('bokeh') > 0.01) drawBokeh(A('bokeh'))
+        if (A('lens') > 0.01) lensFlare(A('lens'))
+        if (A('shoot') > 0.01 && k > 0.35) shootingStar(w['shoot'] * k, dt, ms)
+      } else { shoot = null }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'
+      if (L === 0 && kEff < 0.012) { ctx.clearRect(0, 0, W, H); ctrlRef.current.running = false; return }
+      raf = requestAnimationFrame(frame)
+    }
+
+    /* 1 · MADRUGADA / NOITE — estrelas cintilando assincronamente */
+    function drawStars(a: number) {
+      const n = Math.floor(MAX.star * kEff); ctx.fillStyle = '#fff'
+      for (let i = 0; i < n; i++) { const s = stars[i]; const tw = 0.3 + 0.7 * 0.5 * (1 + Math.sin(T * s.sp * (0.4 + 0.6 * kEff) + s.ph)); ctx.globalAlpha = tw * a; ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, 6.283); ctx.fill() }
+      ctx.globalAlpha = 1
+    }
+    /* névoa sutil na base */
+    function fog(a: number) {
+      ctx.save(); ctx.globalCompositeOperation = 'screen'
+      for (let i = 0; i < 3; i++) { const cx = (((0.2 + i * 0.4 + T * 0.012 * (1 + i)) % 1.4) - 0.2) * W; const cy = H * (0.86 + i * 0.04); const r = W * (0.28 + i * 0.05); const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(180,195,230,${0.07 * a})`); g.addColorStop(1, 'rgba(180,195,230,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.fill() }
+      ctx.restore()
+    }
+    /* brilho lunar */
+    function moon(a: number) {
+      const mx = W * 0.12, my = H * 0.26
+      const g = ctx.createRadialGradient(mx, my, 0, mx, my, 46); g.addColorStop(0, `rgba(253,246,227,${0.9 * a})`); g.addColorStop(.45, `rgba(253,246,227,${0.4 * a})`); g.addColorStop(1, 'rgba(253,246,227,0)')
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(mx, my, 46, 0, 6.283); ctx.fill()
+      ctx.fillStyle = `rgba(255,252,240,${a})`; ctx.beginPath(); ctx.arc(mx, my, 9 + 1.2 * Math.sin(T * 0.6), 0, 6.283); ctx.fill()
+    }
+    /* 2 · AMANHECER — sol surgindo de baixo + nuvens finas dissipando */
+    function sunrise(a: number) {
+      const sx = W * 0.5, sy = H * (1.06 - 0.06 * Math.sin(T * 0.25))
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, H * 1.5); g.addColorStop(0, `rgba(255,224,170,${0.55 * a})`); g.addColorStop(.3, `rgba(255,180,140,${0.22 * a})`); g.addColorStop(.7, 'rgba(255,180,140,0)')
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+      ctx.save(); ctx.globalCompositeOperation = 'screen'
+      for (let i = 0; i < 3; i++) { const drift = (T * 0.02 * (1 + i)) % 1; const cx = ((0.15 + i * 0.32 + drift) % 1.3 - 0.15) * W; const cy = H * (0.32 + i * 0.14); const fade = 0.5 + 0.5 * Math.sin(T * 0.3 + i); const g2 = ctx.createRadialGradient(cx, cy, 0, cx, cy, H * 0.6); g2.addColorStop(0, `rgba(255,255,255,${0.10 * a * fade})`); g2.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g2; ctx.beginPath(); ctx.ellipse(cx, cy, H * 0.7, H * 0.3, 0, 0, 6.283); ctx.fill() }
+      ctx.restore()
+    }
+    /* 3 · MANHÃ — nuvens volumosas no eixo X */
+    function clouds(a: number) {
+      ctx.save(); ctx.globalCompositeOperation = 'screen'
+      for (let i = 0; i < 3; i++) { const cx = (((0.1 + i * 0.36 + T * 0.012 * (1 + i * 0.4)) % 1.35) - 0.18) * W; const cy = H * (0.24 + i * 0.13); const r = H * (0.55 + i * 0.12); const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, `rgba(255,255,255,${0.13 * a})`); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 6.283); ctx.fill() }
+      ctx.restore()
+    }
+    /* 3 · raios diagonais com shimmer (intensifica no hover) */
+    function rays(a: number) {
+      const hov = mouse.on ? 1 : 0
+      ctx.save(); ctx.globalCompositeOperation = 'screen'
+      const sx = W * 0.85, sy = -H * 0.2
+      for (let i = 0; i < 5; i++) { const off = i * 0.22; const sh = 0.5 + 0.5 * Math.sin(T * (1.2 + hov * 1.5) + i); const al = (0.05 + 0.06 * sh) * a * (0.6 + 0.4 * hov); const g = ctx.createLinearGradient(sx, sy, sx - W * 0.9, sy + H * 1.6); g.addColorStop(0, `rgba(255,245,200,${al})`); g.addColorStop(1, 'rgba(255,245,200,0)'); ctx.fillStyle = g; ctx.save(); ctx.translate(sx, sy); ctx.rotate(0.6 + off * 0.06); ctx.fillRect(-6, 0, 12 + 6 * sh, H * 1.8); ctx.restore() }
+      ctx.restore()
+    }
+    /* 4 · TARDE — lens flare interativo + brisa (drawBreeze) */
+    function lensFlare(a: number) {
+      const lx = W * 0.8, ly = H * 0.2
+      const mx = mouse.on ? mouse.x : W * 0.5, my = mouse.on ? mouse.y : H * 0.6
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'
+      const g0 = ctx.createRadialGradient(lx, ly, 0, lx, ly, 70); g0.addColorStop(0, `rgba(255,250,220,${0.5 * a})`); g0.addColorStop(1, 'rgba(255,250,220,0)'); ctx.fillStyle = g0; ctx.beginPath(); ctx.arc(lx, ly, 70, 0, 6.283); ctx.fill()
+      const dx = mx - lx, dy = my - ly
+      const cols = ['#ffd9a0', '#a0d8ff', '#ffb0c0', '#c0ffd0']
+      for (let i = 1; i <= 4; i++) { const t = i / 5 + (mouse.on ? 0.1 : 0); const px = lx + dx * t * 2, py = ly + dy * t * 2; const r = (6 + i * 4) * (mouse.on ? 1 : 0.6); const g = ctx.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, cols[i - 1] + 'cc'); g.addColorStop(1, cols[i - 1] + '00'); ctx.globalAlpha = a * (mouse.on ? 0.7 : 0.4); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, r, 0, 6.283); ctx.fill() }
+      ctx.restore(); ctx.globalAlpha = 1
+    }
+    /* brisa — folhas/partículas translúcidas passando (eixo X) */
+    function drawBreeze(a: number, dt: number) {
+      const n = Math.floor(MAX.breeze * kEff)
+      for (let i = 0; i < n; i++) { const o = breeze[i]; o.x += o.vx * 0.006 * dt * (0.6 + o.depth); o.y += Math.sin(T * o.sway + o.ph) * 0.0006; o.rot += o.vr * dt; if (o.x > 1.1) { o.x = -0.1; o.y = Math.random() }
+        ctx.save(); ctx.translate(o.x * W, o.y * H); ctx.rotate(o.rot); ctx.globalAlpha = a * (0.4 + 0.5 * o.depth)
+        ctx.fillStyle = o.petal ? 'rgba(255,200,210,0.8)' : 'rgba(150,205,150,0.78)'
+        ctx.beginPath(); ctx.ellipse(0, 0, o.sz * o.depth, o.sz * 0.5 * o.depth, 0, 0, 6.283); ctx.fill(); ctx.restore() }
+      ctx.globalAlpha = 1
+    }
+    /* poeira dourada (reage ao mouse) */
+    function drawDust(a: number) {
+      const n = Math.floor(MAX.dust * kEff)
+      const mnx = mouse.on ? mouse.x / W : -9, mny = mouse.on ? mouse.y / H : -9
+      for (let i = 0; i < n; i++) { const d = dust[i]; d.x += d.vx; d.y += d.vy
+        if (kEff >= 0.4 && mouse.on) { const ddx = d.x - mnx, ddy = d.y - mny, dd = Math.sqrt(ddx * ddx + ddy * ddy) + 1e-4; if (dd < 0.2) { const f = (1 - dd / 0.2) * 0.0016; d.vx += ddx / dd * f; d.vy += ddy / dd * f } }
+        d.vx *= 0.985; d.vy = d.vy * 0.985 - 0.00002
+        if (d.x < -0.02) d.x = 1.02; if (d.x > 1.02) d.x = -0.02; if (d.y < -0.05) { d.y = 1.05; d.x = Math.random() }
+        const tw = 0.5 + 0.5 * Math.sin(T * 1.4 + d.ph); ctx.globalAlpha = a * (0.4 + 0.5 * tw); ctx.fillStyle = `hsl(${d.hue},90%,66%)`; ctx.beginPath(); ctx.arc(d.x * W, d.y * H, d.r * (0.8 + 0.4 * tw), 0, 6.283); ctx.fill() }
+      ctx.globalAlpha = 1
+    }
+    /* 5 · GOLDEN HOUR — ondas de luz dourada pulsando */
+    function goldWaves(a: number) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'
+      for (let i = 0; i < 3; i++) { const ph = T * 0.5 + i * 2.1; const prog = (Math.sin(ph) * 0.5 + 0.5); const cy = H * (0.5 + 0.3 * Math.sin(T * 0.3 + i)); const r = H * (0.4 + prog * 1.2); const al = (1 - prog) * 0.16 * a; const g = ctx.createRadialGradient(W * 0.5, cy, r * 0.3, W * 0.5, cy, r); g.addColorStop(0, `rgba(255,190,90,${al})`); g.addColorStop(.6, `rgba(255,140,80,${al * 0.5})`); g.addColorStop(1, 'rgba(255,120,90,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(W * 0.5, cy, r, 0, 6.283); ctx.fill() }
+      ctx.restore()
+    }
+    /* 6 · CREPÚSCULO — bokeh (luzes de cidade desfocadas) no rodapé */
+    function drawBokeh(a: number) {
+      const n = Math.floor(MAX.bokeh * kEff)
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'
+      for (let i = 0; i < n; i++) { const b = bokeh[i]; const blink = 0.35 + 0.65 * 0.5 * (1 + Math.sin(T * b.sp + b.ph)); const cx = b.x * W, cy = b.y * H; const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, b.r); g.addColorStop(0, `hsla(${b.hue},85%,65%,${0.5 * a * blink})`); g.addColorStop(.5, `hsla(${b.hue},85%,60%,${0.18 * a * blink})`); g.addColorStop(1, `hsla(${b.hue},85%,60%,0)`); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, b.r, 0, 6.283); ctx.fill() }
+      ctx.restore()
+    }
+    /* 7 · NOITE — estrela cadente a cada ~15 s */
+    function shootingStar(a: number, dt: number, ms: number) {
+      shootAcc += ms
+      if (!shoot && shootAcc >= 15000) { shootAcc = 0; shoot = { x: rnd(0.25, 1) * W, y: rnd(0, 0.35) * H, vx: rnd(-3.4, -2), vy: rnd(1.3, 2.4), life: 1 } }
+      if (shoot) { shoot.x += shoot.vx * dt * 3.2; shoot.y += shoot.vy * dt * 3.2; shoot.life -= 0.01 * dt; if (shoot.life <= 0 || shoot.x < -50 || shoot.y > H + 50) { shoot = null; return } const tx = shoot.x - shoot.vx * 9, ty = shoot.y - shoot.vy * 9; const g = ctx.createLinearGradient(shoot.x, shoot.y, tx, ty); g.addColorStop(0, `rgba(255,255,255,${0.95 * shoot.life * a})`); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.strokeStyle = g; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(shoot.x, shoot.y); ctx.lineTo(tx, ty); ctx.stroke() }
+    }
+    /* aurora boreal levíssima (crepúsculo/noite) */
+    function aurora(a: number) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'
+      for (let b = 0; b < 2; b++) { const baseY = H * (0.1 + b * 0.1); const hue = 140 + 50 * Math.sin(T * 0.18 + b); const g = ctx.createLinearGradient(0, baseY - 18, 0, baseY + 42); g.addColorStop(0, `hsla(${hue},80%,60%,0)`); g.addColorStop(.5, `hsla(${hue},80%,62%,${0.09 * a})`); g.addColorStop(1, `hsla(${hue + 40},80%,60%,0)`); ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, baseY); for (let x = 0; x <= W; x += 14) ctx.lineTo(x, baseY + Math.sin(x * 0.012 + T * 0.7 + b) * 10); ctx.lineTo(W, baseY + 44); ctx.lineTo(0, baseY + 44); ctx.closePath(); ctx.fill() }
+      ctx.restore()
+    }
+    /* observatório espacial (planetas/nebulosa/Via Láctea) — só níveis altos */
+    function deepSpace(a: number) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'
+      for (const n of nebs) { const cx = (n.x + 0.03 * Math.sin(T * 0.08 + n.ph)) * W, cy = (n.y + 0.03 * Math.cos(T * 0.06 + n.ph)) * H; const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, n.r); rg.addColorStop(0, `hsla(${n.hue},70%,62%,${0.06 * a})`); rg.addColorStop(1, `hsla(${n.hue},70%,62%,0)`); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(cx, cy, n.r, 0, 6.283); ctx.fill() }
+      const g = ctx.createLinearGradient(0, H, W, 0); g.addColorStop(0, 'rgba(150,170,230,0)'); g.addColorStop(.5, `rgba(160,180,235,${0.045 * a})`); g.addColorStop(1, 'rgba(150,170,230,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+      ctx.fillStyle = '#dfe6ff'; for (const m of mwStars) { const x = m.t * W, y = H * (0.78 - 0.55 * m.t) + m.off * H; const tw = 0.4 + 0.6 * 0.5 * (1 + Math.sin(T * 1.5 + m.ph)); ctx.globalAlpha = tw * a * 0.8; ctx.beginPath(); ctx.arc(x, y, m.r, 0, 6.283); ctx.fill() }
+      ctx.restore(); ctx.globalAlpha = 1
+      for (const p of planets) { const px = (((p.x + T * p.sp) % 1.2) - 0.1) * W, py = p.y * H; ctx.globalAlpha = a; const rg = ctx.createRadialGradient(px - p.r * 0.3, py - p.r * 0.3, p.r * 0.2, px, py, p.r); rg.addColorStop(0, p.col); rg.addColorStop(1, 'rgba(18,18,38,0.92)'); ctx.fillStyle = rg; ctx.beginPath(); ctx.arc(px, py, p.r, 0, 6.283); ctx.fill(); if (p.ring) { ctx.strokeStyle = `rgba(220,210,180,${0.5 * a})`; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.ellipse(px, py, p.r * 1.9, p.r * 0.7, 0.5, 0, 6.283); ctx.stroke() } }
+      ctx.globalAlpha = 1
+    }
+
+    ctrlRef.current.start = () => { if (!ctrlRef.current.running) { ctrlRef.current.running = true; last = performance.now(); raf = requestAnimationFrame(frame) } }
+    if (levelRef.current > 0) ctrlRef.current.start()
+    return () => { alive = false; cancelAnimationFrame(raf); ctrlRef.current.running = false; ro.disconnect(); host.removeEventListener('pointermove', onMove); host.removeEventListener('pointerleave', onLeave) }
+  }, [])
+
+  return <canvas ref={cvRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }} />
+}
+
 function Saudacao() {
   const [now, setNow] = useState(new Date())
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t) }, [])
   const h = now.getHours()
   const theme = useMemo(() => skyTheme(h), [h])
-  const accent = theme.sun || '#ffd27a'
-  const saud = h < 5 ? 'Boa madrugada' : h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
-  const showStars = theme.deco === 'stars'
-  const stars = useMemo(() => Array.from({ length: 36 }, (_, i) => ({
-    top: Math.random() * 84, left: Math.random() * 100, s: +(Math.random() * 1.7 + 0.6).toFixed(1),
-    tw: +(Math.random() * 2.4 + 1.8).toFixed(2), dl: +(Math.random() * 3).toFixed(2),
-    o: +(Math.random() * 0.5 + 0.4).toFixed(2), v: i % 3,
-  })), [])
-  const sunPos: any = theme.deco === 'sunrise' ? { bottom: -54, left: '10%' } : theme.deco === 'sunset' ? { bottom: -60, right: '13%' } : { top: -52, right: '15%' }
+  const accent = theme.accent
+  const saud = h < 6 ? 'Boa madrugada' : h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'
+
+  const reduce = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const [level, setLevel] = useState(() => { try { const r = localStorage.getItem('nexus_saudacao_fx'); if (r != null) { const n = parseInt(r, 10); if (!isNaN(n)) return clampN(n, 0, 5) } } catch {} return reduce ? 1 : 3 })
+  useEffect(() => { try { localStorage.setItem('nexus_saudacao_fx', String(level)) } catch {} }, [level])
+
+  // crossfade do gradiente ao trocar de período
+  const [layers, setLayers] = useState<any[]>(() => [{ k: 0, g: theme.gradient }])
+  const lc = useRef(0)
+  useEffect(() => { setLayers(p => [...p, { k: ++lc.current, g: theme.gradient }].slice(-2)); const t = setTimeout(() => setLayers(p => p.slice(-1)), 1700); return () => clearTimeout(t) }, [theme.gradient])
+
+  const [cfgOpen, setCfgOpen] = useState(false)
+  const gearRef = useRef<HTMLButtonElement>(null)
+  const [pop, setPop] = useState({ top: 0, right: 0 })
+  const toggleCfg = () => { const r = gearRef.current?.getBoundingClientRect(); if (r) setPop({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) }); setCfgOpen(o => !o) }
+  const pulseDur = 16 - level * 2
+
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', height: '100%', borderRadius: 16, boxShadow: 'var(--shadow-card)', background: theme.gradient }}>
-      {/* brilho difuso flutuando (sempre ativo) */}
-      <div style={{ position: 'absolute', width: 200, height: 140, borderRadius: '50%', left: '22%', top: '-30%', background: 'radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%)', filter: 'blur(10px)', animation: 'nx-float 11s ease-in-out infinite', pointerEvents: 'none' }} />
-      {/* sol pulsante + raios girando */}
-      {theme.sun && <>
-        <div style={{ position: 'absolute', ...sunPos, width: 170, height: 170, borderRadius: '50%', background: `radial-gradient(circle, ${theme.sun} 0%, ${theme.sun}88 30%, transparent 66%)`, filter: 'blur(1px)', animation: 'nx-sunpulse 4.5s ease-in-out infinite', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', ...sunPos, width: 170, height: 170, borderRadius: '50%', opacity: 0.4, mixBlendMode: 'screen', background: `conic-gradient(from 0deg, transparent 0deg, ${theme.sun}66 10deg, transparent 22deg, transparent 88deg, ${theme.sun}55 100deg, transparent 112deg, transparent 178deg, ${theme.sun}66 190deg, transparent 202deg, transparent 268deg, ${theme.sun}55 280deg, transparent 292deg)`, animation: 'nx-rays 22s linear infinite', pointerEvents: 'none' }} />
-      </>}
-      {/* estrelas: cintilam + flutuam (madrugada / noite) */}
-      {showStars && <>
-        <div style={{ position: 'absolute', top: 12, left: '6%', width: 30, height: 30, borderRadius: '50%', background: 'radial-gradient(circle at 38% 38%, #fdf6e3 0%, #e8e6d0 55%, transparent 72%)', boxShadow: '0 0 26px rgba(253,246,227,0.4)', animation: 'nx-moon 5s ease-in-out infinite', pointerEvents: 'none' }} />
-        {stars.map((st, i) => <span key={i} style={{ position: 'absolute', top: `${st.top}%`, left: `${st.left}%`, width: st.s, height: st.s, borderRadius: '50%', background: '#fff', opacity: st.o, animation: `nx-tw ${st.tw}s ease-in-out ${st.dl}s infinite, nx-drift${st.v} ${st.tw * 3}s ease-in-out infinite`, pointerEvents: 'none' }} />)}
-      </>}
-      {/* facho de luz varrendo o card (sempre ativo) */}
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        <div style={{ position: 'absolute', top: 0, bottom: 0, width: '42%', left: '-50%', background: 'linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)', filter: 'blur(2px)', animation: 'nx-sheen 7.5s ease-in-out infinite' }} />
-      </div>
+    <div style={{ position: 'relative', overflow: 'hidden', height: '100%', borderRadius: 16, boxShadow: 'var(--shadow-card)', background: layers[0]?.g }}>
+      {/* gradiente com crossfade entre períodos */}
+      {layers.map((l, i) => <div key={l.k} style={{ position: 'absolute', inset: 0, background: l.g, animation: i > 0 ? 'nx-gradin 1.6s ease forwards' : undefined, zIndex: 0, pointerEvents: 'none' }} />)}
+      {/* pulso suave do gradiente (nível ≥ 1) */}
+      {level >= 1 && <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(120% 120% at 30% 18%, rgba(255,255,255,0.10), transparent 60%)', animation: `nx-saudpulse ${pulseDur}s ease-in-out infinite`, pointerEvents: 'none', zIndex: 0 }} />}
+      {/* motor de partículas (Canvas) */}
+      <SaudacaoFX level={level} period={theme.per} />
       {/* scrim p/ legibilidade */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(100deg, rgba(0,0,0,0.34) 0%, rgba(0,0,0,0.12) 42%, transparent 70%)', pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(100deg, rgba(0,0,0,0.36) 0%, rgba(0,0,0,0.14) 42%, transparent 70%)', pointerEvents: 'none', zIndex: 2 }} />
+      {/* engrenagem · Configurações de Foco */}
+      <button ref={gearRef} onClick={toggleCfg} title="Configurações de Foco"
+        style={{ position: 'absolute', top: 7, right: 8, zIndex: 5, width: 24, height: 24, borderRadius: 7, border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.22)', backdropFilter: 'blur(4px)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', opacity: 0.85 }}>⚙</button>
       {/* conteúdo + relógio */}
-      <div style={{ position: 'relative', zIndex: 3, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0 18px', color: '#fff', textShadow: '0 1px 10px rgba(0,0,0,0.4)' }}>
+      <div style={{ position: 'relative', zIndex: 3, height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '0 18px', color: '#fff', textShadow: '0 1px 10px rgba(0,0,0,0.44)' }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', opacity: .92, letterSpacing: '0.05em', textTransform: 'capitalize' }}>{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</span>
@@ -486,21 +713,33 @@ function Saudacao() {
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.45rem', lineHeight: 1.05 }}>{saud}, Bruno</div>
           <div style={{ fontSize: '0.72rem', opacity: .95, marginTop: 2 }}>{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · Central de Gestão NEXUS</div>
         </div>
-        <div style={{ width: 86, height: 86, flexShrink: 0, filter: 'drop-shadow(0 4px 14px rgba(0,0,0,0.35))' }}>
+        <div style={{ width: 82, height: 82, flexShrink: 0, marginRight: 24, filter: 'drop-shadow(0 4px 14px rgba(0,0,0,0.35))' }}>
           <RelogioAnalogico accent={accent} />
         </div>
       </div>
+      {/* popover Configurações de Foco */}
+      {cfgOpen && createPortal(<>
+        <div onClick={() => setCfgOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 6000 }} />
+        <div style={{ position: 'fixed', top: pop.top, right: pop.right, zIndex: 6001, width: 272, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 18px 50px rgba(0,0,0,0.35)', padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: '1rem' }}>🎚️</span>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)' }}>Configurações de Foco</div>
+          </div>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 7 }}>Intensidade · Nível {level} <span style={{ color: '#5b5bd6' }}>{SAUD_NIVEIS[level].n}</span></div>
+          <input type="range" min={0} max={5} step={1} value={level} onChange={e => setLevel(parseInt(e.target.value, 10))} style={{ width: '100%', accentColor: '#5b5bd6', cursor: 'pointer', height: 22 }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <button key={i} onClick={() => setLevel(i)} style={{ width: 20, height: 20, borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: '0.62rem', fontWeight: 800, background: i === level ? '#5b5bd6' : 'var(--surface)', color: i === level ? '#fff' : 'var(--text-muted)' }}>{i}</button>
+            ))}
+          </div>
+          <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 9, background: 'var(--surface)', border: '1px solid var(--border)', fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>{SAUD_NIVEIS[level].d}</div>
+          <div style={{ marginTop: 8, fontSize: '0.58rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>0 = estático (CPU zero) · 5 = cinematográfico · cena: {theme.icon} {theme.key}</div>
+        </div>
+      </>, document.body)}
       <style>{`
         @keyframes nx-rot{to{transform:rotate(360deg)}}
-        @keyframes nx-tw{0%,100%{opacity:.22}50%{opacity:1}}
-        @keyframes nx-drift0{0%,100%{transform:translate(0,0)}50%{transform:translate(3px,-2px)}}
-        @keyframes nx-drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(-2px,2px)}}
-        @keyframes nx-drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(2px,3px)}}
-        @keyframes nx-sunpulse{0%,100%{transform:scale(1);opacity:.95}50%{transform:scale(1.06);opacity:1}}
-        @keyframes nx-rays{to{transform:rotate(360deg)}}
-        @keyframes nx-float{0%,100%{transform:translate(0,0)}50%{transform:translate(42px,18px)}}
-        @keyframes nx-moon{0%,100%{filter:brightness(1)}50%{filter:brightness(1.18)}}
-        @keyframes nx-sheen{0%{transform:translateX(-20%);opacity:0}12%{opacity:1}55%{opacity:1}72%,100%{transform:translateX(380%);opacity:0}}
+        @keyframes nx-saudpulse{0%,100%{opacity:0}50%{opacity:0.16}}
+        @keyframes nx-gradin{from{opacity:0}to{opacity:1}}
       `}</style>
     </div>
   )
