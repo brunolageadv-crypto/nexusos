@@ -749,7 +749,8 @@ function Saudacao() {
 const ATALHOS = [
   { id: 'editais', l: 'Editais', i: '⚖', c: '#2563EB' }, { id: 'concursos', l: 'Concursos', i: '🎯', c: '#7C3AED' },
   { id: 'prontuario', l: 'Prontuário', i: '📋', c: '#4F46E5' }, { id: 'mapamental', l: 'Mapa Mental', i: '🧠', c: '#6D28D9' },
-  { id: 'analisepdf', l: 'Análise PDF', i: '📄', c: '#DC2626' }, { id: 'ponto', l: 'Ponto', i: '⊙', c: '#EA580C' },
+  { id: 'analisepdf', l: 'Análise PDF', i: '📄', c: '#DC2626' }, { id: 'pdfreader', l: 'PDF Reader', i: '📖', c: '#0EA5E9' },
+  { id: 'ponto', l: 'Ponto', i: '⊙', c: '#EA580C' },
   { id: 'saude', l: 'Saúde', i: '✚', c: '#059669' }, { id: 'wishlist', l: 'Wishlist', i: '🛒', c: '#D97706' },
   { id: 'viagens', l: 'Viagens', i: '✈️', c: '#0284C7' }, { id: 'journal', l: 'Notas', i: '✦', c: '#2563EB' },
   { id: 'media', l: 'Media', i: '▶', c: '#3B82F6' }, { id: 'gaming', l: 'Gaming', i: '🎮', c: '#9333EA' },
