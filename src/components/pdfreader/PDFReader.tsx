@@ -39,6 +39,17 @@ async function ensurePdfjs() {
   return (window as any).pdfjsLib
 }
 
+/* ─────────────────────────── OCR (Tesseract.js via CDN, sob demanda) ─────────────────────────── */
+const TESS_CDN = ['https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js', 'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js']
+async function ensureTesseract() {
+  if (!(window as any).Tesseract) {
+    let ok = false
+    for (const u of TESS_CDN) { try { await loadScript(u); if ((window as any).Tesseract) { ok = true; break } } catch {} }
+    if (!ok) throw new Error('OCR não carregou (Tesseract.js)')
+  }
+  return (window as any).Tesseract
+}
+
 /* normaliza texto capturado do PDF: tira hifenização de quebra e colapsa espaços
    (espelha o mmNormalize do AnalisePDF → mesma precisão da "árvore (capturar)") */
 function prNormalize(raw: string): string {
@@ -392,6 +403,15 @@ function RichEditor({ editorRef, onChange }: any) {
 
 /* ═══════════════════════════════ VISUALIZADOR PDF ═══════════════════════════════ */
 const PALETA_REALCE = ['#fff3a3', '#ffd28a', '#ffb3c1', '#c3f0c8', '#bfe3ff', '#e3c8ff', '#ffe0b0', '#d9d9d9']
+/* tonalizações (filtro CSS — puramente visual, não afeta OCR nem seleção) */
+const TONS: { id: string; label: string; icon: string; filter: string }[] = [
+  { id: 'cor', label: 'Cor (original)', icon: '🎨', filter: 'none' },
+  { id: 'cinza', label: 'Cinza', icon: '◐', filter: 'grayscale(1)' },
+  { id: 'pb', label: 'P&B alto contraste', icon: '◑', filter: 'grayscale(1) contrast(1.45) brightness(1.05)' },
+  { id: 'sepia', label: 'Sépia (tom quente)', icon: '🟤', filter: 'sepia(0.6) contrast(1.05) brightness(1.02)' },
+  { id: 'escuro', label: 'Modo escuro', icon: '🌙', filter: 'invert(0.92) hue-rotate(180deg) contrast(0.95) brightness(1.05)' },
+]
+const tomFilter = (id: string) => (TONS.find(t => t.id === id) || TONS[0]).filter
 function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const pdfRef = useRef<any>(null); const libRef = useRef<any>(null)
@@ -399,9 +419,13 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   const [curPage, setCurPage] = useState(1)
   const [pageBox, setPageBox] = useState(1)
   useEffect(() => { setPageBox(curPage) }, [curPage])
+  useEffect(() => { setPaginaImagem(!!semTextoRef.current[curPage]) }, [curPage])
   const [zoom, setZoom] = useState(1.25)
   const [fitWidth, setFitWidth] = useState(true)
   const fitRef = useRef(true); fitRef.current = fitWidth
+  const [tom, setTom] = useState<string>(() => { try { return localStorage.getItem('nexus_pr_tom') || 'cor' } catch { return 'cor' } })
+  const [tomOpen, setTomOpen] = useState(false)
+  useEffect(() => { try { localStorage.setItem('nexus_pr_tom', tom) } catch {} }, [tom])
   const [nome, setNome] = useState('')
   const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco'>('none')
   const [modo, setModo] = useState<'selecionar' | 'realcar'>('selecionar')  // marquee → editor  ou  marquee → realce
@@ -435,6 +459,12 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   const ioRef = useRef<IntersectionObserver | null>(null)
   const visRef = useRef<Set<number>>(new Set())
   const scaleRef = useRef(zoom); scaleRef.current = zoom
+  // OCR (sessão): palavras reconhecidas por página, em FRAÇÕES da página
+  const ocrRef = useRef<Record<number, { fx: number; fy: number; fw: number; fh: number; text: string }[]>>({})
+  const semTextoRef = useRef<Record<number, boolean>>({})
+  const curPageRef = useRef(1); curPageRef.current = curPage
+  const [paginaImagem, setPaginaImagem] = useState(false)
+  const [ocrStatus, setOcrStatus] = useState<{ running: boolean; pct: number; page: number } | null>(null)
 
   // importa o PDF (apenas em memória — nunca persistido)
   const importar = async (file: File) => {
@@ -443,6 +473,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
     const pdf = await lib.getDocument({ data: buf }).promise
     pdfRef.current = pdf; setNumPages(pdf.numPages); setNome(file.name.replace(/\.pdf$/i, '')); setCurPage(1)
     pageElsRef.current = {}; rsRef.current = {}; tcRef.current = {}; visRef.current = new Set()
+    ocrRef.current = {}; semTextoRef.current = {}; setPaginaImagem(false); setOcrStatus(null)
     try { anotKeyRef.current = 'nexus_pr_annot_' + file.name; anotRef.current = JSON.parse(localStorage.getItem(anotKeyRef.current) || '{}') } catch { anotRef.current = {} }
     // metadados (tamanho em escala 1) p/ placeholders — não renderiza nada ainda
     const metas: any[] = []
@@ -506,8 +537,50 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
       const tc = tcRef.current[pn] || await page.getTextContent(); tcRef.current[pn] = tc
       try { const t = lib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs: [] }); await (t.promise || t) }
       catch { try { const t2 = lib.renderTextLayer({ textContent: tc, container: tl, viewport: vp, textDivs: [] }); await (t2.promise || t2) } catch {} }
+      // se a página não tem texto nativo mas já tem OCR nesta sessão, reinjeta a camada OCR
+      if (ocrRef.current[pn]) injetarOCR(tl, pn)
+      // detecta página-imagem (sem texto e sem OCR) p/ sugerir o botão OCR
+      const semTexto = (tc?.items?.length || 0) === 0 && !ocrRef.current[pn]
+      semTextoRef.current[pn] = semTexto
+      if (pn === curPageRef.current) setPaginaImagem(semTexto)
       pintarPagina(el, pn)
     } catch { rsRef.current[pn] = -1 }
+  }
+  // injeta as palavras do OCR como spans invisíveis (mesmo formato que o marquee lê)
+  const injetarOCR = (tl: HTMLElement, pn: number) => {
+    const words = ocrRef.current[pn]; if (!words) return
+    const W = tl.clientWidth || parseFloat(tl.style.width), H = tl.clientHeight || parseFloat(tl.style.height)
+    const frag = document.createDocumentFragment()
+    for (const w of words) {
+      const span = document.createElement('span')
+      const h = w.fh * H
+      span.textContent = w.text
+      span.style.cssText = `position:absolute;left:${w.fx * W}px;top:${w.fy * H}px;width:${w.fw * W}px;height:${h}px;font-size:${Math.max(6, h * 0.86)}px;line-height:${h}px;color:transparent;white-space:pre;overflow:hidden`
+      frag.appendChild(span)
+    }
+    tl.appendChild(frag)
+  }
+  // roda OCR na página (sob demanda) e injeta a camada de texto reconhecida
+  const ocrPagina = async (n: number) => {
+    if (ocrStatus?.running) return
+    const el = pageElsRef.current[n]; if (!el) return
+    let canvas = el.querySelector('canvas') as HTMLCanvasElement
+    if (!canvas) { await renderPage(n); canvas = el.querySelector('canvas') as HTMLCanvasElement }
+    if (!canvas) return
+    setOcrStatus({ running: true, pct: 0, page: n })
+    try {
+      const T = await ensureTesseract()
+      const worker = await T.createWorker('por', 1, { logger: (m: any) => { if (m.status === 'recognizing text') setOcrStatus({ running: true, pct: Math.round((m.progress || 0) * 100), page: n }) } })
+      const { data } = await worker.recognize(canvas)
+      await worker.terminate()
+      const ws = (data?.words || []).filter((w: any) => (w.text || '').trim())
+        .map((w: any) => ({ fx: w.bbox.x0 / canvas.width, fy: w.bbox.y0 / canvas.height, fw: (w.bbox.x1 - w.bbox.x0) / canvas.width, fh: (w.bbox.y1 - w.bbox.y0) / canvas.height, text: w.text.trim() }))
+      ocrRef.current[n] = ws; semTextoRef.current[n] = false
+      const tl = el.querySelector('.pr-textlayer') as HTMLElement
+      if (tl) { tl.querySelectorAll('span').forEach(s => s.remove()); injetarOCR(tl, n) }
+      if (n === curPageRef.current) setPaginaImagem(false)
+      setOcrStatus(null)
+    } catch (e) { setOcrStatus(null); alert('Falha no OCR: ' + ((e as any)?.message || e)) }
   }
   // página atual = a que cruza o centro do viewer (sem observer extra)
   const onScroll = () => {
@@ -678,6 +751,21 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
         <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', width: 42, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
         <button onClick={() => mudarZoom(0.15)} style={btn}>+</button>
         <button onClick={ajustarLargura} title="Ajustar à largura" style={{ ...btn, width: 'auto', padding: '0 8px', background: fitWidth ? '#5b5bd6' : 'var(--surface)', color: fitWidth ? '#fff' : 'var(--text-secondary)', border: fitWidth ? 'none' : '1px solid var(--border)' }}>↔</button>
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setTomOpen(o => !o)} title="Tonalização" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'flex', alignItems: 'center', gap: 4, background: tom !== 'cor' ? '#5b5bd6' : 'var(--surface)', color: tom !== 'cor' ? '#fff' : 'var(--text-secondary)', border: tom !== 'cor' ? 'none' : '1px solid var(--border)' }}>
+            {(TONS.find(t => t.id === tom) || TONS[0]).icon}<span style={{ fontSize: '0.6rem' }}>▾</span>
+          </button>
+          {tomOpen && (
+            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 30, width: 190, padding: 6, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
+              {TONS.map(t => (
+                <button key={t.id} onClick={() => { setTom(t.id); setTomOpen(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '7px 9px', borderRadius: 7, border: 'none', cursor: 'pointer', textAlign: 'left', background: t.id === tom ? 'var(--surface)' : 'transparent', color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: t.id === tom ? 700 : 500 }}>
+                  <span style={{ fontSize: '0.95rem', width: 18 }}>{t.icon}</span>{t.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
 
         {/* MODO: selecionar palavra(s)  vs  realçar */}
@@ -710,6 +798,13 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
         <Tool id="mascara" title="Máscara de leitura">▭</Tool>
         <Tool id="regua" title="Régua de acompanhamento">▬</Tool>
         <Tool id="foco" title="Foco dinâmico">◎</Tool>
+        <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
+        {/* OCR sob demanda da página atual */}
+        <button onClick={() => ocrPagina(curPage)} disabled={!numPages || ocrStatus?.running}
+          title="Reconhecer texto desta página (OCR) — para PDFs digitalizados/imagem"
+          style={{ ...btn, width: 'auto', padding: '0 10px', background: ocrStatus?.running ? 'var(--surface)' : paginaImagem ? '#EA580C' : 'var(--surface)', color: ocrStatus?.running ? 'var(--text-muted)' : paginaImagem ? '#fff' : 'var(--text-secondary)', border: paginaImagem && !ocrStatus?.running ? 'none' : '1px solid var(--border)', whiteSpace: 'nowrap' }}>
+          {ocrStatus?.running ? `OCR… ${ocrStatus.pct}%` : '🔎 OCR'}
+        </button>
 
         <span style={{ flex: 1 }} />
         {/* indicador de página + ir para página (campo integrado, sem setinhas) */}
@@ -738,7 +833,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
 
       {/* SCROLLER DO PDF + overlays de foco */}
       <div ref={viewBoxRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-        <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: 18, background: 'var(--bg-subtle, #1112)' }}>
+        <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: 18, background: 'var(--bg-subtle, #1112)', ['--pr-filter' as any]: tomFilter(tom) }}>
           {!numPages && <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Importe um PDF para começar a leitura.</div>}
         </div>
         {/* régua (confinada à coluna do PDF) */}
@@ -753,7 +848,25 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
         {/* marquee (retângulo de captura) */}
         {box && <div style={{ position: 'fixed', left: box.left, top: box.top, width: box.width, height: box.height, border: '1.5px solid #5b5bd6', background: 'rgba(91,91,214,.12)', pointerEvents: 'none', zIndex: 46 }} />}
         {/* lupa: canvas circular ampliando a região sob o cursor */}
-        <canvas ref={lensRef} width={LENS} height={LENS} style={{ position: 'fixed', left: lupa.x + 22, top: lupa.y - LENS - 16, width: LENS, height: LENS, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 28px rgba(0,0,0,0.4)', pointerEvents: 'none', zIndex: 50, display: ferramenta === 'lupa' && lupa.show ? 'block' : 'none', background: '#fff' }} />
+        <canvas ref={lensRef} width={LENS} height={LENS} style={{ position: 'fixed', left: lupa.x + 22, top: lupa.y - LENS - 16, width: LENS, height: LENS, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 28px rgba(0,0,0,0.4)', pointerEvents: 'none', zIndex: 50, display: ferramenta === 'lupa' && lupa.show ? 'block' : 'none', background: '#fff', filter: tomFilter(tom) }} />
+        {/* aviso: página é imagem (sem texto) */}
+        {paginaImagem && !ocrStatus?.running && (
+          <div onClick={() => ocrPagina(curPage)} title="Clique para reconhecer o texto"
+            style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', zIndex: 48, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', borderRadius: 20, background: '#EA580C', color: '#fff', fontSize: '0.76rem', fontWeight: 700, boxShadow: '0 6px 18px rgba(234,88,12,.4)', cursor: 'pointer' }}>
+            📄 Página sem texto selecionável — clique para rodar OCR 🔎
+          </div>
+        )}
+        {/* progresso do OCR */}
+        {ocrStatus?.running && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 49, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,.25)' }}>
+            <div style={{ padding: '14px 22px', borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--border)', boxShadow: '0 12px 36px rgba(0,0,0,.3)', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              🔎 Reconhecendo texto da página {ocrStatus.page}… {ocrStatus.pct}%
+              <div style={{ marginTop: 8, height: 5, borderRadius: 3, background: 'var(--surface)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${ocrStatus.pct}%`, background: '#5b5bd6', transition: 'width .2s' }} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* POP-UP DE DECISÃO — mostra o texto capturado */}
@@ -1065,7 +1178,7 @@ export default function PDFReader() {
       <style>{`
         .pr-page{position:relative;margin:0 auto 16px;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden;cursor:crosshair}
         .pr-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c4c4c4;font:600 22px/1 system-ui;z-index:0}
-        .pr-page canvas{position:relative;z-index:1;display:block}
+        .pr-page canvas{position:relative;z-index:1;display:block;filter:var(--pr-filter,none)}
         .pr-textlayer{position:absolute;top:0;left:0;overflow:hidden;line-height:1;z-index:3;transform-origin:0 0;opacity:1;user-select:none}
         .pr-textlayer span,.pr-textlayer br{color:transparent;position:absolute;white-space:pre;cursor:crosshair;transform-origin:0 0;user-select:none}
         .pr-row{display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:7px;font-size:.82rem;color:var(--text-secondary)}
