@@ -712,14 +712,19 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
         <Tool id="foco" title="Foco dinâmico">◎</Tool>
 
         <span style={{ flex: 1 }} />
-        {/* ir para página */}
-        <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Pág.</span>
-        <input type="number" min={1} max={numPages || 1} value={pageBox}
-          onChange={e => setPageBox(Number(e.target.value))}
-          onKeyDown={e => { if (e.key === 'Enter') irParaPagina(pageBox) }}
-          onBlur={() => irParaPagina(pageBox)}
-          style={{ width: 46, height: 28, textAlign: 'center', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }} />
-        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>/ {numPages || 0}</span>
+        {/* indicador de página + ir para página (campo integrado, sem setinhas) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Página</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <input value={pageBox}
+              onChange={e => { const v = e.target.value.replace(/\D/g, ''); setPageBox(v === '' ? ('' as any) : Number(v)) }}
+              onKeyDown={e => { if (e.key === 'Enter') { irParaPagina(Number(pageBox) || 1); (e.target as HTMLInputElement).blur() } }}
+              onBlur={() => irParaPagina(Number(pageBox) || 1)}
+              inputMode="numeric" title="Digite a página e tecle Enter"
+              style={{ width: Math.max(22, String(numPages || 1).length * 10), border: 'none', background: 'transparent', color: 'var(--text-primary)', fontSize: '0.8rem', fontWeight: 700, textAlign: 'center', outline: 'none', fontFamily: 'var(--font-mono)', padding: 0 }} />
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>de {numPages || 0}</span>
+          </div>
+        </div>
 
         {/* alternador de visualização (sempre acessível, inclusive em tela cheia do PDF) */}
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
