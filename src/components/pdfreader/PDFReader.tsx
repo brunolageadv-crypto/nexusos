@@ -486,14 +486,18 @@ function usePdfReaderStore() {
   const uid = useUid()
   const [pastas, setPastas] = useState<any[]>([])
   const [docs, setDocs] = useState<any[]>([])
+  const [aiCfg, setAiCfg] = useState<any>(null)
   const pastasRef = useRef<any[]>([]); useEffect(() => { pastasRef.current = pastas }, [pastas])
   const docsRef = useRef<any[]>([]); useEffect(() => { docsRef.current = docs }, [docs])
   useEffect(() => {
     if (!uid) return
     const u1 = onSnapshot(collection(db, 'users', uid, 'pdfReaderFolders'), s => setPastas(s.docs.map(d => ({ id: d.id, ...d.data() }))))
     const u2 = onSnapshot(collection(db, 'users', uid, 'pdfReaderDocs'), s => setDocs(s.docs.map(d => ({ id: d.id, ...d.data() }))))
-    return () => { u1(); u2() }
+    // config de IA sincronizada → espelha no localStorage p/ o callLLM (que lê de forma síncrona)
+    const u3 = onSnapshot(doc(db, 'users', uid, 'settings', 'ai'), snap => { const d = snap.data() || null; setAiCfg(d); if (d) { try { localStorage.setItem('nexus_ai_cfg', JSON.stringify(d)) } catch {} } })
+    return () => { u1(); u2(); u3() }
   }, [uid])
+  const salvarAiCfg = useCallback(async (cfg: any) => { try { localStorage.setItem('nexus_ai_cfg', JSON.stringify(cfg)) } catch {}; if (uid) await setDoc(doc(db, 'users', uid, 'settings', 'ai'), clean(cfg), { merge: true }) }, [uid])
   const salvarPasta = useCallback(async (p: any) => { if (!uid) return; await setDoc(doc(db, 'users', uid, 'pdfReaderFolders', p.id), clean(p), { merge: true }) }, [uid])
   const removerPasta = useCallback(async (id: string) => {
     if (!uid) return
@@ -506,7 +510,7 @@ function usePdfReaderStore() {
   const removerDoc = useCallback(async (id: string) => { if (!uid) return; await deleteDoc(doc(db, 'users', uid, 'pdfReaderDocs', id)) }, [uid])
   const moverDoc = useCallback(async (id: string, folderId: string | null) => { if (!uid) return; await setDoc(doc(db, 'users', uid, 'pdfReaderDocs', id), { folderId: folderId ?? null }, { merge: true }) }, [uid])
   const moverPasta = useCallback(async (id: string, parentId: string | null) => { if (!uid) return; await setDoc(doc(db, 'users', uid, 'pdfReaderFolders', id), { parentId: parentId ?? null }, { merge: true }) }, [uid])
-  return { uid, pastas, docs, salvarPasta, removerPasta, salvarDoc, removerDoc, moverDoc, moverPasta }
+  return { uid, pastas, docs, aiCfg, salvarAiCfg, salvarPasta, removerPasta, salvarDoc, removerDoc, moverDoc, moverPasta }
 }
 
 /* ═══════════════════════════════ SIDEBAR DE PASTAS (árvore Firestore + DnD) ═══════════════════════════════ */
@@ -595,12 +599,61 @@ function PreviaImpressao({ html, titulo, onClose }: any) {
   </>, document.body)
 }
 
-/* ═══════════════════════════════ COMPONENTE PRINCIPAL ═══════════════════════════════ */
+/* ═══════════════════════════════ CONFIGURAR IA (Firestore + localStorage) ═══════════════════════════════ */
+const lblCfg: any = { display: 'block', fontSize: '.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', margin: '9px 0 3px' }
+const inpCfg: any = { width: '100%', padding: '7px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg, var(--surface))', color: 'var(--text-primary)', fontSize: '.82rem', boxSizing: 'border-box' }
+function ConfigIAModal({ store, onClose }: any) {
+  const cur = store.aiCfg || (() => { try { return JSON.parse(localStorage.getItem('nexus_ai_cfg') || 'null') } catch { return null } })() || {}
+  const [kind, setKind] = useState(cur.kind || 'gemini')
+  const [url, setUrl] = useState(cur.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent')
+  const [key, setKey] = useState(cur.key || '')
+  const [model, setModel] = useState(cur.model || 'gemini-2.5-flash')
+  const [status, setStatus] = useState('')
+  const presetGemini = () => { setUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'); setModel('gemini-2.5-flash') }
+  const salvar = async () => { await store.salvarAiCfg({ kind, url, key, model }); setStatus(store.uid ? '✓ Salvo e sincronizado' : '✓ Salvo neste navegador') }
+  const testar = async () => {
+    setStatus('Testando…')
+    try { await store.salvarAiCfg({ kind, url, key, model }); const r = await gerarPerguntasIA('Direito Administrativo', 'Conceito e princípios.'); setStatus(r.length ? `✓ Funcionou — ${r.length} perguntas geradas` : '⚠ Resposta vazia (verifique modelo/endpoint)') }
+    catch (e: any) { setStatus('⚠ ' + (e?.message || 'falha na chamada')) }
+  }
+  return createPortal(<>
+    <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 8000 }} />
+    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8001, width: 'min(460px,94vw)', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)', padding: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <span style={{ fontSize: '1.1rem' }}>✦</span><b style={{ color: 'var(--text-primary)' }}>Configurar IA</b>
+        <span style={{ flex: 1 }} /><button onClick={onClose} style={btn}>✕</button>
+      </div>
+      {!store.uid && <div style={{ fontSize: '.72rem', color: '#EA580C', marginBottom: 6 }}>Sem login: salva só neste navegador. Faça login para sincronizar entre aparelhos.</div>}
+      <label style={lblCfg}>Provedor</label>
+      <div style={{ display: 'flex', gap: 6 }}>
+        {[['gemini', 'Gemini'], ['openai', 'OpenAI/DeepSeek'], ['anthropic', 'Anthropic']].map(([k, l]) => (
+          <button key={k} onClick={() => { setKind(k); if (k === 'gemini') presetGemini() }} style={{ ...btn, width: 'auto', flex: 1, padding: '0 6px', fontSize: '.72rem', background: kind === k ? '#5b5bd6' : 'var(--surface)', color: kind === k ? '#fff' : 'var(--text-secondary)', border: kind === k ? 'none' : '1px solid var(--border)' }}>{l}</button>
+        ))}
+      </div>
+      <label style={lblCfg}>Endpoint (URL)</label>
+      <input value={url} onChange={e => setUrl(e.target.value)} style={inpCfg} />
+      <label style={lblCfg}>Chave da API</label>
+      <input type="password" value={key} onChange={e => setKey(e.target.value)} placeholder="cole sua API key" style={inpCfg} />
+      <label style={lblCfg}>Modelo</label>
+      <input value={model} onChange={e => setModel(e.target.value)} style={inpCfg} />
+      {kind !== 'gemini' && <div style={{ fontSize: '.66rem', color: '#EA580C', marginTop: 4 }}>OpenAI/DeepSeek/Anthropic costumam bloquear CORS no navegador — pode exigir um proxy serverless.</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <button onClick={testar} style={{ ...btn, width: 'auto', flex: 1, padding: '0 10px' }}>⚡ Testar</button>
+        <button onClick={salvar} style={{ ...btn, width: 'auto', flex: 1, padding: '0 10px', background: '#5b5bd6', color: '#fff', border: 'none' }}>💾 Salvar</button>
+      </div>
+      {status && <div style={{ marginTop: 10, fontSize: '.76rem', color: 'var(--text-secondary)' }}>{status}</div>}
+      <div style={{ marginTop: 10, fontSize: '.62rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>Gemini funciona direto do navegador. Restrinja a chave por referenciador (brunolageadv-crypto.github.io) no Google Cloud Console.</div>
+    </div>
+  </>, document.body)
+}
+
+
 export default function PDFReader() {
   const editorRef = useRef<HTMLDivElement>(null)
   const store = usePdfReaderStore()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [previa, setPrevia] = useState<string | null>(null)
+  const [cfgIA, setCfgIA] = useState(false)
   const [docId, setDocId] = useState<string | null>(null)
   const [titulo, setTitulo] = useState('')
   const [salvo, setSalvo] = useState(true)
@@ -676,6 +729,7 @@ export default function PDFReader() {
             style={{ flex: 1, minWidth: 0, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
             onFocus={e => (e.target.style.border = '1px solid var(--border)')} onBlur={e => (e.target.style.border = '1px solid transparent')} />
           <span style={{ fontSize: '0.66rem', color: salvo ? 'var(--text-muted)' : '#EA580C', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{salvo ? '✓ salvo' : '● não salvo'}</span>
+          <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 'auto', padding: '0 9px' }}>⚙</button>
           <button onClick={onSalvar} disabled={!store.uid} style={{ ...btn, width: 'auto', padding: '0 12px' }}>💾 Salvar</button>
           <button onClick={abrirPrevia} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none' }}>🖨️ Exportar…</button>
         </div>
@@ -685,6 +739,7 @@ export default function PDFReader() {
         </div>
       </div>
       {previa != null && <PreviaImpressao html={previa} titulo={titulo || 'Palavras Destacadas'} onClose={() => setPrevia(null)} />}
+      {cfgIA && <ConfigIAModal store={store} onClose={() => setCfgIA(false)} />}
       <style>{`
         .pr-page{position:relative;margin:0 auto 16px;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden}
         .pr-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c4c4c4;font:600 22px/1 system-ui;z-index:0}
