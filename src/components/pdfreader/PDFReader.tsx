@@ -195,13 +195,16 @@ function shiftBulletDepth(ed: HTMLElement, delta: number, symbol: string) {
   ed.focus()
 }
 
+const menuItem: any = { display: 'block', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.84rem' }
+const menuItemRow: any = { flex: 1, padding: '7px 4px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600 }
+const inpNum: any = { width: 60, padding: '4px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }
 function RichEditor({ editorRef, onChange }: any) {
   const [aiBtn, setAiBtn] = useState<{ x: number; y: number; termo: string } | null>(null)
   const [aiMenu, setAiMenu] = useState<{ x: number; y: number; loading: boolean; opts: string[] } | null>(null)
   const savedRange = useRef<Range | null>(null)
   const [bulletSet, setBulletSet] = useState(DEFAULT_SET)
-  const [bulletOpen, setBulletOpen] = useState(false)
-  const [tableOpen, setTableOpen] = useState(false)
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)  // menu suspenso ancorado
+  const openMenu = (id: string, e: React.MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu(m => m && m.id === id ? null : { id, x: r.left, y: r.bottom + 4 }) }
   const [tRows, setTRows] = useState(3)
   const [tCols, setTCols] = useState(3)
   const exec = (cmd: string, val?: string) => { document.execCommand(cmd, false, val); editorRef.current?.focus(); onChange?.() }
@@ -251,100 +254,111 @@ function RichEditor({ editorRef, onChange }: any) {
     <button onMouseDown={e => { e.preventDefault(); onClick?.() }} title={title}
       style={{ minWidth: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: active ? '#5b5bd6' : 'var(--surface)', color: active ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>{children}</button>
   )
+  // botão que abre um menu suspenso
+  const MenuBtn = ({ id, label, title }: any) => (
+    <button onMouseDown={e => { e.preventDefault(); openMenu(id, e) }} title={title}
+      style={{ height: 28, padding: '0 9px', borderRadius: 7, border: '1px solid var(--border)', background: menu?.id === id ? '#5b5bd6' : 'var(--surface)', color: menu?.id === id ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+      {label}<span style={{ fontSize: '0.6rem' }}>▾</span>
+    </button>
+  )
+  // painel suspenso ancorado (fecha ao clicar fora) — itens executam ações da família
+  const Painel = ({ id, width, children }: any) => menu?.id === id ? createPortal(<>
+    <div onMouseDown={() => setMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 7900 }} />
+    <div style={{ position: 'fixed', left: Math.min(menu.x, window.innerWidth - (width + 16)), top: menu.y, zIndex: 7901, width, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 11, boxShadow: '0 14px 40px rgba(0,0,0,.32)', padding: 10 }}>{children}</div>
+  </>, document.body) : null
+
+  const run = (fn: () => void) => { fn(); onChange?.() }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
 
-      {/* ── TOOLBAR: linha 1 — blocos e formatação ── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--border)' }}>
-        <Btn cmd="formatBlock" val="h1" title="Título 1">H1</Btn>
-        <Btn cmd="formatBlock" val="h2" title="Título 2">H2</Btn>
-        <Btn cmd="formatBlock" val="h3" title="Título 3">H3</Btn>
-        <Btn cmd="formatBlock" val="p"  title="Parágrafo">¶</Btn>
+      {/* ── TOOLBAR (uma linha) ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>
+        <MenuBtn id="estilo" label="Estilo" title="Título / parágrafo" />
         <Sep />
-        <Btn cmd="bold"          title="Negrito (Ctrl+B)">B</Btn>
-        <Btn cmd="italic"        title="Itálico (Ctrl+I)"><i>I</i></Btn>
-        <Btn cmd="underline"     title="Sublinhado (Ctrl+U)"><u>U</u></Btn>
+        <Btn cmd="bold" title="Negrito (Ctrl+B)">B</Btn>
+        <Btn cmd="italic" title="Itálico (Ctrl+I)"><i>I</i></Btn>
+        <Btn cmd="underline" title="Sublinhado (Ctrl+U)"><u>U</u></Btn>
         <Btn cmd="strikeThrough" title="Tachado">S̶</Btn>
         <Sep />
-        <Btn cmd="justifyLeft"   title="Alinhar à esquerda">⬤◻◻</Btn>
-        <Btn cmd="justifyCenter" title="Centralizar">◻⬤◻</Btn>
-        <Btn cmd="justifyRight"  title="Alinhar à direita">◻◻⬤</Btn>
-        <Sep />
-        <input type="color" title="Cor do texto"  onChange={e => exec('foreColor',  e.target.value)} style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 7, cursor: 'pointer', padding: 2 }} />
-        <input type="color" title="Cor de realce" defaultValue="#fff3a3" onChange={e => exec('hiliteColor', e.target.value)} style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 7, cursor: 'pointer', padding: 2 }} />
+        <MenuBtn id="alinhar" label="Alinhar" title="Alinhamento" />
+        <MenuBtn id="cor" label="🎨 Cor" title="Cores" />
+        <MenuBtn id="marcadores" label="≔ Marcadores" title="Marcadores e listas" />
+        <MenuBtn id="inserir" label="＋ Inserir" title="Linha divisória e tabela" />
         <Sep />
         <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
         <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
       </div>
 
-      {/* ── TOOLBAR: linha 2 — listas, recuo, HR, tabela ── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>
-
-        {/* seletor de família de marcadores */}
-        <div style={{ position: 'relative' }}>
-          <button onMouseDown={e => { e.preventDefault(); setBulletOpen(o => !o) }} title="Família de marcadores"
-            style={{ height: 28, padding: '0 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span>{symbols[0]}</span><span style={{ fontSize: '0.65rem' }}>▾</span>
-          </button>
-          {bulletOpen && createPortal(<>
-            <div onMouseDown={() => setBulletOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 7900 }} />
-            <div style={{ position: 'fixed', zIndex: 7901, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 11, boxShadow: '0 12px 36px rgba(0,0,0,.3)', padding: 10, width: 240 }}>
-              <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Família de marcadores</div>
-              {Object.entries(BULLET_SETS).map(([name, syms]) => (
-                <button key={name} onMouseDown={e => { e.preventDefault(); setBulletSet(name); setBulletOpen(false) }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '6px 8px', borderRadius: 7, border: 'none', background: name === bulletSet ? 'var(--surface)' : 'transparent', cursor: 'pointer', textAlign: 'left' }}>
-                  <span style={{ display: 'flex', gap: 6, fontSize: '0.9rem', width: 80 }}>{syms.map((s, i) => <span key={i} style={{ opacity: 1 - i * 0.15 }}>{s}</span>)}</span>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{name}</span>
-                </button>
-              ))}
-              <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6, fontSize: '0.65rem', color: 'var(--text-muted)' }}>Tab = aumentar nível · Shift+Tab = diminuir</div>
-            </div>
-          </>, document.body)}
-        </div>
-
-        {/* marcadores: 4 níveis do conjunto atual */}
-        {symbols.map((s, i) => (
-          <IBtn key={i} title={`Marcador nível ${i + 1} (${s})`}
-            onClick={() => { const ed = editorRef.current; if (ed) { insertCustomBullet(ed, s); onChange?.() } }}>
-            <span style={{ fontSize: '0.82rem', paddingLeft: i * 3 }}>{s}</span>
-          </IBtn>
+      {/* ── PAINÉIS DOS MENUS ── */}
+      <Painel id="estilo" width={150}>
+        {[['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3'], ['p', 'Parágrafo']].map(([v, l]) => (
+          <button key={v} onMouseDown={e => { e.preventDefault(); exec('formatBlock', v); setMenu(null) }} style={menuItem}>{l}</button>
         ))}
+      </Painel>
 
-        <Sep />
-        <IBtn title="Aumentar recuo (Tab)" onClick={() => { const ed = editorRef.current; if (ed) { shiftBulletDepth(ed, 1, symbols[0]); onChange?.() } }}>⇥</IBtn>
-        <IBtn title="Diminuir recuo (Shift+Tab)" onClick={() => { const ed = editorRef.current; if (ed) { shiftBulletDepth(ed, -1, symbols[0]); onChange?.() } }}>⇤</IBtn>
-        <Btn cmd="insertOrderedList" title="Lista numerada">1.</Btn>
+      <Painel id="alinhar" width={150}>
+        {[['justifyLeft', '⬅ Esquerda'], ['justifyCenter', '↔ Centro'], ['justifyRight', '➡ Direita'], ['justifyFull', '☰ Justificar']].map(([c, l]) => (
+          <button key={c} onMouseDown={e => { e.preventDefault(); exec(c); setMenu(null) }} style={menuItem}>{l}</button>
+        ))}
+      </Painel>
 
-        <Sep />
-        {/* linha divisória */}
-        <IBtn title="Inserir linha divisória" onClick={() => { const ed = editorRef.current; if (ed) { insertHR(ed); onChange?.() } }}>─</IBtn>
-
-        {/* tabela */}
-        <div style={{ position: 'relative' }}>
-          <IBtn title="Inserir tabela" active={tableOpen} onClick={() => setTableOpen(o => !o)}>⊞</IBtn>
-          {tableOpen && createPortal(<>
-            <div onMouseDown={() => setTableOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 7900 }} />
-            <div style={{ position: 'fixed', zIndex: 7901, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 11, boxShadow: '0 12px 36px rgba(0,0,0,.3)', padding: 14, width: 200 }}>
-              <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 10 }}>Inserir tabela</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', width: 50 }}>Linhas</label>
-                <input type="number" min={1} max={20} value={tRows} onChange={e => setTRows(Number(e.target.value))}
-                  style={{ width: 60, padding: '4px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', width: 50 }}>Colunas</label>
-                <input type="number" min={1} max={10} value={tCols} onChange={e => setTCols(Number(e.target.value))}
-                  style={{ width: 60, padding: '4px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
-              </div>
-              <button onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) { insertTable(ed, tRows, tCols); onChange?.() } setTableOpen(false) }}
-                style={{ width: '100%', padding: '7px 0', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
-                Inserir {tRows}×{tCols}
-              </button>
-            </div>
-          </>, document.body)}
+      <Painel id="cor" width={220}>
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 7 }}>Cor do texto</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
+          {['#202124', '#DC2626', '#EA580C', '#16A34A', '#2563EB', '#7C3AED', '#DB2777', '#0891B2'].map(c => (
+            <button key={c} onMouseDown={e => { e.preventDefault(); exec('foreColor', c) }} style={{ width: 22, height: 22, borderRadius: 5, border: '1px solid var(--border)', background: c, cursor: 'pointer' }} />
+          ))}
+          <input type="color" title="Outra cor" onChange={e => exec('foreColor', e.target.value)} style={{ width: 22, height: 22, border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer', padding: 1 }} />
         </div>
-      </div>
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 7 }}>Realce</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          {['#fff3a3', '#ffd28a', '#ffb3c1', '#c3f0c8', '#bfe3ff', '#e3c8ff', 'transparent'].map(c => (
+            <button key={c} onMouseDown={e => { e.preventDefault(); exec('hiliteColor', c === 'transparent' ? '#ffffff' : c) }} title={c === 'transparent' ? 'Remover' : c} style={{ width: 22, height: 22, borderRadius: 5, border: '1px solid var(--border)', background: c === 'transparent' ? 'var(--surface)' : c, cursor: 'pointer', fontSize: 11, color: 'var(--text-muted)' }}>{c === 'transparent' ? '✕' : ''}</button>
+          ))}
+          <input type="color" title="Outro realce" defaultValue="#fff3a3" onChange={e => exec('hiliteColor', e.target.value)} style={{ width: 22, height: 22, border: '1px solid var(--border)', borderRadius: 5, cursor: 'pointer', padding: 1 }} />
+        </div>
+      </Painel>
+
+      <Painel id="marcadores" width={250}>
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Família</div>
+        {Object.entries(BULLET_SETS).map(([name, syms]) => (
+          <button key={name} onMouseDown={e => { e.preventDefault(); setBulletSet(name) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '6px 8px', borderRadius: 7, border: 'none', background: name === bulletSet ? 'var(--surface)' : 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+            <span style={{ display: 'flex', gap: 6, fontSize: '0.9rem', width: 78 }}>{syms.map((s, i) => <span key={i} style={{ opacity: 1 - i * 0.15 }}>{s}</span>)}</span>
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{name}</span>
+          </button>
+        ))}
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', margin: '10px 0 6px' }}>Inserir nível</div>
+        <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+          {symbols.map((s, i) => (
+            <button key={i} onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => insertCustomBullet(ed, s)) }} title={`Nível ${i + 1}`}
+              style={{ flex: 1, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '0.9rem' }}>{s}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 5 }}>
+          <button onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => shiftBulletDepth(ed, 1, symbols[0])) }} style={menuItemRow}>⇥ Recuar</button>
+          <button onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => shiftBulletDepth(ed, -1, symbols[0])) }} style={menuItemRow}>⇤ Voltar</button>
+          <button onMouseDown={e => { e.preventDefault(); exec('insertOrderedList') }} style={menuItemRow}>1. Lista</button>
+        </div>
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 6, fontSize: '0.64rem', color: 'var(--text-muted)' }}>No texto: Tab aprofunda · Shift+Tab volta</div>
+      </Painel>
+
+      <Painel id="inserir" width={210}>
+        <button onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => insertHR(ed)); setMenu(null) }} style={menuItem}>─ Linha divisória</button>
+        <div style={{ borderTop: '1px solid var(--border)', margin: '8px 0' }} />
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Tabela</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', width: 52 }}>Linhas</label>
+          <input type="number" min={1} max={30} value={tRows} onChange={e => setTRows(Number(e.target.value))} style={inpNum} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', width: 52 }}>Colunas</label>
+          <input type="number" min={1} max={10} value={tCols} onChange={e => setTCols(Number(e.target.value))} style={inpNum} />
+        </div>
+        <button onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => insertTable(ed, tRows, tCols)); setMenu(null) }}
+          style={{ width: '100%', padding: '7px 0', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>⊞ Inserir {tRows}×{tCols}</button>
+      </Painel>
 
       {/* área editável */}
       <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={onChange} onMouseUp={onMouseUp} onKeyDown={onKeyDown}
@@ -378,15 +392,24 @@ function RichEditor({ editorRef, onChange }: any) {
 
 /* ═══════════════════════════════ VISUALIZADOR PDF ═══════════════════════════════ */
 const PALETA_REALCE = ['#fff3a3', '#ffd28a', '#ffb3c1', '#c3f0c8', '#bfe3ff', '#e3c8ff', '#ffe0b0', '#d9d9d9']
-function PdfViewer({ onExtract }: any) {
+function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const pdfRef = useRef<any>(null); const libRef = useRef<any>(null)
   const [numPages, setNumPages] = useState(0)
   const [curPage, setCurPage] = useState(1)
+  const [pageBox, setPageBox] = useState(1)
+  useEffect(() => { setPageBox(curPage) }, [curPage])
   const [zoom, setZoom] = useState(1.25)
+  const [fitWidth, setFitWidth] = useState(true)
+  const fitRef = useRef(true); fitRef.current = fitWidth
   const [nome, setNome] = useState('')
   const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco'>('none')
+  const [modo, setModo] = useState<'selecionar' | 'realcar'>('selecionar')  // marquee → editor  ou  marquee → realce
+  const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
+  const modoRef = useRef(modo); modoRef.current = modo
+  const tipoRef = useRef(tipoMarca); tipoRef.current = tipoMarca
   const [corRealce, setCorRealce] = useState('#fff3a3')
+  const corRef = useRef(corRealce); corRef.current = corRealce
   const [paletaOpen, setPaletaOpen] = useState(false)
   const [popup, setPopup] = useState<{ x: number; y: number; text: string; shown: string } | null>(null)
   const acumRef = useRef<string>('')        // trecho em composição (várias seleções)
@@ -425,8 +448,25 @@ function PdfViewer({ onExtract }: any) {
     const metas: any[] = []
     for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); const vp = pg.getViewport({ scale: 1 }); metas.push({ n: i, w: vp.width, h: vp.height }) }
     metaRef.current = metas
+    if (fitRef.current) { const z = calcFit(metas); if (z) { setZoom(z); scaleRef.current = z } }
     requestAnimationFrame(montarPlaceholders)
   }
+  // calcula a escala que faz a página caber na largura da coluna
+  const calcFit = (metas = metaRef.current) => {
+    const host = wrapRef.current; if (!host || !metas.length) return 0
+    const avail = host.clientWidth - 36; const w = Math.max(...metas.map((m: any) => m.w))
+    return (w > 0 && avail > 60) ? +Math.max(0.4, Math.min(3, avail / w)).toFixed(3) : 0
+  }
+  const ajustarLargura = () => { setFitWidth(true); const z = calcFit(); if (z) setZoom(z) }
+  const mudarZoom = (delta: number) => { setFitWidth(false); setZoom(z => +Math.max(0.4, Math.min(3, z + delta)).toFixed(2)) }
+  const irParaPagina = (n: number) => { const p = Math.max(1, Math.min(numPages || 1, n || 1)); const el = pageElsRef.current[p]; const host = wrapRef.current; if (el && host) { host.scrollTo({ top: el.offsetTop - 12, behavior: 'smooth' }); setCurPage(p) } }
+  // re-ajusta à largura quando a coluna muda de tamanho (divisória / tela cheia)
+  useEffect(() => {
+    const host = wrapRef.current; if (!host) return
+    let t: any
+    const ro = new ResizeObserver(() => { if (fitRef.current && pdfRef.current) { clearTimeout(t); t = setTimeout(() => { const z = calcFit(); if (z) setZoom(z) }, 120) } })
+    ro.observe(host); return () => { ro.disconnect(); clearTimeout(t) }
+  }, [])
   // cria placeholders dimensionados e liga o observer (render só do que entra na viewport)
   const montarPlaceholders = () => {
     const host = wrapRef.current; if (!host) return
@@ -537,8 +577,12 @@ function PdfViewer({ onExtract }: any) {
         ? collectInRect({ left: ev.clientX, top: ev.clientY, right: ev.clientX, bottom: ev.clientY }, 'point')
         : collectInRect({ left, top, right, bottom }, 'center')
       if (!words.length) { setPopup(null); return }
-      const text = joinWords(words.map((w: any) => w.word))
       lastCapRef.current = { words }
+      if (modoRef.current === 'realcar') {                 // modo realce: aplica direto, sem pop-up
+        aplicarAnotacao(tipoRef.current, corRef.current)
+        return
+      }
+      const text = joinWords(words.map((w: any) => w.word))
       const acc = acumRef.current
       setPopup({ x: (left + right) / 2, y: top - 8, text, shown: acc ? prNormalize(acc + ' ' + text) : text })
     }
@@ -627,35 +671,64 @@ function PdfViewer({ onExtract }: any) {
         <label style={{ padding: '6px 12px', borderRadius: 8, background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
           ↥ Importar PDF<input type="file" accept="application/pdf" hidden onChange={e => e.target.files?.[0] && importar(e.target.files[0])} />
         </label>
-        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 600, marginRight: 4 }}>{nome || '—'}</span>
+        <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nome || '—'}</span>
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
-        <button onClick={() => setZoom(z => Math.max(0.5, +(z - 0.15).toFixed(2)))} style={btn}>−</button>
+        {/* zoom + ajustar à largura */}
+        <button onClick={() => mudarZoom(-0.15)} style={btn}>−</button>
         <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', width: 42, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
-        <button onClick={() => setZoom(z => Math.min(3, +(z + 0.15).toFixed(2)))} style={btn}>+</button>
+        <button onClick={() => mudarZoom(0.15)} style={btn}>+</button>
+        <button onClick={ajustarLargura} title="Ajustar à largura" style={{ ...btn, width: 'auto', padding: '0 8px', background: fitWidth ? '#5b5bd6' : 'var(--surface)', color: fitWidth ? '#fff' : 'var(--text-secondary)', border: fitWidth ? 'none' : '1px solid var(--border)' }}>↔</button>
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
-        {/* realce com paleta expansível */}
-        <div style={{ position: 'relative' }}>
-          <button onClick={() => setPaletaOpen(o => !o)} title="Realce" style={{ ...btn, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 14, height: 14, borderRadius: 3, background: corRealce, border: '1px solid var(--border)' }} />▾
-          </button>
-          {paletaOpen && (
-            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 30, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
-              {PALETA_REALCE.map(c => <button key={c} onClick={() => { setCorRealce(c); setPaletaOpen(false) }} style={{ width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
-            </div>
-          )}
+
+        {/* MODO: selecionar palavra(s)  vs  realçar */}
+        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+          <button onClick={() => setModo('selecionar')} title="Selecionar palavra(s) → enviar ao editor"
+            style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'selecionar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'selecionar' ? '#fff' : 'var(--text-secondary)' }}>✛ Selecionar</button>
+          <button onClick={() => setModo('realcar')} title="Realçar / sublinhar com o retângulo"
+            style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'realcar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'realcar' ? '#fff' : 'var(--text-secondary)' }}>🖊 Realçar</button>
         </div>
-        <button onClick={() => aplicarAnotacao('realce', corRealce)} title="Realçar a seleção" style={btn}>✎ Realçar</button>
-        <button onClick={() => aplicarAnotacao('sublinhado', corRealce)} title="Sublinhar a seleção" style={btn}><u>S</u></button>
-        <button onClick={limparAnotacoes} title="Limpar realces deste PDF" style={btn}>🧽</button>
+
+        {/* opções do modo realçar */}
+        {modo === 'realcar' && <>
+          <button onClick={() => setTipoMarca('realce')} title="Realce" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'realce' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'realce' ? '#fff' : 'var(--text-secondary)' }}>✎</button>
+          <button onClick={() => setTipoMarca('sublinhado')} title="Sublinhado" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'sublinhado' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'sublinhado' ? '#fff' : 'var(--text-secondary)' }}><u>S</u></button>
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setPaletaOpen(o => !o)} title="Cor do realce" style={{ ...btn, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 14, height: 14, borderRadius: 3, background: corRealce, border: '1px solid var(--border)' }} />▾
+            </button>
+            {paletaOpen && (
+              <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 30, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
+                {PALETA_REALCE.map(c => <button key={c} onClick={() => { setCorRealce(c); setPaletaOpen(false) }} style={{ width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
+              </div>
+            )}
+          </div>
+          <button onClick={limparAnotacoes} title="Limpar realces deste PDF" style={btn}>🧽</button>
+        </>}
+
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
         <Tool id="lupa" title="Lupa">🔍</Tool>
         <Tool id="mascara" title="Máscara de leitura">▭</Tool>
         <Tool id="regua" title="Régua de acompanhamento">▬</Tool>
         <Tool id="foco" title="Foco dinâmico">◎</Tool>
+
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
-          Página {String(curPage).padStart(2, '0')} de {String(numPages).padStart(2, '0')}
-        </span>
+        {/* ir para página */}
+        <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)' }}>Pág.</span>
+        <input type="number" min={1} max={numPages || 1} value={pageBox}
+          onChange={e => setPageBox(Number(e.target.value))}
+          onKeyDown={e => { if (e.key === 'Enter') irParaPagina(pageBox) }}
+          onBlur={() => irParaPagina(pageBox)}
+          style={{ width: 46, height: 28, textAlign: 'center', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }} />
+        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>/ {numPages || 0}</span>
+
+        {/* alternador de visualização (sempre acessível, inclusive em tela cheia do PDF) */}
+        <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
+        {(['pdf', 'split', 'editor'] as const).map(m => (
+          <button key={m} onClick={() => setViewMode?.(m)} title={{ pdf: 'PDF em tela cheia', split: 'Dividido', editor: 'Editor em tela cheia' }[m]}
+            style={{ ...btn, width: 'auto', padding: '0 7px', fontSize: '0.72rem', background: viewMode === m ? '#5b5bd6' : 'var(--surface)', color: viewMode === m ? '#fff' : 'var(--text-secondary)', border: viewMode === m ? 'none' : '1px solid var(--border)' }}>
+            {{ pdf: '📄', split: '⬜', editor: '✦' }[m]}
+          </button>
+        ))}
       </div>
 
       {/* SCROLLER DO PDF + overlays de foco */}
@@ -686,6 +759,7 @@ function PdfViewer({ onExtract }: any) {
           <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.4, maxHeight: 90, overflowY: 'auto', padding: '6px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>{popup.shown}</div>
           <button onMouseDown={e => { e.preventDefault(); enviar() }} style={popBtnPrim}>➜ Enviar para Palavras Destacadas</button>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
+          <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} style={{ ...popBtn, color: '#DC2626', textAlign: 'center', fontWeight: 700 }}>✕ Cancelar</button>
         </div>
       </>, document.body)}
     </div>
@@ -949,7 +1023,7 @@ export default function PDFReader() {
       <div ref={rowRef} style={{ flex: 1, minWidth: 0, display: 'flex' }}>
         {/* coluna PDF */}
         <div style={{ flexBasis: viewMode === 'editor' ? '0%' : viewMode === 'pdf' ? '100%' : `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0, overflow: 'hidden', display: viewMode === 'editor' ? 'none' : 'block' }}>
-          <PdfViewer onExtract={onExtract} />
+          <PdfViewer onExtract={onExtract} viewMode={viewMode} setViewMode={setViewMode} />
         </div>
         {/* divisória arrastável — só no modo dividido */}
         {viewMode === 'split' && (
