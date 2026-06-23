@@ -700,6 +700,24 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
     } catch (e: any) { setKw({ loading: false, itens: [], erro: e?.message || 'Falha na IA' }) }
   }
   const toggleKw = (i: number) => setKw(k => k && ({ ...k, itens: k.itens.map((x, j) => j === i ? { ...x, on: !x.on } : x) }))
+  // posição do pop-up (arrastável e sempre visível na tela)
+  const [popupPos, setPopupPos] = useState({ x: 0, y: 0 })
+  useEffect(() => {
+    if (!popup) return
+    const W = 290, H = 300
+    let x = popup.x - W / 2, y = popup.y - H
+    x = Math.max(10, Math.min(x, window.innerWidth - W - 10))
+    if (y < 10) y = popup.y + 26
+    y = Math.max(10, Math.min(y, window.innerHeight - H - 10))
+    setPopupPos({ x, y })
+  }, [popup])
+  const arrastarPopup = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const ox = e.clientX - popupPos.x, oy = e.clientY - popupPos.y
+    const move = (ev: MouseEvent) => setPopupPos({ x: Math.max(0, Math.min(ev.clientX - ox, window.innerWidth - 80)), y: Math.max(0, Math.min(ev.clientY - oy, window.innerHeight - 40)) })
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+  }
   const editKw = (i: number, v: string) => setKw(k => k && ({ ...k, itens: k.itens.map((x, j) => j === i ? { ...x, t: v } : x) }))
   const confirmarKw = () => {
     const sel = (kw?.itens || []).filter(x => x.on && x.t.trim()).map(x => x.t.trim())
@@ -905,13 +923,17 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
       {/* POP-UP DE DECISÃO — mostra o texto capturado */}
       {popup && createPortal(<>
         <div onMouseDown={() => setPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 6500 }} />
-        <div style={{ position: 'fixed', left: Math.max(130, Math.min(popup.x, window.innerWidth - 150)), top: Math.max(120, popup.y), transform: 'translate(-50%,-100%)', zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,0.35)', width: 280 }}>
-          <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{acumLen > 0 ? 'Frase em composição' : 'Texto capturado'}</div>
+        <div style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,0.35)', width: 280 }}>
+          <div onMouseDown={arrastarPopup} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'move', marginBottom: 2, userSelect: 'none' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>⠿</span>
+            <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{acumLen > 0 ? 'Frase em composição' : 'Texto capturado'}</span>
+            <span style={{ flex: 1 }} />
+            <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} title="Fechar" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>✕</button>
+          </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.4, maxHeight: 90, overflowY: 'auto', padding: '6px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>{popup.shown}</div>
           <button onMouseDown={e => { e.preventDefault(); enviar() }} style={popBtnPrim}>➜ Enviar para Palavras Destacadas</button>
           <button onMouseDown={e => { e.preventDefault(); pedirPalavrasChave() }} style={{ ...popBtn, background: 'linear-gradient(135deg,#5b5bd6,#7c5cff)', color: '#fff', border: 'none', fontWeight: 700 }}>✦ Extrair palavras-chave (IA)</button>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
-          <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} style={{ ...popBtn, color: '#DC2626', textAlign: 'center', fontWeight: 700 }}>✕ Cancelar</button>
         </div>
       </>, document.body)}
 
@@ -1122,12 +1144,200 @@ function ConfigIAModal({ store, onClose }: any) {
 }
 
 
+/* ═══════════════════════════════ DIÁRIO DE LEITURA (Firestore) ═══════════════════════════════
+   users/{uid}/leituraConcursos/{id}   -> { id, nome, criadoEm }
+   users/{uid}/leituraDisciplinas/{id} -> { id, concursoId, nome }
+   users/{uid}/leituraItens/{id}       -> { id, disciplinaId, tipo:'pdf'|'lei', titulo, descricao, total, atual, lido, estudado } */
+function useDiarioStore() {
+  const uid = useUid()
+  const [concursos, setConcursos] = useState<any[]>([])
+  const [disciplinas, setDisciplinas] = useState<any[]>([])
+  const [itens, setItens] = useState<any[]>([])
+  const discRef = useRef<any[]>([]); useEffect(() => { discRef.current = disciplinas }, [disciplinas])
+  const itensRef = useRef<any[]>([]); useEffect(() => { itensRef.current = itens }, [itens])
+  useEffect(() => {
+    if (!uid) return
+    const a = onSnapshot(collection(db, 'users', uid, 'leituraConcursos'), s => setConcursos(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+    const b = onSnapshot(collection(db, 'users', uid, 'leituraDisciplinas'), s => setDisciplinas(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+    const c = onSnapshot(collection(db, 'users', uid, 'leituraItens'), s => setItens(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+    return () => { a(); b(); c() }
+  }, [uid])
+  const salvarConcurso = useCallback(async (o: any) => { if (uid) await setDoc(doc(db, 'users', uid, 'leituraConcursos', o.id), clean(o), { merge: true }) }, [uid])
+  const removerConcurso = useCallback(async (id: string) => {
+    if (!uid) return
+    const discs = discRef.current.filter(d => d.concursoId === id).map(d => d.id)
+    for (const it of itensRef.current) if (discs.includes(it.disciplinaId)) await deleteDoc(doc(db, 'users', uid, 'leituraItens', it.id))
+    for (const did of discs) await deleteDoc(doc(db, 'users', uid, 'leituraDisciplinas', did))
+    await deleteDoc(doc(db, 'users', uid, 'leituraConcursos', id))
+  }, [uid])
+  const salvarDisciplina = useCallback(async (o: any) => { if (uid) await setDoc(doc(db, 'users', uid, 'leituraDisciplinas', o.id), clean(o), { merge: true }) }, [uid])
+  const removerDisciplina = useCallback(async (id: string) => {
+    if (!uid) return
+    for (const it of itensRef.current) if (it.disciplinaId === id) await deleteDoc(doc(db, 'users', uid, 'leituraItens', it.id))
+    await deleteDoc(doc(db, 'users', uid, 'leituraDisciplinas', id))
+  }, [uid])
+  const salvarItem = useCallback(async (o: any) => { if (uid) await setDoc(doc(db, 'users', uid, 'leituraItens', o.id), clean(o), { merge: true }) }, [uid])
+  const removerItem = useCallback(async (id: string) => { if (uid) await deleteDoc(doc(db, 'users', uid, 'leituraItens', id)) }, [uid])
+  return { uid, concursos, disciplinas, itens, salvarConcurso, removerConcurso, salvarDisciplina, removerDisciplina, salvarItem, removerItem }
+}
+
+const Barra = ({ pct, cor }: any) => (
+  <div style={{ height: 7, borderRadius: 4, background: 'var(--surface)', overflow: 'hidden', flex: 1 }}>
+    <div style={{ height: '100%', width: `${Math.max(0, Math.min(100, pct || 0))}%`, background: cor || '#5b5bd6', transition: 'width .3s', borderRadius: 4 }} />
+  </div>
+)
+const inpD: any = { padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none' }
+
+function DiarioLeitura({ onClose }: any) {
+  const st = useDiarioStore()
+  const [sel, setSel] = useState<string | null>(null)
+  const [novoConc, setNovoConc] = useState('')
+  const [estudoDe, setEstudoDe] = useState<any | null>(null)   // item cujo "estudado" está aberto
+  const [estudoTxt, setEstudoTxt] = useState('')
+
+  useEffect(() => { if (!sel && st.concursos.length) setSel(st.concursos[0].id) }, [st.concursos, sel])
+
+  const addConcurso = () => { const nome = novoConc.trim(); if (!nome) return; const id = newId(); st.salvarConcurso({ id, nome, criadoEm: Date.now() }); setNovoConc(''); setSel(id) }
+  const addDisciplina = () => { if (!sel) return; const nome = prompt('Nome da disciplina:'); if (nome?.trim()) st.salvarDisciplina({ id: newId(), concursoId: sel, nome: nome.trim() }) }
+  const addItem = (disciplinaId: string, tipo: 'pdf' | 'lei') => st.salvarItem({ id: newId(), disciplinaId, tipo, titulo: tipo === 'pdf' ? 'Novo PDF' : 'Nova legislação', descricao: '', total: tipo === 'pdf' ? 0 : 0, atual: 0, lido: false, estudado: '', criadoEm: Date.now() })
+
+  const discs = st.disciplinas.filter(d => d.concursoId === sel)
+  const itensDe = (did: string) => st.itens.filter(i => i.disciplinaId === did).sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0))
+
+  const abrirEstudo = (it: any) => { setEstudoDe(it); setEstudoTxt(it.estudado || '') }
+  const salvarEstudo = () => { if (estudoDe) st.salvarItem({ id: estudoDe.id, estudado: estudoTxt }); setEstudoDe(null) }
+
+  return createPortal(<>
+    <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9000 }} />
+    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9001, width: '94vw', height: '92vh', maxWidth: 1180, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
+      {/* cabeçalho */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)' }}>
+        <span style={{ fontSize: '1.3rem' }}>📖</span>
+        <b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Diário de Leitura</b>
+        <span style={{ flex: 1 }} />
+        {!st.uid && <span style={{ fontSize: '0.72rem', color: '#EA580C' }}>Faça login para salvar</span>}
+        <button onClick={onClose} style={btn}>✕</button>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {/* coluna de concursos/temas */}
+        <div style={{ width: 230, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 7 }}>Concursos / Temas</div>
+            <div style={{ display: 'flex', gap: 5 }}>
+              <input value={novoConc} onChange={e => setNovoConc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addConcurso() }} placeholder="Ex.: PGM-BH, AGU…" style={{ ...inpD, flex: 1, minWidth: 0 }} />
+              <button onClick={addConcurso} title="Adicionar" style={{ ...btn, background: '#5b5bd6', color: '#fff', border: 'none' }}>＋</button>
+            </div>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 8 }}>
+            {st.concursos.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: 8 }}>Crie um concurso ou tema acima.</div>}
+            {st.concursos.map(c => {
+              const nd = st.disciplinas.filter(d => d.concursoId === c.id).length
+              return (
+                <div key={c.id} onClick={() => setSel(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 10px', borderRadius: 9, cursor: 'pointer', marginBottom: 3, background: sel === c.id ? '#5b5bd6' : 'transparent', color: sel === c.id ? '#fff' : 'var(--text-secondary)' }}>
+                  <span style={{ flex: 1, fontWeight: sel === c.id ? 700 : 600, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nome}</span>
+                  <span style={{ fontSize: '0.66rem', opacity: 0.8 }}>{nd}</span>
+                  <button onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${c.nome}" e tudo dentro?`)) st.removerConcurso(c.id) }} title="Excluir" style={{ border: 'none', background: 'transparent', color: sel === c.id ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>🗑</button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* conteúdo do concurso selecionado */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          {!sel ? <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>Selecione um concurso/tema.</div> : <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+              <b style={{ fontSize: '0.98rem', color: 'var(--text-primary)' }}>{st.concursos.find(c => c.id === sel)?.nome}</b>
+              <span style={{ flex: 1 }} />
+              <button onClick={addDisciplina} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none', fontWeight: 700 }}>＋ Disciplina</button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {discs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.86rem' }}>Nenhuma disciplina ainda. Clique em "＋ Disciplina".</div>}
+              {discs.map(d => {
+                const its = itensDe(d.id)
+                const lidos = its.filter(i => i.lido).length
+                const pctDisc = its.length ? (lidos / its.length) * 100 : 0
+                return (
+                  <div key={d.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--card-bg)' }}>
+                    {/* cabeçalho da disciplina */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'var(--surface)' }}>
+                      <input defaultValue={d.nome} onBlur={e => e.target.value.trim() && st.salvarDisciplina({ id: d.id, nome: e.target.value.trim() })} style={{ ...inpD, background: 'transparent', border: '1px solid transparent', fontWeight: 700, fontSize: '0.92rem', flex: 1, minWidth: 0 }} />
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{lidos}/{its.length} lidos</span>
+                      <div style={{ width: 90, display: 'flex' }}><Barra pct={pctDisc} cor="#16A34A" /></div>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16A34A', width: 38, textAlign: 'right' }}>{Math.round(pctDisc)}%</span>
+                      <button onClick={() => addItem(d.id, 'pdf')} title="Adicionar PDF" style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '0.7rem' }}>＋PDF</button>
+                      <button onClick={() => addItem(d.id, 'lei')} title="Adicionar legislação" style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '0.7rem' }}>＋Lei</button>
+                      <button onClick={() => { if (confirm(`Excluir disciplina "${d.nome}"?`)) st.removerDisciplina(d.id) }} title="Excluir disciplina" style={{ ...btn, width: 'auto', padding: '0 7px' }}>🗑</button>
+                    </div>
+                    {/* itens (PDFs e Leis) */}
+                    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {its.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '4px 6px' }}>Adicione PDFs (＋PDF) ou legislação (＋Lei).</div>}
+                      {its.map(it => {
+                        const pct = it.total > 0 ? (it.atual / it.total) * 100 : (it.lido ? 100 : 0)
+                        const unidade = it.tipo === 'pdf' ? 'pág.' : 'art.'
+                        return (
+                          <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '9px 11px', background: it.lido ? 'rgba(22,163,74,.06)' : 'var(--card-bg)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                              <span title={it.tipo === 'pdf' ? 'PDF' : 'Legislação'} style={{ fontSize: '0.95rem' }}>{it.tipo === 'pdf' ? '📄' : '§'}</span>
+                              <input defaultValue={it.titulo} onBlur={e => st.salvarItem({ id: it.id, titulo: e.target.value })} placeholder="Título" style={{ ...inpD, flex: 1, minWidth: 0, fontWeight: 600 }} />
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                                <input type="checkbox" checked={!!it.lido} onChange={e => st.salvarItem({ id: it.id, lido: e.target.checked })} style={{ accentColor: '#16A34A', width: 15, height: 15 }} /> lido
+                              </label>
+                              <button onClick={() => abrirEstudo(it)} title="O que foi estudado" style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '0.7rem', background: it.estudado ? '#5b5bd6' : 'var(--surface)', color: it.estudado ? '#fff' : 'var(--text-secondary)', border: it.estudado ? 'none' : '1px solid var(--border)' }}>📝</button>
+                              <button onClick={() => { if (confirm('Excluir este item?')) st.removerItem(it.id) }} title="Excluir" style={{ ...btn, width: 'auto', padding: '0 7px' }}>🗑</button>
+                            </div>
+                            <input defaultValue={it.descricao} onBlur={e => st.salvarItem({ id: it.id, descricao: e.target.value })} placeholder="Descrição (tema, assunto, observações…)" style={{ ...inpD, width: '100%', boxSizing: 'border-box', marginBottom: 8, fontSize: '0.78rem', color: 'var(--text-secondary)' }} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{it.tipo === 'pdf' ? 'Página' : 'Artigo'}</span>
+                              <input type="number" min={0} defaultValue={it.atual || 0} onChange={e => st.salvarItem({ id: it.id, atual: Number(e.target.value) })} style={{ ...inpD, width: 56, textAlign: 'center' }} />
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>de</span>
+                              <input type="number" min={0} defaultValue={it.total || 0} onChange={e => st.salvarItem({ id: it.id, total: Number(e.target.value) })} style={{ ...inpD, width: 56, textAlign: 'center' }} />
+                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{unidade}</span>
+                              <Barra pct={pct} cor="#5b5bd6" />
+                              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#5b5bd6', width: 38, textAlign: 'right' }}>{Math.round(pct)}%</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>}
+        </div>
+      </div>
+    </div>
+
+    {/* modal "o que foi estudado" */}
+    {estudoDe && createPortal(<>
+      <div onMouseDown={() => setEstudoDe(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9100 }} />
+      <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9101, width: 'min(560px,94vw)', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.45)', padding: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: '1.05rem' }}>📝</span>
+          <b style={{ color: 'var(--text-primary)' }}>O que foi estudado</b>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>· {estudoDe.titulo}</span>
+          <span style={{ flex: 1 }} /><button onClick={() => setEstudoDe(null)} style={btn}>✕</button>
+        </div>
+        <textarea value={estudoTxt} onChange={e => setEstudoTxt(e.target.value)} placeholder="Descreva o que foi abordado/estudado neste material…" autoFocus
+          style={{ width: '100%', minHeight: 200, boxSizing: 'border-box', padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.5, resize: 'vertical', outline: 'none' }} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+          <button onClick={() => setEstudoDe(null)} style={{ ...btn, width: 'auto', padding: '0 14px' }}>Cancelar</button>
+          <button onClick={salvarEstudo} style={{ ...btn, width: 'auto', padding: '0 16px', background: '#5b5bd6', color: '#fff', border: 'none', fontWeight: 700 }}>💾 Salvar</button>
+        </div>
+      </div>
+    </>, document.body)}
+  </>, document.body)
+}
+
 export default function PDFReader() {
   const editorRef = useRef<HTMLDivElement>(null)
   const store = usePdfReaderStore()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [previa, setPrevia] = useState<string | null>(null)
   const [cfgIA, setCfgIA] = useState(false)
+  const [diario, setDiario] = useState(false)
   const [split, setSplit] = useState(0.56)
   const [viewMode, setViewMode] = useState<'split' | 'pdf' | 'editor'>('split')               // fração de largura da coluna do PDF
   const rowRef = useRef<HTMLDivElement>(null)
@@ -1227,6 +1437,7 @@ export default function PDFReader() {
               {{ pdf: '📄 PDF', split: '⬜ Dividir', editor: '✦ Editor' }[m]}
             </button>
           ))}
+          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 'auto', padding: '0 10px' }}>📖 Diário</button>
           <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 'auto', padding: '0 9px' }}>⚙</button>
           <button onClick={onSalvar} disabled={!store.uid} style={{ ...btn, width: 'auto', padding: '0 12px' }}>💾 Salvar</button>
           <button onClick={abrirPrevia} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none' }}>🖨️ Exportar…</button>
@@ -1239,6 +1450,7 @@ export default function PDFReader() {
       </div>
       {previa != null && <PreviaImpressao html={previa} titulo={titulo || 'Palavras Destacadas'} onClose={() => setPrevia(null)} />}
       {cfgIA && <ConfigIAModal store={store} onClose={() => setCfgIA(false)} />}
+      {diario && <DiarioLeitura onClose={() => setDiario(false)} />}
       <style>{`
         .pr-page{position:relative;margin:0 auto 16px;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden;cursor:crosshair}
         .pr-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c4c4c4;font:600 22px/1 system-ui;z-index:0}
