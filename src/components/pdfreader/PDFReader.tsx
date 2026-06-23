@@ -112,22 +112,118 @@ function download(name: string, content: string, mime: string) {
 }
 
 /* ═══════════════════════════════ EDITOR RICH TEXT ═══════════════════════════════ */
-const MARCADORES = ['●', '○', '■', '□', '▸', '–']
+
+/* marcadores hierárquicos — 4 níveis × 6 famílias */
+const BULLET_SETS: Record<string, string[]> = {
+  'Bolas':   ['●', '○', '◉', '◌'],
+  'Setas':   ['▸', '▹', '›', '»'],
+  'Quadros': ['■', '□', '▪', '▫'],
+  'Check':   ['✔', '✓', '☑', '☐'],
+  'Estrela': ['★', '☆', '✦', '✧'],
+  'Traço':   ['—', '–', '-', '·'],
+}
+const DEFAULT_SET = 'Bolas'
+
+/* insere <hr> no contentEditable */
+function insertHR(ed: HTMLElement) {
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) return
+  const range = sel.getRangeAt(0); range.deleteContents()
+  const hr = document.createElement('hr')
+  hr.style.cssText = 'border:none;border-top:2px solid var(--border);margin:12px 0'
+  const br = document.createElement('p'); br.innerHTML = '<br>'
+  const frag = document.createDocumentFragment(); frag.appendChild(hr); frag.appendChild(br)
+  range.insertNode(frag)
+  const r2 = document.createRange(); r2.setStartAfter(br); r2.collapse(true)
+  sel.removeAllRanges(); sel.addRange(r2); ed.focus()
+}
+
+/* insere tabela NxM no contentEditable */
+function insertTable(ed: HTMLElement, rows: number, cols: number) {
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) return
+  const range = sel.getRangeAt(0); range.deleteContents()
+  const tbl = document.createElement('table')
+  tbl.style.cssText = 'border-collapse:collapse;width:100%;margin:10px 0;font-size:.88rem'
+  for (let r = 0; r < rows; r++) {
+    const tr = document.createElement('tr')
+    for (let c = 0; c < cols; c++) {
+      const td = document.createElement(r === 0 ? 'th' : 'td')
+      td.contentEditable = 'true'
+      td.style.cssText = 'border:1px solid var(--border);padding:6px 8px;min-width:60px;' + (r === 0 ? 'background:var(--surface);font-weight:700;' : '')
+      td.innerHTML = '<br>'
+      tr.appendChild(td)
+    }
+    tbl.appendChild(tr)
+  }
+  const after = document.createElement('p'); after.innerHTML = '<br>'
+  const frag = document.createDocumentFragment(); frag.appendChild(tbl); frag.appendChild(after)
+  range.insertNode(frag)
+  const r2 = document.createRange(); r2.setStart(tbl.rows[0].cells[0], 0); r2.collapse(true)
+  sel.removeAllRanges(); sel.addRange(r2); ed.focus()
+}
+
+/* inserção de marcador custom hierárquico via Tab/Shift+Tab */
+function insertCustomBullet(ed: HTMLElement, symbol: string) {
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) return
+  const range = sel.getRangeAt(0)
+  let node: Node | null = range.startContainer
+  while (node && node !== ed) { if ((node as HTMLElement).dataset?.bulletDepth) break; node = node.parentElement }
+  const depth = node && node !== ed ? Math.min(3, Number((node as HTMLElement).dataset.bulletDepth) || 0) : 0
+  const p = document.createElement('p')
+  p.dataset.bulletDepth = String(depth)
+  p.style.cssText = `margin:2px 0;padding-left:${(depth + 1) * 20}px;position:relative`
+  const sym = document.createElement('span')
+  sym.style.cssText = 'position:absolute;left:' + (depth * 20 + 4) + 'px;user-select:none'
+  sym.textContent = symbol; sym.contentEditable = 'false'
+  const txt = document.createElement('span'); txt.innerHTML = '\u200b'
+  p.appendChild(sym); p.appendChild(txt)
+  range.deleteContents(); range.insertNode(p)
+  const r2 = document.createRange(); r2.setStart(txt, 1); r2.collapse(true)
+  sel.removeAllRanges(); sel.addRange(r2); ed.focus()
+}
+
+function shiftBulletDepth(ed: HTMLElement, delta: number, symbol: string) {
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) return
+  let node: Node | null = sel.getRangeAt(0).startContainer
+  while (node && node !== ed) { if ((node as Element).tagName === 'P' && (node as HTMLElement).dataset.bulletDepth !== undefined) break; node = node.parentElement }
+  if (!node || node === ed) { insertCustomBullet(ed, symbol); return }
+  const p = node as HTMLElement
+  const d = Math.max(0, Math.min(3, Number(p.dataset.bulletDepth || 0) + delta))
+  p.dataset.bulletDepth = String(d)
+  p.style.paddingLeft = ((d + 1) * 20) + 'px'
+  const sym = p.querySelector('span[contenteditable="false"]') as HTMLElement
+  if (sym) sym.style.left = (d * 20 + 4) + 'px'
+  ed.focus()
+}
+
 function RichEditor({ editorRef, onChange }: any) {
   const [aiBtn, setAiBtn] = useState<{ x: number; y: number; termo: string } | null>(null)
   const [aiMenu, setAiMenu] = useState<{ x: number; y: number; loading: boolean; opts: string[] } | null>(null)
   const savedRange = useRef<Range | null>(null)
+  const [bulletSet, setBulletSet] = useState(DEFAULT_SET)
+  const [bulletOpen, setBulletOpen] = useState(false)
+  const [tableOpen, setTableOpen] = useState(false)
+  const [tRows, setTRows] = useState(3)
+  const [tCols, setTCols] = useState(3)
   const exec = (cmd: string, val?: string) => { document.execCommand(cmd, false, val); editorRef.current?.focus(); onChange?.() }
+  const symbols = BULLET_SETS[bulletSet]
 
-  // mostra o botão de IA ao selecionar texto dentro do editor
+  /* Tab / Shift+Tab dentro do editor → ajusta profundidade do marcador */
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      const ed = editorRef.current; if (!ed) return
+      shiftBulletDepth(ed, e.shiftKey ? -1 : 1, symbols[0])
+      onChange?.()
+    }
+  }
+
   const onMouseUp = () => {
     setTimeout(() => {
       const sel = window.getSelection()
       if (!sel || sel.isCollapsed || !sel.rangeCount) { setAiBtn(null); return }
       const r = sel.getRangeAt(0)
       if (!editorRef.current?.contains(r.commonAncestorContainer)) { setAiBtn(null); return }
-      const termo = sel.toString().trim()
-      if (!termo) { setAiBtn(null); return }
+      const termo = sel.toString().trim(); if (!termo) { setAiBtn(null); return }
       savedRange.current = r.cloneRange()
       const rect = r.getBoundingClientRect()
       setAiBtn({ x: rect.left + rect.width / 2, y: rect.top - 8, termo })
@@ -140,39 +236,119 @@ function RichEditor({ editorRef, onChange }: any) {
     try { const opts = await gerarPerguntasIA(aiBtn.termo, ctx); setAiMenu(m => m && { ...m, loading: false, opts }) }
     catch (e: any) { setAiMenu(m => m && { ...m, loading: false, opts: ['⚠ ' + (e?.message || 'Falha na IA')] }) }
   }
-  // substitui o termo selecionado pela pergunta escolhida
   const aplicar = (pergunta: string) => {
     const r = savedRange.current; if (r) { const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r) }
     document.execCommand('insertText', false, pergunta)
     setAiMenu(null); onChange?.()
   }
 
-  const Btn = ({ cmd, val, children, title }: any) => (
+  const Sep = () => <span style={{ width: 1, background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
+  const Btn = ({ cmd, val, children, title, active }: any) => (
     <button onMouseDown={e => { e.preventDefault(); exec(cmd, val) }} title={title}
-      style={{ minWidth: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>{children}</button>
+      style={{ minWidth: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: active ? '#5b5bd6' : 'var(--surface)', color: active ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>{children}</button>
   )
+  const IBtn = ({ onClick, children, title, active }: any) => (
+    <button onMouseDown={e => { e.preventDefault(); onClick?.() }} title={title}
+      style={{ minWidth: 28, height: 28, borderRadius: 7, border: '1px solid var(--border)', background: active ? '#5b5bd6' : 'var(--surface)', color: active ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem' }}>{children}</button>
+  )
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      {/* toolbar de formatação */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
+
+      {/* ── TOOLBAR: linha 1 — blocos e formatação ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--border)' }}>
         <Btn cmd="formatBlock" val="h1" title="Título 1">H1</Btn>
         <Btn cmd="formatBlock" val="h2" title="Título 2">H2</Btn>
-        <Btn cmd="formatBlock" val="p" title="Parágrafo">¶</Btn>
-        <span style={{ width: 1, background: 'var(--border)', margin: '0 2px' }} />
-        <Btn cmd="bold" title="Negrito">B</Btn>
-        <Btn cmd="italic" title="Itálico"><i>I</i></Btn>
-        <Btn cmd="underline" title="Sublinhar"><u>U</u></Btn>
-        <span style={{ width: 1, background: 'var(--border)', margin: '0 2px' }} />
-        <Btn cmd="insertUnorderedList" title="Lista">•</Btn>
-        <Btn cmd="outdent" title="Diminuir recuo">⇤</Btn>
-        <Btn cmd="indent" title="Aumentar recuo">⇥</Btn>
-        <span style={{ width: 1, background: 'var(--border)', margin: '0 2px' }} />
-        <input type="color" title="Cor do texto" onChange={e => exec('foreColor', e.target.value)} style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 7, background: 'var(--surface)', cursor: 'pointer', padding: 2 }} />
-        <input type="color" title="Cor de realce" defaultValue="#fff3a3" onChange={e => exec('hiliteColor', e.target.value)} style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 7, background: 'var(--surface)', cursor: 'pointer', padding: 2 }} />
+        <Btn cmd="formatBlock" val="h3" title="Título 3">H3</Btn>
+        <Btn cmd="formatBlock" val="p"  title="Parágrafo">¶</Btn>
+        <Sep />
+        <Btn cmd="bold"          title="Negrito (Ctrl+B)">B</Btn>
+        <Btn cmd="italic"        title="Itálico (Ctrl+I)"><i>I</i></Btn>
+        <Btn cmd="underline"     title="Sublinhado (Ctrl+U)"><u>U</u></Btn>
+        <Btn cmd="strikeThrough" title="Tachado">S̶</Btn>
+        <Sep />
+        <Btn cmd="justifyLeft"   title="Alinhar à esquerda">⬤◻◻</Btn>
+        <Btn cmd="justifyCenter" title="Centralizar">◻⬤◻</Btn>
+        <Btn cmd="justifyRight"  title="Alinhar à direita">◻◻⬤</Btn>
+        <Sep />
+        <input type="color" title="Cor do texto"  onChange={e => exec('foreColor',  e.target.value)} style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 7, cursor: 'pointer', padding: 2 }} />
+        <input type="color" title="Cor de realce" defaultValue="#fff3a3" onChange={e => exec('hiliteColor', e.target.value)} style={{ width: 28, height: 28, border: '1px solid var(--border)', borderRadius: 7, cursor: 'pointer', padding: 2 }} />
+        <Sep />
+        <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
+        <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
       </div>
+
+      {/* ── TOOLBAR: linha 2 — listas, recuo, HR, tabela ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '5px 10px', borderBottom: '1px solid var(--border)' }}>
+
+        {/* seletor de família de marcadores */}
+        <div style={{ position: 'relative' }}>
+          <button onMouseDown={e => { e.preventDefault(); setBulletOpen(o => !o) }} title="Família de marcadores"
+            style={{ height: 28, padding: '0 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span>{symbols[0]}</span><span style={{ fontSize: '0.65rem' }}>▾</span>
+          </button>
+          {bulletOpen && createPortal(<>
+            <div onMouseDown={() => setBulletOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 7900 }} />
+            <div style={{ position: 'fixed', zIndex: 7901, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 11, boxShadow: '0 12px 36px rgba(0,0,0,.3)', padding: 10, width: 240 }}>
+              <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Família de marcadores</div>
+              {Object.entries(BULLET_SETS).map(([name, syms]) => (
+                <button key={name} onMouseDown={e => { e.preventDefault(); setBulletSet(name); setBulletOpen(false) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '6px 8px', borderRadius: 7, border: 'none', background: name === bulletSet ? 'var(--surface)' : 'transparent', cursor: 'pointer', textAlign: 'left' }}>
+                  <span style={{ display: 'flex', gap: 6, fontSize: '0.9rem', width: 80 }}>{syms.map((s, i) => <span key={i} style={{ opacity: 1 - i * 0.15 }}>{s}</span>)}</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{name}</span>
+                </button>
+              ))}
+              <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6, fontSize: '0.65rem', color: 'var(--text-muted)' }}>Tab = aumentar nível · Shift+Tab = diminuir</div>
+            </div>
+          </>, document.body)}
+        </div>
+
+        {/* marcadores: 4 níveis do conjunto atual */}
+        {symbols.map((s, i) => (
+          <IBtn key={i} title={`Marcador nível ${i + 1} (${s})`}
+            onClick={() => { const ed = editorRef.current; if (ed) { insertCustomBullet(ed, s); onChange?.() } }}>
+            <span style={{ fontSize: '0.82rem', paddingLeft: i * 3 }}>{s}</span>
+          </IBtn>
+        ))}
+
+        <Sep />
+        <IBtn title="Aumentar recuo (Tab)" onClick={() => { const ed = editorRef.current; if (ed) { shiftBulletDepth(ed, 1, symbols[0]); onChange?.() } }}>⇥</IBtn>
+        <IBtn title="Diminuir recuo (Shift+Tab)" onClick={() => { const ed = editorRef.current; if (ed) { shiftBulletDepth(ed, -1, symbols[0]); onChange?.() } }}>⇤</IBtn>
+        <Btn cmd="insertOrderedList" title="Lista numerada">1.</Btn>
+
+        <Sep />
+        {/* linha divisória */}
+        <IBtn title="Inserir linha divisória" onClick={() => { const ed = editorRef.current; if (ed) { insertHR(ed); onChange?.() } }}>─</IBtn>
+
+        {/* tabela */}
+        <div style={{ position: 'relative' }}>
+          <IBtn title="Inserir tabela" active={tableOpen} onClick={() => setTableOpen(o => !o)}>⊞</IBtn>
+          {tableOpen && createPortal(<>
+            <div onMouseDown={() => setTableOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 7900 }} />
+            <div style={{ position: 'fixed', zIndex: 7901, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 11, boxShadow: '0 12px 36px rgba(0,0,0,.3)', padding: 14, width: 200 }}>
+              <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 10 }}>Inserir tabela</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', width: 50 }}>Linhas</label>
+                <input type="number" min={1} max={20} value={tRows} onChange={e => setTRows(Number(e.target.value))}
+                  style={{ width: 60, padding: '4px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <label style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', width: 50 }}>Colunas</label>
+                <input type="number" min={1} max={10} value={tCols} onChange={e => setTCols(Number(e.target.value))}
+                  style={{ width: 60, padding: '4px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+              </div>
+              <button onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) { insertTable(ed, tRows, tCols); onChange?.() } setTableOpen(false) }}
+                style={{ width: '100%', padding: '7px 0', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>
+                Inserir {tRows}×{tCols}
+              </button>
+            </div>
+          </>, document.body)}
+        </div>
+      </div>
+
       {/* área editável */}
-      <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={onChange} onMouseUp={onMouseUp}
-        style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 18px', outline: 'none', color: 'var(--text-primary)', lineHeight: 1.6, fontSize: '0.95rem' }}>
+      <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={onChange} onMouseUp={onMouseUp} onKeyDown={onKeyDown}
+        style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px', outline: 'none', color: 'var(--text-primary)', lineHeight: 1.7, fontSize: '0.94rem' }}>
         <p style={{ color: 'var(--text-muted)' }}>Os trechos extraídos do PDF aparecem aqui. Selecione um termo para gerar perguntas com IA.</p>
       </div>
 
@@ -696,7 +872,8 @@ export default function PDFReader() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [previa, setPrevia] = useState<string | null>(null)
   const [cfgIA, setCfgIA] = useState(false)
-  const [split, setSplit] = useState(0.56)               // fração de largura da coluna do PDF
+  const [split, setSplit] = useState(0.56)
+  const [viewMode, setViewMode] = useState<'split' | 'pdf' | 'editor'>('split')               // fração de largura da coluna do PDF
   const rowRef = useRef<HTMLDivElement>(null)
   const startSplit = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -771,20 +948,29 @@ export default function PDFReader() {
       {/* linha redimensionável: PDF | divisória | editor */}
       <div ref={rowRef} style={{ flex: 1, minWidth: 0, display: 'flex' }}>
         {/* coluna PDF */}
-        <div style={{ flexBasis: `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0 }}>
+        <div style={{ flexBasis: viewMode === 'editor' ? '0%' : viewMode === 'pdf' ? '100%' : `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0, overflow: 'hidden', display: viewMode === 'editor' ? 'none' : 'block' }}>
           <PdfViewer onExtract={onExtract} />
         </div>
-        {/* divisória arrastável */}
-        <div onMouseDown={startSplit} title="Arraste para ajustar" style={{ width: 6, flexShrink: 0, cursor: 'col-resize', background: 'var(--border)', position: 'relative' }}
-          onMouseEnter={e => (e.currentTarget.style.background = '#5b5bd6')} onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')} />
+        {/* divisória arrastável — só no modo dividido */}
+        {viewMode === 'split' && (
+          <div onMouseDown={startSplit} title="Arraste para ajustar" style={{ width: 6, flexShrink: 0, cursor: 'col-resize', background: 'var(--border)' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#5b5bd6')} onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')} />
+        )}
         {/* coluna editor */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, display: viewMode === 'pdf' ? 'none' : 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: '1rem' }}>✦</span>
           <input value={titulo} onChange={e => onTitulo(e.target.value)} placeholder="Título do documento" disabled={!store.uid}
             style={{ flex: 1, minWidth: 0, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
             onFocus={e => (e.target.style.border = '1px solid var(--border)')} onBlur={e => (e.target.style.border = '1px solid transparent')} />
           <span style={{ fontSize: '0.66rem', color: salvo ? 'var(--text-muted)' : '#EA580C', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{salvo ? '✓ salvo' : '● não salvo'}</span>
+          {/* botões de modo de visualização */}
+          {(['pdf', 'split', 'editor'] as const).map(m => (
+            <button key={m} onClick={() => setViewMode(m)} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]}
+              style={{ ...btn, width: 'auto', padding: '0 8px', background: viewMode === m ? '#5b5bd6' : 'var(--surface)', color: viewMode === m ? '#fff' : 'var(--text-secondary)', border: viewMode === m ? 'none' : '1px solid var(--border)', fontSize: '0.72rem' }}>
+              {{ pdf: '📄 PDF', split: '⬜ Dividir', editor: '✦ Editor' }[m]}
+            </button>
+          ))}
           <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 'auto', padding: '0 9px' }}>⚙</button>
           <button onClick={onSalvar} disabled={!store.uid} style={{ ...btn, width: 'auto', padding: '0 12px' }}>💾 Salvar</button>
           <button onClick={abrirPrevia} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none' }}>🖨️ Exportar…</button>
