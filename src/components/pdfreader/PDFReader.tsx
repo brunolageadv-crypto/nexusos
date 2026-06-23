@@ -111,6 +111,21 @@ async function gerarPerguntasIA(termo: string, contexto: string): Promise<string
   return parsePerguntas(raw)
 }
 
+/* extrai as PALAVRAS-CHAVE de um trecho (parágrafo) — devolve array limpo */
+function promptPalavrasChave(trecho: string) {
+  return [
+    'Você é um assistente de estudos jurídicos para concursos públicos brasileiros.',
+    'Extraia as PALAVRAS-CHAVE e termos técnicos mais relevantes do trecho abaixo (conceitos, institutos, expressões essenciais).',
+    'Regras: de 3 a 12 itens; cada item curto (1 a 4 palavras); sem repetir; priorize termos jurídicos/técnicos; mantenha a grafia do texto.',
+    'Responda ESTRITAMENTE com um array JSON de strings, sem markdown, sem texto antes ou depois. Ex.: ["termo 1","termo 2"]',
+    'Trecho:', '"""', trecho.slice(0, 4000), '"""',
+  ].join('\n')
+}
+async function gerarPalavrasChaveIA(trecho: string): Promise<string[]> {
+  const raw = await callLLM(promptPalavrasChave(trecho))
+  return parsePerguntas(raw)  // mesmo parser robusto de array JSON
+}
+
 /* ═══════════════════════════════ EXPORTAÇÃO ═══════════════════════════════ */
 function wordDoc(innerHTML: string, titulo: string) {
   const t = (titulo || 'Palavras Destacadas').replace(/[<>]/g, '')
@@ -673,6 +688,24 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
     acumRef.current = popup.shown
     setAcumLen(acumRef.current.length); setPopup(null)
   }
+  // ── PALAVRAS-CHAVE VIA IA (revisão antes de enviar) ──
+  const [kw, setKw] = useState<{ loading: boolean; itens: { t: string; on: boolean }[]; erro?: string } | null>(null)
+  const pedirPalavrasChave = async () => {
+    if (!popup) return
+    const trecho = popup.shown; setPopup(null)
+    setKw({ loading: true, itens: [] })
+    try {
+      const lista = await gerarPalavrasChaveIA(trecho)
+      setKw({ loading: false, itens: lista.map(t => ({ t, on: true })) })
+    } catch (e: any) { setKw({ loading: false, itens: [], erro: e?.message || 'Falha na IA' }) }
+  }
+  const toggleKw = (i: number) => setKw(k => k && ({ ...k, itens: k.itens.map((x, j) => j === i ? { ...x, on: !x.on } : x) }))
+  const editKw = (i: number, v: string) => setKw(k => k && ({ ...k, itens: k.itens.map((x, j) => j === i ? { ...x, t: v } : x) }))
+  const confirmarKw = () => {
+    const sel = (kw?.itens || []).filter(x => x.on && x.t.trim()).map(x => x.t.trim())
+    if (sel.length) sel.forEach(t => onExtract?.(t))   // cada palavra-chave vira um item no editor
+    acumRef.current = ''; setAcumLen(0); lastCapRef.current = null; setKw(null)
+  }
 
   // ── ANOTAÇÕES (realce/sublinhado) por retângulos de overlay ──
   const salvarAnot = () => { try { if (anotKeyRef.current) localStorage.setItem(anotKeyRef.current, JSON.stringify(anotRef.current)) } catch {} }
@@ -876,14 +909,45 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
           <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{acumLen > 0 ? 'Frase em composição' : 'Texto capturado'}</div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.4, maxHeight: 90, overflowY: 'auto', padding: '6px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>{popup.shown}</div>
           <button onMouseDown={e => { e.preventDefault(); enviar() }} style={popBtnPrim}>➜ Enviar para Palavras Destacadas</button>
+          <button onMouseDown={e => { e.preventDefault(); pedirPalavrasChave() }} style={{ ...popBtn, background: 'linear-gradient(135deg,#5b5bd6,#7c5cff)', color: '#fff', border: 'none', fontWeight: 700 }}>✦ Extrair palavras-chave (IA)</button>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
           <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} style={{ ...popBtn, color: '#DC2626', textAlign: 'center', fontWeight: 700 }}>✕ Cancelar</button>
+        </div>
+      </>, document.body)}
+
+      {/* REVISÃO DAS PALAVRAS-CHAVE (IA) — confirme antes de enviar ao editor */}
+      {kw && createPortal(<>
+        <div onMouseDown={() => setKw(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 8200 }} />
+        <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8201, width: 'min(440px,94vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.42)', padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: '1.05rem' }}>✦</span><b style={{ color: 'var(--text-primary)' }}>Palavras-chave</b>
+            <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); setKw(null) }} style={btn}>✕</button>
+          </div>
+          {kw.loading && <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.88rem' }}>Extraindo palavras-chave…</div>}
+          {kw.erro && <div style={{ padding: '12px', color: '#DC2626', fontSize: '0.82rem' }}>⚠ {kw.erro}</div>}
+          {!kw.loading && !kw.erro && (<>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 8 }}>Revise, edite ou desmarque. As marcadas vão para o editor (uma por linha).</div>
+            <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 12 }}>
+              {kw.itens.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.84rem', padding: 8 }}>Nenhuma palavra-chave retornada.</div>}
+              {kw.itens.map((it, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', borderRadius: 8, background: it.on ? 'var(--surface)' : 'transparent', border: '1px solid var(--border)' }}>
+                  <input type="checkbox" checked={it.on} onChange={() => toggleKw(i)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#5b5bd6' }} />
+                  <input value={it.t} onChange={e => editKw(i, e.target.value)} style={{ flex: 1, border: 'none', background: 'transparent', color: 'var(--text-primary)', fontSize: '0.86rem', outline: 'none', opacity: it.on ? 1 : 0.5 }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onMouseDown={e => { e.preventDefault(); setKw(k => k && ({ ...k, itens: k.itens.map(x => ({ ...x, on: true })) })) }} style={{ ...btn, width: 'auto', flex: '0 0 auto', padding: '0 10px', fontWeight: 600 }}>Todas</button>
+              <button onMouseDown={e => { e.preventDefault(); setKw(k => k && ({ ...k, itens: k.itens.map(x => ({ ...x, on: false })) })) }} style={{ ...btn, width: 'auto', flex: '0 0 auto', padding: '0 10px', fontWeight: 600 }}>Nenhuma</button>
+              <span style={{ flex: 1 }} />
+              <button onMouseDown={e => { e.preventDefault(); confirmarKw() }} style={{ height: 30, padding: '0 16px', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>✓ Enviar {kw.itens.filter(x => x.on).length}</button>
+            </div>
+          </>)}
         </div>
       </>, document.body)}
     </div>
   )
 }
-/* helpers de estilo da toolbar/pop-up */
 const btn: any = { minWidth: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700 }
 const popBtn: any = { textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }
 const popBtnPrim: any = { ...popBtn, background: '#5b5bd6', color: '#fff', border: 'none', fontWeight: 700 }
