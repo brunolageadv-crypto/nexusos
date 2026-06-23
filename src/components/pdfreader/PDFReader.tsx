@@ -212,10 +212,14 @@ function PdfViewer({ onExtract }: any) {
   const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco'>('none')
   const [corRealce, setCorRealce] = useState('#fff3a3')
   const [paletaOpen, setPaletaOpen] = useState(false)
-  const [popup, setPopup] = useState<{ x: number; y: number; text: string } | null>(null)
+  const [popup, setPopup] = useState<{ x: number; y: number; text: string; shown: string } | null>(null)
   const acumRef = useRef<string>('')        // trecho em composição (várias seleções)
   const [acumLen, setAcumLen] = useState(0)
-  const [mouseY, setMouseY] = useState(0)
+  const [pos, setPos] = useState({ x: 0, y: 0 })          // posição do cursor RELATIVA à coluna do PDF
+  const viewBoxRef = useRef<HTMLDivElement>(null)         // contêiner relativo da área do PDF
+  const dragRef = useRef<{ x0: number; y0: number } | null>(null)  // arraste do marquee
+  const [box, setBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  const lastCapRef = useRef<{ words: any[] } | null>(null)        // última captura (p/ realce)
   // anotações (realce/sublinhado) por página, em coords FRACIONÁRIAS (sobrevivem ao zoom)
   const anotRef = useRef<Record<number, any[]>>({})
   const [, forceAnot] = useState(0)
@@ -304,59 +308,94 @@ function PdfViewer({ onExtract }: any) {
     requestAnimationFrame(() => visRef.current.forEach(n => renderPage(n)))
   }, [zoom])
 
-  // SELEÇÃO PRECISA (espelha getViewerSelection + mmNormalize do AnalisePDF)
-  const getSel = () => {
-    const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return null
-    const v = wrapRef.current; if (!v) return null
-    const range = sel.getRangeAt(0)
-    if (!v.contains(range.commonAncestorContainer)) return null
-    const text = prNormalize(sel.toString()); if (!text) return null
-    return { text, rect: range.getBoundingClientRect() }
+  // ── SELEÇÃO POR MARQUEE (espelha mmCollectInRect do AnalisePDF: geometria pura, sem seleção nativa) ──
+  const joinWords = (arr: string[]): string => {
+    const merged: string[] = []
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i].endsWith('-') && i + 1 < arr.length && /^[a-zà-ÿ]/.test(arr[i + 1])) { merged.push(arr[i].slice(0, -1) + arr[i + 1]); i++ }
+      else merged.push(arr[i])
+    }
+    return prNormalize(merged.join(' '))
   }
-  const onMouseUp = () => {
-    setTimeout(() => {
-      const s = getSel()
-      if (s) setPopup({ x: s.rect.left + s.rect.width / 2, y: s.rect.top - 6, text: s.text })
-      else setPopup(null)
-    }, 10)
+  // coleta as PALAVRAS cujo centro cai dentro do retângulo (ou sob o ponto, no clique simples)
+  const collectInRect = (b: any, mode: 'center' | 'point' = 'center') => {
+    const words: any[] = []
+    const hit = (r: DOMRect) => mode === 'point'
+      ? (b.left >= r.left && b.left <= r.right && b.top >= r.top && b.top <= r.bottom)
+      : (() => { const cx = r.left + r.width / 2, cy = r.top + r.height / 2; return cx >= b.left && cx <= b.right && cy >= b.top && cy <= b.bottom })()
+    for (const key of Object.keys(pageElsRef.current)) {
+      const pn = Number(key); const pageEl = pageElsRef.current[pn]; if (!pageEl) continue
+      const pr = pageEl.getBoundingClientRect()
+      if (pr.right < b.left || pr.left > b.right || pr.bottom < b.top || pr.top > b.bottom) continue
+      const tl = pageEl.querySelector('.pr-textlayer'); if (!tl) continue
+      tl.querySelectorAll('span').forEach((span: any) => {
+        const sr = span.getBoundingClientRect()
+        if (sr.right < b.left || sr.left > b.right || sr.bottom < b.top || sr.top > b.bottom) return
+        const node = span.firstChild
+        const push = (rect: DOMRect, word: string) => words.push({ page: pn, top: rect.top, left: rect.left, word, frac: { fx: (rect.left - pr.left) / pr.width, fy: (rect.top - pr.top) / pr.height, fw: rect.width / pr.width, fh: rect.height / pr.height } })
+        if (!node || node.nodeType !== 3) { if (hit(sr)) { const tx = (span.textContent || '').trim(); if (tx) push(sr, tx) } return }
+        const text = node.textContent || ''; const re = /\S+/g; let m: any
+        while ((m = re.exec(text))) {
+          const r = document.createRange(); try { r.setStart(node, m.index); r.setEnd(node, m.index + m[0].length) } catch { continue }
+          const rect = r.getBoundingClientRect(); if (!rect.width && !rect.height) continue
+          if (hit(rect)) push(rect, m[0])
+        }
+      })
+    }
+    words.sort((a, b2) => Math.abs(a.top - b2.top) > 4 ? a.top - b2.top : a.left - b2.left)
+    return words
+  }
+  const onDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    if (!(e.target as HTMLElement).closest('.pr-page')) return   // só inicia sobre uma página
+    if (ferramenta !== 'none') return                            // ferramentas de foco não capturam
+    e.preventDefault(); window.getSelection()?.removeAllRanges()
+    dragRef.current = { x0: e.clientX, y0: e.clientY }
+    setBox({ left: e.clientX, top: e.clientY, width: 0, height: 0 })
+    const move = (ev: MouseEvent) => { const d = dragRef.current; if (!d) return; setBox({ left: Math.min(d.x0, ev.clientX), top: Math.min(d.y0, ev.clientY), width: Math.abs(ev.clientX - d.x0), height: Math.abs(ev.clientY - d.y0) }) }
+    const up = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up)
+      const d = dragRef.current; dragRef.current = null; setBox(null); if (!d) return
+      const left = Math.min(d.x0, ev.clientX), top = Math.min(d.y0, ev.clientY), right = Math.max(d.x0, ev.clientX), bottom = Math.max(d.y0, ev.clientY)
+      const words = ((right - left) < 4 && (bottom - top) < 4)
+        ? collectInRect({ left: ev.clientX, top: ev.clientY, right: ev.clientX, bottom: ev.clientY }, 'point')
+        : collectInRect({ left, top, right, bottom }, 'center')
+      if (!words.length) { setPopup(null); return }
+      const text = joinWords(words.map((w: any) => w.word))
+      lastCapRef.current = { words }
+      const acc = acumRef.current
+      setPopup({ x: (left + right) / 2, y: top - 8, text, shown: acc ? prNormalize(acc + ' ' + text) : text })
+    }
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
   }
   // "Enviar para Palavras Destacadas"
   const enviar = () => {
     if (!popup) return
-    const full = (acumRef.current ? acumRef.current + ' ' : '') + popup.text
-    onExtract?.(full.trim())
-    acumRef.current = ''; setAcumLen(0); setPopup(null); window.getSelection()?.removeAllRanges()
+    onExtract?.(popup.shown)
+    acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null
   }
-  // "Continuar selecionando para compor a frase"
+  // "Continuar compondo a frase"
   const compor = () => {
     if (!popup) return
-    acumRef.current = (acumRef.current ? acumRef.current + ' ' : '') + popup.text
-    setAcumLen(acumRef.current.length); setPopup(null); window.getSelection()?.removeAllRanges()
+    acumRef.current = popup.shown
+    setAcumLen(acumRef.current.length); setPopup(null)
   }
 
   // ── ANOTAÇÕES (realce/sublinhado) por retângulos de overlay ──
   const salvarAnot = () => { try { if (anotKeyRef.current) localStorage.setItem(anotKeyRef.current, JSON.stringify(anotRef.current)) } catch {} }
-  // aplica na seleção atual: quebra em getClientRects(), converte p/ frações por página
+  // aplica realce/sublinhado na ÚLTIMA captura do marquee (frações por página, sobrevivem ao zoom)
   const aplicarAnotacao = (kind: 'realce' | 'sublinhado', cor?: string) => {
-    const sel = window.getSelection(); if (!sel || sel.isCollapsed || !sel.rangeCount) return
-    const range = sel.getRangeAt(0)
-    const v = wrapRef.current; if (!v || !v.contains(range.commonAncestorContainer)) return
-    const pages = Array.from(v.querySelectorAll('.pr-page')) as HTMLElement[]
-    const rects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1)
+    const cap = lastCapRef.current; if (!cap || !cap.words.length) return
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
     let added = false
-    for (const r of rects) {
-      const cy = r.top + r.height / 2, cx = r.left + r.width / 2
-      const pg = pages.find(p => { const b = p.getBoundingClientRect(); return cx >= b.left && cx <= b.right && cy >= b.top && cy <= b.bottom })
-      if (!pg) continue
-      const n = Number(pg.dataset.page), b = pg.getBoundingClientRect()
-      const frac = { fx: (r.left - b.left) / b.width, fy: (r.top - b.top) / b.height, fw: r.width / b.width, fh: r.height / b.height }
-        ; (anotRef.current[n] ||= [])
-      let a = anotRef.current[n].find((x: any) => x.id === id)
-      if (!a) { a = { id, kind, cor: cor || '#fff3a3', rects: [] }; anotRef.current[n].push(a) }
-      a.rects.push(frac); added = true
+    for (const w of cap.words) {
+      if (!pageElsRef.current[w.page]) continue
+      ;(anotRef.current[w.page] ||= [])
+      let a = anotRef.current[w.page].find((x: any) => x.id === id)
+      if (!a) { a = { id, kind, cor: cor || '#fff3a3', rects: [] }; anotRef.current[w.page].push(a) }
+      a.rects.push(w.frac); added = true
     }
-    if (added) { sel.removeAllRanges(); pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
+    if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
   }
   const limparAnotacoes = () => { if (!confirm('Remover todos os realces deste PDF?')) return; anotRef.current = {}; pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
   // (re)desenha os overlays a partir das frações (independe do zoom)
@@ -399,7 +438,7 @@ function PdfViewer({ onExtract }: any) {
     lc.restore()
     setLupa({ x: clientX, y: clientY, show: true })
   }
-  const onMouseMove = (e: React.MouseEvent) => { setMouseY(e.clientY); if (ferramenta === 'lupa') desenharLupa(e.clientX, e.clientY) }
+  const onMouseMove = (e: React.MouseEvent) => { const r = viewBoxRef.current?.getBoundingClientRect(); if (r) setPos({ x: e.clientX - r.left, y: e.clientY - r.top }); if (ferramenta === 'lupa') desenharLupa(e.clientX, e.clientY) }
 
   const Tool = ({ id, children, title }: any) => (
     <button onClick={() => setFerramenta(f => f === id ? 'none' : id)} title={title}
@@ -444,28 +483,31 @@ function PdfViewer({ onExtract }: any) {
       </div>
 
       {/* SCROLLER DO PDF + overlays de foco */}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-        <div ref={wrapRef} onMouseUp={onMouseUp} onScroll={onScroll} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: 18, background: 'var(--bg-subtle, #1112)' }}>
+      <div ref={viewBoxRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: 18, background: 'var(--bg-subtle, #1112)' }}>
           {!numPages && <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Importe um PDF para começar a leitura.</div>}
         </div>
-        {/* régua */}
-        {ferramenta === 'regua' && <div style={{ position: 'fixed', left: 0, right: 0, top: mouseY, height: 2, background: '#5b5bd6cc', pointerEvents: 'none', zIndex: 40 }} />}
+        {/* régua (confinada à coluna do PDF) */}
+        {ferramenta === 'regua' && <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y, height: 2, background: '#5b5bd6cc', pointerEvents: 'none', zIndex: 40 }} />}
         {/* máscara de leitura (faixa clara, resto escurecido) */}
         {ferramenta === 'mascara' && <>
-          <div style={{ position: 'fixed', left: 0, right: 0, top: 0, height: Math.max(0, mouseY - 26), background: 'rgba(0,0,0,0.55)', pointerEvents: 'none', zIndex: 40 }} />
-          <div style={{ position: 'fixed', left: 0, right: 0, top: mouseY + 26, bottom: 0, background: 'rgba(0,0,0,0.55)', pointerEvents: 'none', zIndex: 40 }} />
+          <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.max(0, pos.y - 26), background: 'rgba(0,0,0,0.55)', pointerEvents: 'none', zIndex: 40 }} />
+          <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y + 26, bottom: 0, background: 'rgba(0,0,0,0.55)', pointerEvents: 'none', zIndex: 40 }} />
         </>}
         {/* foco dinâmico (vinheta radial seguindo o cursor) */}
-        {ferramenta === 'foco' && <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 40, background: `radial-gradient(circle 140px at 50% ${mouseY}px, transparent 0%, rgba(0,0,0,0.55) 100%)` }} />}
+        {ferramenta === 'foco' && <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 40, background: `radial-gradient(circle 140px at ${pos.x}px ${pos.y}px, transparent 0%, rgba(0,0,0,0.55) 100%)` }} />}
+        {/* marquee (retângulo de captura) */}
+        {box && <div style={{ position: 'fixed', left: box.left, top: box.top, width: box.width, height: box.height, border: '1.5px solid #5b5bd6', background: 'rgba(91,91,214,.12)', pointerEvents: 'none', zIndex: 46 }} />}
         {/* lupa: canvas circular ampliando a região sob o cursor */}
         <canvas ref={lensRef} width={LENS} height={LENS} style={{ position: 'fixed', left: lupa.x + 22, top: lupa.y - LENS - 16, width: LENS, height: LENS, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.9)', boxShadow: '0 8px 28px rgba(0,0,0,0.4)', pointerEvents: 'none', zIndex: 50, display: ferramenta === 'lupa' && lupa.show ? 'block' : 'none', background: '#fff' }} />
       </div>
 
-      {/* POP-UP DE DECISÃO ao terminar a seleção */}
+      {/* POP-UP DE DECISÃO — mostra o texto capturado */}
       {popup && createPortal(<>
         <div onMouseDown={() => setPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 6500 }} />
-        <div style={{ position: 'fixed', left: popup.x, top: popup.y, transform: 'translate(-50%,-100%)', zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 5, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,0.35)', width: 240 }}>
-          {acumLen > 0 && <div style={{ fontSize: '0.6rem', color: '#5b5bd6', fontFamily: 'var(--font-mono)' }}>compondo… {acumLen} caracteres acumulados</div>}
+        <div style={{ position: 'fixed', left: Math.max(130, Math.min(popup.x, window.innerWidth - 150)), top: Math.max(120, popup.y), transform: 'translate(-50%,-100%)', zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,0.35)', width: 280 }}>
+          <div style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{acumLen > 0 ? 'Frase em composição' : 'Texto capturado'}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.4, maxHeight: 90, overflowY: 'auto', padding: '6px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>{popup.shown}</div>
           <button onMouseDown={e => { e.preventDefault(); enviar() }} style={popBtnPrim}>➜ Enviar para Palavras Destacadas</button>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
         </div>
@@ -654,6 +696,15 @@ export default function PDFReader() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [previa, setPrevia] = useState<string | null>(null)
   const [cfgIA, setCfgIA] = useState(false)
+  const [split, setSplit] = useState(0.56)               // fração de largura da coluna do PDF
+  const rowRef = useRef<HTMLDivElement>(null)
+  const startSplit = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const move = (ev: MouseEvent) => { const r = rowRef.current?.getBoundingClientRect(); if (!r) return; let p = (ev.clientX - r.left) / r.width; p = Math.max(0.28, Math.min(0.78, p)); setSplit(p) }
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); document.body.style.userSelect = '' }
+    document.body.style.userSelect = 'none'
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+  }
   const [docId, setDocId] = useState<string | null>(null)
   const [titulo, setTitulo] = useState('')
   const [salvo, setSalvo] = useState(true)
@@ -717,12 +768,17 @@ export default function PDFReader() {
   return (
     <div style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--card-bg)' }}>
       <PastasSidebar open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} store={store} docId={docId} onOpenDoc={abrirDoc} onNewDoc={novoDoc} />
-      {/* coluna PDF */}
-      <div style={{ flex: 1.25, minWidth: 0, borderRight: '1px solid var(--border)' }}>
-        <PdfViewer onExtract={onExtract} />
-      </div>
-      {/* coluna editor */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* linha redimensionável: PDF | divisória | editor */}
+      <div ref={rowRef} style={{ flex: 1, minWidth: 0, display: 'flex' }}>
+        {/* coluna PDF */}
+        <div style={{ flexBasis: `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0 }}>
+          <PdfViewer onExtract={onExtract} />
+        </div>
+        {/* divisória arrastável */}
+        <div onMouseDown={startSplit} title="Arraste para ajustar" style={{ width: 6, flexShrink: 0, cursor: 'col-resize', background: 'var(--border)', position: 'relative' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#5b5bd6')} onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')} />
+        {/* coluna editor */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: '1rem' }}>✦</span>
           <input value={titulo} onChange={e => onTitulo(e.target.value)} placeholder="Título do documento" disabled={!store.uid}
@@ -738,15 +794,15 @@ export default function PDFReader() {
           <RichEditor editorRef={editorRef} onChange={onEditorChange} />
         </div>
       </div>
+      </div>
       {previa != null && <PreviaImpressao html={previa} titulo={titulo || 'Palavras Destacadas'} onClose={() => setPrevia(null)} />}
       {cfgIA && <ConfigIAModal store={store} onClose={() => setCfgIA(false)} />}
       <style>{`
-        .pr-page{position:relative;margin:0 auto 16px;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden}
+        .pr-page{position:relative;margin:0 auto 16px;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden;cursor:crosshair}
         .pr-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c4c4c4;font:600 22px/1 system-ui;z-index:0}
         .pr-page canvas{position:relative;z-index:1;display:block}
-        .pr-textlayer{position:absolute;top:0;left:0;overflow:hidden;line-height:1;z-index:3;transform-origin:0 0;opacity:1}
-        .pr-textlayer span,.pr-textlayer br{color:transparent;position:absolute;white-space:pre;cursor:text;transform-origin:0 0}
-        .pr-textlayer ::selection{background:rgba(91,91,214,.35)}
+        .pr-textlayer{position:absolute;top:0;left:0;overflow:hidden;line-height:1;z-index:3;transform-origin:0 0;opacity:1;user-select:none}
+        .pr-textlayer span,.pr-textlayer br{color:transparent;position:absolute;white-space:pre;cursor:crosshair;transform-origin:0 0;user-select:none}
         .pr-row{display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:7px;font-size:.82rem;color:var(--text-secondary)}
         .pr-row:hover{background:var(--surface)}
         .pr-acts{display:none;gap:1px;flex-shrink:0}
