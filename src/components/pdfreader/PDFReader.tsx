@@ -1248,14 +1248,14 @@ function DiarioLeitura({ onClose }: any) {
       <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '9px 11px', background: it.lido ? 'rgba(22,163,74,.06)' : 'var(--card-bg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <span style={{ fontSize: '0.95rem' }}>{m.ico}</span>
-          <input defaultValue={it.titulo} onBlur={e => st.salvarItem({ id: it.id, titulo: e.target.value })} placeholder="Título" style={{ ...inpD, flex: 1, minWidth: 0, fontWeight: 600 }} />
+          <input defaultValue={it.titulo} onBlur={e => st.salvarItem({ id: it.id, titulo: e.target.value })} placeholder={it.tipo === 'info' ? 'Título do informativo' : 'Título'} style={{ ...inpD, flex: 1, minWidth: 80, fontWeight: 600 }} />
           {it.tipo === 'info' && (
-            <select value={it.tribunal || 'STF'} onChange={e => st.salvarItem({ id: it.id, tribunal: e.target.value })} style={{ ...inpD, padding: '5px 6px', cursor: 'pointer' }}>
+            <select value={it.tribunal || 'STF'} onChange={e => st.salvarItem({ id: it.id, tribunal: e.target.value })} style={{ ...inpD, width: 78, flex: '0 0 auto', padding: '5px 6px', cursor: 'pointer' }}>
               <option>STF</option><option>STJ</option><option value="Outro">Outro</option>
             </select>
           )}
           {it.tipo === 'info' && it.tribunal === 'Outro' && (
-            <input defaultValue={it.tribunalLivre || ''} onBlur={e => st.salvarItem({ id: it.id, tribunalLivre: e.target.value })} placeholder="Tribunal" style={{ ...inpD, width: 80 }} />
+            <input defaultValue={it.tribunalLivre || ''} onBlur={e => st.salvarItem({ id: it.id, tribunalLivre: e.target.value })} placeholder="Tribunal" style={{ ...inpD, width: 80, flex: '0 0 auto' }} />
           )}
           {/* classificação de dificuldade da leitura */}
           <div style={{ display: 'flex', gap: 2 }}>
