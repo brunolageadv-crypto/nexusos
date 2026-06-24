@@ -1198,7 +1198,7 @@ function AguaControle({ cardSty, labelSty }: any) {
       </div>
       <BarraProg pct={pct} />
       <div style={{ display: 'flex', gap: 4 }}>
-        {[250, 330, 500, 1000].map(ml => (
+        {[200, 250, 330, 500, 1000].map(ml => (
           <button key={ml} onClick={() => add(ml)} title="Clique para adicionar"
             style={{ flex: 1, minWidth: 0, padding: '4px 2px', borderRadius: 7, border: `1px solid ${cor}40`, background: `${cor}12`, color: cor, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.58rem', cursor: 'pointer' }}>
             {ml >= 1000 ? '1L' : ml + 'ml'}
@@ -2618,6 +2618,7 @@ function BarraSaudacaoBusca({ uid, onNavigate }: { uid: string|null; onNavigate:
   const [hora, setHora] = useState(new Date())
   const [busca, setBusca] = useState('')
   const [demandas, setDemandas] = useState<any[]>([])
+  const [showHoje, setShowHoje] = useState(false)
   const [contas, setContas] = useState<any[]>([])
 
   useEffect(() => { const t = setInterval(() => setHora(new Date()), 60000); return () => clearInterval(t) }, [])
@@ -2764,6 +2765,314 @@ function BarraSaudacaoBusca({ uid, onNavigate }: { uid: string|null; onNavigate:
         }}>
           Ctrl K
         </span>
+      </div>
+
+      {/* Botão Hoje no Mundo */}
+      <button
+        onClick={() => setShowHoje(true)}
+        title="Ver curiosidades históricas, datas comemorativas e muito mais sobre hoje"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+          padding: '8px 16px', borderRadius: 22,
+          border: '1.5px solid rgba(139,92,246,0.45)',
+          background: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.06))',
+          color: '#a78bfa', fontFamily: 'var(--font-display)', fontWeight: 700,
+          fontSize: '0.8rem', cursor: 'pointer', transition: 'all 0.18s',
+          boxShadow: '0 0 12px rgba(139,92,246,0.1)',
+          whiteSpace: 'nowrap',
+        }}
+        onMouseEnter={e => { const el = e.currentTarget; el.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.22), rgba(59,130,246,0.12))'; el.style.boxShadow = '0 0 20px rgba(139,92,246,0.25)'; el.style.transform = 'translateY(-1px)' }}
+        onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.06))'; el.style.boxShadow = '0 0 12px rgba(139,92,246,0.1)'; el.style.transform = 'translateY(0)' }}
+      >
+        <span style={{ fontSize: '1rem' }}>🌍</span>
+        Hoje no Mundo
+      </button>
+
+      {/* Modal */}
+      {showHoje && <HojeNoMundoModal onClose={() => setShowHoje(false)} />}
+    </div>
+  )
+}
+
+// ─── HojeNoMundo — IA Gemini ──────────────────────────────────────────────────
+async function callGeminiHoje(prompt: string): Promise<string> {
+  const cfg = (() => { try { return JSON.parse(localStorage.getItem('nexus_ai_cfg') || '{}') } catch { return {} } })()
+  if (!cfg.key) throw new Error('Chave Gemini não configurada. Configure em nexus_ai_cfg no localStorage.')
+  const url = cfg.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+  const r = await fetch(`${url}?key=${cfg.key}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+  })
+  const d = await r.json()
+  return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+}
+
+const CACHE_KEY = 'nexus_hoje_mundo_cache'
+
+function buildPromptHoje(dateStr: string, dayOfWeek: string): string {
+  return `Você é um assistente cultural e informativo. Hoje é ${dayOfWeek}, ${dateStr}.
+
+Gere um relatório do dia em formato JSON com a seguinte estrutura EXATA (responda APENAS com o JSON, sem markdown, sem texto antes ou depois):
+{
+  "dataFormatada": "dia de mês de ano",
+  "diaSemana": "${dayOfWeek}",
+  "manchete": "uma frase impactante que resume o espírito deste dia",
+  "efemerides": [
+    {"ano": 1969, "emoji": "🚀", "evento": "Descrição do evento histórico"},
+    {"ano": 1789, "emoji": "🏛", "evento": "Outro evento histórico"},
+    {"ano": 1954, "emoji": "🎬", "evento": "Evento cultural"},
+    {"ano": 2001, "emoji": "💡", "evento": "Evento mais recente"},
+    {"ano": 1453, "emoji": "⚔", "evento": "Evento medieval"}
+  ],
+  "datasComemoretivas": [
+    {"emoji": "🌍", "nome": "Nome da data comemorativa", "descricao": "Breve explicação"},
+    {"emoji": "🏆", "nome": "Outra data ou celebração", "descricao": "Breve descrição"}
+  ],
+  "nascidos": [
+    {"nome": "Nome Famoso", "ano": 1900, "profissao": "Área de atuação", "emoji": "🎭"},
+    {"nome": "Outra pessoa famosa", "ano": 1945, "profissao": "Cientista/Artista/etc", "emoji": "🔬"}
+  ],
+  "falecidos": [
+    {"nome": "Pessoa histórica", "ano": 1950, "legado": "O que deixou para o mundo", "emoji": "🕊"}
+  ],
+  "curiosidades": [
+    {"emoji": "🧩", "titulo": "Curiosidade fascinante", "detalhe": "Explicação mais detalhada em 1-2 frases"},
+    {"emoji": "🌟", "titulo": "Fato surpreendente", "detalhe": "Mais detalhes sobre este fato"}
+  ],
+  "pensamentoDoDia": "Uma citação ou reflexão inspiradora relacionada ao dia ou à época do ano",
+  "autorPensamento": "Autor da citação ou 'Sabedoria popular'"
+}
+
+Regras:
+- Sejam precisos nas datas históricas — só inclua eventos que REALMENTE ocorreram neste dia
+- Variedade: inclua eventos históricos mundiais e brasileiros
+- Efemérides: mínimo 5 eventos históricos variados  
+- Nascidos/Falecidos: pessoas reais que nasceram/morreram neste dia
+- Curiosidades: fatos interessantes sobre o dia ou período do ano
+- Datas comemorativas: nacionais e internacionais que caem nesta data
+- Responda em português brasileiro`
+}
+
+interface HojeData {
+  dataFormatada: string
+  diaSemana: string
+  manchete: string
+  efemerides: { ano: number; emoji: string; evento: string }[]
+  datasComemoretivas: { emoji: string; nome: string; descricao: string }[]
+  nascidos: { nome: string; ano: number; profissao: string; emoji: string }[]
+  falecidos: { nome: string; ano: number; legado: string; emoji: string }[]
+  curiosidades: { emoji: string; titulo: string; detalhe: string }[]
+  pensamentoDoDia: string
+  autorPensamento: string
+}
+
+function HojeNoMundoModal({ onClose }: { onClose: () => void }) {
+  const [data, setData] = useState<HojeData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<'historia'|'celebracoes'|'pessoas'|'curiosidades'>('historia')
+
+  const hoje = new Date(Date.now() - 3 * 3600000)
+  const MESES_PT = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
+  const DIAS_PT = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado']
+  const dateStr = `${hoje.getDate()} de ${MESES_PT[hoje.getMonth()]} de ${hoje.getFullYear()}`
+  const cacheKey = `${CACHE_KEY}_${hoje.toISOString().slice(0,10)}`
+
+  useEffect(() => {
+    // Check cache first
+    try {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) { setData(JSON.parse(cached)); return }
+    } catch {}
+    // Fetch from Gemini
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    setLoading(true); setError(null)
+    try {
+      const raw = await callGeminiHoje(buildPromptHoje(dateStr, DIAS_PT[hoje.getDay()]))
+      const clean = raw.replace(/```json\n?|```\n?/g, '').trim()
+      const parsed: HojeData = JSON.parse(clean)
+      setData(parsed)
+      localStorage.setItem(cacheKey, JSON.stringify(parsed))
+    } catch (e: any) {
+      setError(e.message || 'Erro ao carregar dados. Verifique sua chave Gemini.')
+    }
+    setLoading(false)
+  }
+
+  const TABS = [
+    { id: 'historia', label: 'História', icon: '📜' },
+    { id: 'celebracoes', label: 'Datas', icon: '🎉' },
+    { id: 'pessoas', label: 'Pessoas', icon: '👤' },
+    { id: 'curiosidades', label: 'Curiosidades', icon: '🧩' },
+  ] as const
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, backdropFilter: 'blur(4px)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 720, maxHeight: '90vh', background: 'var(--card-bg)', border: '1px solid rgba(139,92,246,0.35)', borderRadius: 20, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(139,92,246,0.2)' }}>
+        {/* Header */}
+        <div style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.18) 0%, rgba(59,130,246,0.1) 50%, rgba(16,185,129,0.08) 100%)', padding: '20px 24px 16px', borderBottom: '1px solid rgba(139,92,246,0.2)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: '1.5rem' }}>🌍</span>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.35rem', color: '#a78bfa', letterSpacing: '-0.01em', lineHeight: 1 }}>Hoje no Mundo</div>
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>
+                {dateStr.charAt(0).toUpperCase() + dateStr.slice(1)} · {DIAS_PT[hoje.getDay()].charAt(0).toUpperCase() + DIAS_PT[hoje.getDay()].slice(1)}
+              </div>
+              {data?.manchete && (
+                <div style={{ marginTop: 8, fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, maxWidth: 500 }}>
+                  "{data.manchete}"
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+              {!loading && (
+                <button onClick={fetchData} title="Atualizar" style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.1)', color: '#a78bfa', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>↻</button>
+              )}
+              <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>×</button>
+            </div>
+          </div>
+
+          {/* Tabs */}
+          {data && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+              {TABS.map(t => (
+                <button key={t.id} onClick={() => setTab(t.id as any)}
+                  style={{ padding: '6px 14px', borderRadius: 20, border: `1px solid ${tab === t.id ? 'rgba(139,92,246,0.5)' : 'var(--border)'}`, background: tab === t.id ? 'rgba(139,92,246,0.15)' : 'none', color: tab === t.id ? '#a78bfa' : 'var(--text-muted)', fontSize: '0.72rem', fontWeight: tab === t.id ? 700 : 500, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 300, gap: 16 }}>
+              <div style={{ width: 48, height: 48, borderRadius: '50%', border: '3px solid rgba(139,92,246,0.2)', borderTopColor: '#a78bfa', animation: 'spin 0.8s linear infinite' }} />
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>
+                Consultando a IA sobre o dia de hoje…<br/>
+                <span style={{ fontSize: '0.72rem', opacity: 0.7 }}>Isso pode levar alguns segundos</span>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 250, gap: 14 }}>
+              <div style={{ fontSize: '2.5rem' }}>⚠️</div>
+              <div style={{ color: '#f87171', fontSize: '0.85rem', textAlign: 'center', maxWidth: 400, lineHeight: 1.6 }}>{error}</div>
+              <button onClick={fetchData} style={{ padding: '8px 20px', borderRadius: 10, border: '1px solid rgba(139,92,246,0.4)', background: 'rgba(139,92,246,0.1)', color: '#a78bfa', fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer' }}>Tentar novamente</button>
+            </div>
+          )}
+
+          {data && !loading && (
+            <>
+              {/* História */}
+              {tab === 'historia' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>📜 Efemérides — O que aconteceu neste dia</div>
+                  {data.efemerides.map((e, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 14, padding: '12px 14px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', alignItems: 'flex-start' }}>
+                      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minWidth: 44 }}>
+                        <span style={{ fontSize: '1.4rem' }}>{e.emoji}</span>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: '0.68rem', color: '#a78bfa' }}>{e.ano}</span>
+                      </div>
+                      <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.55, paddingTop: 2 }}>{e.evento}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Datas comemorativas */}
+              {tab === 'celebracoes' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>🎉 Datas & Celebrações de Hoje</div>
+                  {data.datasComemoretivas.map((d, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 14, padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(135deg, rgba(139,92,246,0.06), rgba(59,130,246,0.04))', border: '1px solid rgba(139,92,246,0.15)', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: '1.8rem', flexShrink: 0 }}>{d.emoji}</span>
+                      <div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)', marginBottom: 4 }}>{d.nome}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{d.descricao}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Pessoas */}
+              {tab === 'pessoas' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {data.nascidos.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>🎂 Nascidos neste dia</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {data.nascidos.map((p, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+                            <span style={{ fontSize: '1.3rem' }}>{p.emoji}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.87rem', color: 'var(--text-primary)' }}>{p.nome}</div>
+                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{p.profissao}</div>
+                            </div>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 700, color: '#34d399' }}>{p.ano}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {data.falecidos.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>🕊 Falecidos neste dia</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {data.falecidos.map((p, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(148,163,184,0.05)', border: '1px solid rgba(148,163,184,0.12)' }}>
+                            <span style={{ fontSize: '1.3rem', marginTop: 2 }}>{p.emoji}</span>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.87rem', color: 'var(--text-primary)', marginBottom: 2 }}>{p.nome} <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 400 }}>({p.ano})</span></div>
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{p.legado}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Curiosidades */}
+              {tab === 'curiosidades' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>🧩 Curiosidades do Dia</div>
+                  {data.curiosidades.map((c, i) => (
+                    <div key={i} style={{ padding: '14px 16px', borderRadius: 12, background: 'linear-gradient(135deg, rgba(245,158,11,0.06), transparent)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+                        <span style={{ fontSize: '1.4rem' }}>{c.emoji}</span>
+                        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.9rem', color: '#fbbf24' }}>{c.titulo}</div>
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.55, paddingLeft: 1 }}>{c.detalhe}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer com pensamento */}
+        {data && !loading && (
+          <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(139,92,246,0.15)', background: 'rgba(139,92,246,0.04)', flexShrink: 0 }}>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5 }}>
+              💭 "{data.pensamentoDoDia}"
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#a78bfa', fontWeight: 600, marginTop: 5, fontFamily: 'var(--font-mono)' }}>— {data.autorPensamento}</div>
+          </div>
+        )}
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     </div>
   )

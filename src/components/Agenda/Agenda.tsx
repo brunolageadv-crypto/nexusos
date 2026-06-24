@@ -91,7 +91,28 @@ function useAgenda() {
   }, [uid])
 
   const save = useCallback(async (e: Evento) => {
-    if (uid && db) await setDoc(doc(db, `users/${uid}/agenda`, e.id), e)
+    if (uid && db) {
+      await setDoc(doc(db, `users/${uid}/agenda`, e.id), e)
+      // Auto-registrar no Dias Restantes se o evento for no futuro
+      const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+      if (e.data >= hoje && !e.concluido) {
+        const TIPO_ICONE: Record<string, string> = {
+          reuniao: '🗣', prazo: '⏰', pessoal: '🏠', juridico: '⚖️',
+          saude: '✚', financeiro: '◎', estudo: '📚', viagem: '✈️',
+          aniversario: '🎂', outro: '📅',
+        }
+        const drEvento = {
+          id: `agenda_${e.id}`,
+          titulo: e.titulo,
+          data: e.data,
+          icone: TIPO_ICONE[e.tipo] ?? '📅',
+          progresso: null,
+          criadoEm: Date.now(),
+          origem: 'agenda',
+        }
+        await setDoc(doc(db, `users/${uid}/dias_restantes`, drEvento.id), drEvento)
+      }
+    }
     else setEventos(prev => [...prev.filter(x => x.id !== e.id), e].sort((a, b) => a.data.localeCompare(b.data)))
   }, [uid])
 
