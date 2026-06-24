@@ -1187,6 +1187,22 @@ const Barra = ({ pct, cor }: any) => (
   </div>
 )
 const inpD: any = { padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none' }
+/* campo numérico com estado local: digita livremente e salva ao sair do campo ou no Enter
+   (evita o "trava" causado por depender do retorno do Firestore a cada tecla) */
+function NumInput({ valor, onSave, width = 70 }: any) {
+  const [v, setV] = useState(String(valor ?? 0))
+  const focado = useRef(false)
+  useEffect(() => { if (!focado.current) setV(String(valor ?? 0)) }, [valor])
+  const commit = () => { const n = v.trim() === '' ? 0 : Math.max(0, Number(v.replace(/\D/g, '')) || 0); onSave(n); setV(String(n)) }
+  return (
+    <input type="text" inputMode="numeric" value={v}
+      onFocus={e => { focado.current = true; e.currentTarget.select() }}
+      onChange={e => setV(e.target.value.replace(/\D/g, ''))}
+      onBlur={() => { focado.current = false; commit() }}
+      onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+      style={{ ...inpD, width, textAlign: 'center', fontFamily: 'var(--font-mono)' }} />
+  )
+}
 const DIFIC = [
   { id: 'tranquila', emoji: '😌', label: 'Tranquila', cor: '#16A34A' },
   { id: 'mediana', emoji: '😐', label: 'Mediana', cor: '#EA580C' },
@@ -1257,9 +1273,9 @@ function DiarioLeitura({ onClose }: any) {
         <input defaultValue={it.descricao} onBlur={e => st.salvarItem({ id: it.id, descricao: e.target.value })} placeholder={it.tipo === 'info' ? 'Tema / assunto da jurisprudência…' : 'Descrição (tema, assunto, observações…)'} style={{ ...inpD, width: '100%', boxSizing: 'border-box', marginBottom: 8, fontSize: '0.78rem', color: 'var(--text-secondary)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{m.campo}</span>
-          <input type="number" min={0} value={it.atual ?? 0} onChange={e => st.salvarItem({ id: it.id, atual: e.target.value === '' ? 0 : Number(e.target.value) })} style={{ ...inpD, width: 70, textAlign: 'center' }} />
+          <NumInput valor={it.atual} onSave={(n: number) => st.salvarItem({ id: it.id, atual: n })} />
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>de</span>
-          <input type="number" min={0} value={it.total ?? 0} onChange={e => st.salvarItem({ id: it.id, total: e.target.value === '' ? 0 : Number(e.target.value) })} style={{ ...inpD, width: 70, textAlign: 'center' }} />
+          <NumInput valor={it.total} onSave={(n: number) => st.salvarItem({ id: it.id, total: n })} />
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{m.uni}</span>
           <Barra pct={pct} cor="#5b5bd6" />
           <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#5b5bd6', width: 38, textAlign: 'right' }}>{Math.round(pct)}%</span>
