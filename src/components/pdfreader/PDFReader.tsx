@@ -17,6 +17,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import Icon from '../Icon'
 import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
@@ -874,7 +875,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
         </>}
 
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
-        <Tool id="lupa" title="Lupa">🔍</Tool>
+        <Tool id="lupa" title="Lupa"><Icon e="🔍" size={15} /></Tool>
         <Tool id="mascara" title="Máscara de leitura">▭</Tool>
         <Tool id="regua" title="Régua de acompanhamento">▬</Tool>
         <Tool id="foco" title="Foco dinâmico">◎</Tool>
@@ -1051,7 +1052,7 @@ function PastasSidebar({ open, onToggle, store, docId, onOpenDoc, onNewDoc }: an
 
   if (!open) return (
     <div style={{ width: 38, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 10 }}>
-      <button onClick={onToggle} title="Abrir pastas" style={btn}>📁</button>
+      <button onClick={onToggle} title="Abrir pastas" style={{ ...btn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📁" size={16} /></button>
     </div>
   )
 
@@ -1323,7 +1324,7 @@ function DiarioLeitura({ onClose }: any) {
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9000 }} />
     <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9001, width: '94vw', height: '92vh', maxWidth: 1180, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)' }}>
-        <span style={{ fontSize: '1.3rem' }}>📖</span>
+        <span style={{ display: 'inline-flex', color: '#5b5bd6' }}><Icon e="📖" size={22} /></span>
         <b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Diário de Leitura</b>
         <span style={{ flex: 1 }} />
         {!st.uid && <span style={{ fontSize: '0.72rem', color: '#EA580C' }}>Faça login para salvar</span>}
@@ -1568,16 +1569,16 @@ export default function PDFReader() {
           <div style={{ display: 'flex', gap: 2, flexShrink: 0, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
             {(['pdf', 'split', 'editor'] as const).map(m => (
               <button key={m} onClick={() => setViewMode(m)} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]}
-                style={{ ...btn, width: 30, padding: 0, background: viewMode === m ? '#5b5bd6' : 'transparent', color: viewMode === m ? '#fff' : 'var(--text-secondary)', border: 'none', fontSize: '0.85rem' }}>
-                {{ pdf: '📄', split: '⬜', editor: '✦' }[m]}
+                style={{ ...btn, width: 30, padding: 0, background: viewMode === m ? '#5b5bd6' : 'transparent', color: viewMode === m ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon e={{ pdf: '📄', split: '⬜', editor: '✦' }[m]} size={16} />
               </button>
             ))}
           </div>
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
-          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, fontSize: '0.9rem', flexShrink: 0 }}>📖</button>
-          <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0 }}>⚙</button>
-          <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, fontSize: '0.9rem', flexShrink: 0 }}>💾</button>
-          <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', background: '#5b5bd6', color: '#fff', border: 'none', fontSize: '0.78rem', flexShrink: 0 }}>🖨️ Exportar</button>
+          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📖" size={16} /></button>
+          <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⚙" size={16} /></button>
+          <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
+          <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', background: '#5b5bd6', color: '#fff', border: 'none', fontSize: '0.78rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon e="🖨️" size={14} /> Exportar</button>
         </div>
         {!store.uid && <div style={{ padding: '6px 12px', fontSize: '0.7rem', color: '#EA580C', background: 'var(--surface)' }}>Faça login para salvar documentos no Firestore.</div>}
         <div style={{ flex: 1, minHeight: 0 }}>

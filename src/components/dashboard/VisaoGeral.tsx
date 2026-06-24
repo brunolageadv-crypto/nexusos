@@ -14,6 +14,7 @@
    ════════════════════════════════════════════════════════════════════ */
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import Icon from '../Icon'
 import { collection, query, orderBy, onSnapshot, doc, setDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
@@ -68,7 +69,7 @@ function CardShell({ icon, title, color, badge, footer, onNavigate, navTo, child
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
       <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: `linear-gradient(90deg, ${color}10 0%, transparent 70%)`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          <span style={{ color }}>{icon}</span>{title}
+          <span style={{ color, display: 'inline-flex' }}><Icon e={icon} size={14} /></span>{title}
         </div>
         {badge != null && <span style={{ fontSize: '0.62rem', color: 'var(--text-subtle)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{badge}</span>}
       </div>
@@ -88,7 +89,7 @@ function Kpi({ icon, label, value, sub, color, pct, onNavigate, navTo }: any) {
       onMouseLeave={e => { const el = e.currentTarget; el.style.transform = 'none'; el.style.boxShadow = 'var(--shadow-sm)' }}>
       {pct != null
         ? <div style={{ position: 'relative', flexShrink: 0 }}><Ring pct={pct} color={color} /><span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.78rem', fontWeight: 800, color }}>{pct}%</span></div>
-        : <div style={{ width: 46, height: 46, borderRadius: 13, background: `${color}15`, color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.35rem', flexShrink: 0 }}>{icon}</div>}
+        : <div style={{ width: 46, height: 46, borderRadius: 13, background: `${color}15`, color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon e={icon} size={22} /></div>}
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-mono)' }}>{label}</div>
         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.45rem', color: 'var(--text-primary)', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
@@ -777,7 +778,7 @@ function HojeNoMundoModal({ onClose }: { onClose: () => void }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span style={{ fontSize: '1.5rem' }}>🌍</span>
+                <span style={{ display: 'inline-flex', color: '#a78bfa' }}><Icon e="🌍" size={24} /></span>
                 <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.35rem', color: '#a78bfa', letterSpacing: '-0.01em', lineHeight: 1 }}>Hoje no Mundo</div>
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>
@@ -786,7 +787,7 @@ function HojeNoMundoModal({ onClose }: { onClose: () => void }) {
               {data?.manchete && <div style={{ marginTop: 8, fontSize: '0.85rem', color: 'var(--text-secondary)', fontStyle: 'italic', lineHeight: 1.5, maxWidth: 500 }}>"{data.manchete}"</div>}
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-              {!loading && <button onClick={fetchData} title="Atualizar" style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.1)', color: '#a78bfa', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>↻</button>}
+              {!loading && <button onClick={fetchData} title="Atualizar" style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.1)', color: '#a78bfa', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="↻" size={15} /></button>}
               <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}>×</button>
             </div>
           </div>
@@ -795,7 +796,7 @@ function HojeNoMundoModal({ onClose }: { onClose: () => void }) {
               {TABS.map(t => (
                 <button key={t.id} onClick={() => setTab(t.id as any)}
                   style={{ padding: '6px 14px', borderRadius: 20, border: `1px solid ${tab === t.id ? 'rgba(139,92,246,0.5)' : 'var(--border)'}`, background: tab === t.id ? 'rgba(139,92,246,0.15)' : 'none', color: tab === t.id ? '#a78bfa' : 'var(--text-muted)', fontSize: '0.72rem', fontWeight: tab === t.id ? 700 : 500, cursor: 'pointer', fontFamily: 'var(--font-display)', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  {t.icon} {t.label}
+                  <Icon e={t.icon} size={14} /> {t.label}
                 </button>
               ))}
             </div>
@@ -945,7 +946,7 @@ function Saudacao() {
         <div style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 3 }}>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem', opacity: .92, letterSpacing: '0.05em', textTransform: 'capitalize' }}>{now.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</span>
-            <span style={{ fontSize: '0.55rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{theme.icon} {theme.key}</span>
+            <span style={{ fontSize: '0.55rem', fontWeight: 700, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(4px)', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon e={theme.icon} size={11} /> {theme.key}</span>
           </div>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.45rem', lineHeight: 1.05 }}>{saud}, Bruno</div>
           <div style={{ fontSize: '0.72rem', opacity: .95, marginTop: 2, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -954,7 +955,7 @@ function Saudacao() {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 11px', borderRadius: 20, border: '1px solid rgba(255,255,255,0.35)', background: 'rgba(139,92,246,0.35)', backdropFilter: 'blur(6px)', color: '#fff', fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.68rem', cursor: 'pointer', textShadow: 'none', transition: 'all 0.18s', letterSpacing: '0.02em' }}
               onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,92,246,0.6)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.6)' }}
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(139,92,246,0.35)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)' }}
-            >🌍 Hoje no Mundo</button>
+            ><Icon e="🌍" size={14} /> Hoje no Mundo</button>
           </div>
         </div>
         <div style={{ width: 82, height: 82, flexShrink: 0, marginRight: 24, filter: 'drop-shadow(0 4px 14px rgba(0,0,0,0.35))' }}>
@@ -1012,7 +1013,7 @@ function AtalhosCard({ onNavigate }: any) {
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, padding: '12px 6px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', transition: 'all .16s' }}
             onMouseEnter={e => { const el = e.currentTarget; el.style.background = `${a.c}1f`; el.style.borderColor = a.c; el.style.color = a.c; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = `0 6px 16px ${a.c}33` }}
             onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'var(--surface)'; el.style.borderColor = 'var(--border)'; el.style.color = 'var(--text-muted)'; el.style.transform = 'none'; el.style.boxShadow = 'none' }}>
-            <span style={{ fontSize: '1.3rem' }}>{a.i}</span>
+            <span style={{ display: 'inline-flex', color: a.c }}><Icon e={a.i} size={22} /></span>
             <span style={{ fontSize: '0.64rem', fontWeight: 600, textAlign: 'center' }}>{a.l}</span>
           </button>
         ))}
@@ -1170,7 +1171,7 @@ export default function VisaoGeral({ onNavigate }: { onNavigate: (id: string) =>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
               {available.map(id => (
                 <button key={id} onClick={() => addCard(id)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '7px 13px', borderRadius: 20, border: '1px solid var(--border-md)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}>
-                  <span>{REGISTRY[id].icon}</span>{REGISTRY[id].label} <span style={{ color: 'var(--text-accent)', fontWeight: 800 }}>＋</span>
+                  <Icon e={REGISTRY[id].icon} size={14} />{REGISTRY[id].label} <span style={{ color: 'var(--text-accent)', fontWeight: 800 }}>＋</span>
                 </button>
               ))}
             </div>
@@ -1408,7 +1409,7 @@ function ColAcessoRapido({ onNavigate }: any) {
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '16px 8px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all .18s cubic-bezier(.4,0,.2,1)', minHeight: 86 }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${a.c}22, ${a.c}0a)`; el.style.borderColor = a.c; el.style.color = a.c; el.style.transform = 'translateY(-3px) scale(1.03)'; el.style.boxShadow = `0 12px 26px ${a.c}40`; const ic = el.querySelector('.ar-ic') as HTMLElement; if (ic) ic.style.transform = 'scale(1.18)' }}
             onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = 'var(--surface)'; el.style.borderColor = 'var(--border)'; el.style.color = 'var(--text-secondary)'; el.style.transform = 'none'; el.style.boxShadow = 'none'; const ic = el.querySelector('.ar-ic') as HTMLElement; if (ic) ic.style.transform = 'none' }}>
-            <span className="ar-ic" style={{ fontSize: '1.55rem', transition: 'transform .18s' }}>{a.i}</span>
+            <span className="ar-ic" style={{ display: 'inline-flex', color: a.c, transition: 'transform .18s' }}><Icon e={a.i} size={26} /></span>
             <span style={{ fontSize: '0.68rem', fontWeight: 700, textAlign: 'center', lineHeight: 1.15 }}>{a.l}</span>
           </button>
         ))}
