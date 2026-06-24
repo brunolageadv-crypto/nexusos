@@ -1192,25 +1192,72 @@ function DiarioLeitura({ onClose }: any) {
   const st = useDiarioStore()
   const [sel, setSel] = useState<string | null>(null)
   const [novoConc, setNovoConc] = useState('')
-  const [estudoDe, setEstudoDe] = useState<any | null>(null)   // item cujo "estudado" está aberto
+  const [aberta, setAberta] = useState<Record<string, boolean>>({})        // disciplinas abertas
+  const [abaTipo, setAbaTipo] = useState<Record<string, 'pdf' | 'lei' | 'info'>>({})  // sub-aba por disciplina
+  const [estudoDe, setEstudoDe] = useState<any | null>(null)
   const [estudoTxt, setEstudoTxt] = useState('')
 
   useEffect(() => { if (!sel && st.concursos.length) setSel(st.concursos[0].id) }, [st.concursos, sel])
 
   const addConcurso = () => { const nome = novoConc.trim(); if (!nome) return; const id = newId(); st.salvarConcurso({ id, nome, criadoEm: Date.now() }); setNovoConc(''); setSel(id) }
-  const addDisciplina = () => { if (!sel) return; const nome = prompt('Nome da disciplina:'); if (nome?.trim()) st.salvarDisciplina({ id: newId(), concursoId: sel, nome: nome.trim() }) }
-  const addItem = (disciplinaId: string, tipo: 'pdf' | 'lei') => st.salvarItem({ id: newId(), disciplinaId, tipo, titulo: tipo === 'pdf' ? 'Novo PDF' : 'Nova legislação', descricao: '', total: tipo === 'pdf' ? 0 : 0, atual: 0, lido: false, estudado: '', criadoEm: Date.now() })
+  const addDisciplina = () => { if (!sel) return; const nome = prompt('Nome da disciplina:'); if (nome?.trim()) { const id = newId(); st.salvarDisciplina({ id, concursoId: sel, nome: nome.trim() }); setAberta(a => ({ ...a, [id]: true })) } }
+  const addItem = (disciplinaId: string, tipo: 'pdf' | 'lei' | 'info') => st.salvarItem({ id: newId(), disciplinaId, tipo, titulo: tipo === 'pdf' ? 'Novo PDF' : tipo === 'lei' ? 'Nova legislação' : 'Informativo', descricao: '', tribunal: tipo === 'info' ? 'STF' : '', total: 0, atual: 0, lido: false, estudado: '', criadoEm: Date.now() })
 
   const discs = st.disciplinas.filter(d => d.concursoId === sel)
-  const itensDe = (did: string) => st.itens.filter(i => i.disciplinaId === did).sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0))
+  const itensDe = (did: string) => st.itens.filter(i => i.disciplinaId === did)
+  const pctItem = (it: any) => it.total > 0 ? (it.atual / it.total) * 100 : (it.lido ? 100 : 0)
+  // progresso de uma disciplina = média do progresso de seus itens
+  const pctDisc = (did: string) => { const its = itensDe(did); if (!its.length) return 0; return its.reduce((s, it) => s + pctItem(it), 0) / its.length }
+  // progresso do concurso = média das disciplinas (que têm itens)
+  const pctConc = (cid: string) => { const ds = st.disciplinas.filter(d => d.concursoId === cid).filter(d => itensDe(d.id).length); if (!ds.length) return 0; return ds.reduce((s, d) => s + pctDisc(d.id), 0) / ds.length }
+
+  const META: any = {
+    pdf: { ico: '📄', lbl: 'PDFs', uni: 'pág.', campo: 'Página' },
+    lei: { ico: '§', lbl: 'Leis', uni: 'art.', campo: 'Artigo' },
+    info: { ico: '⚖️', lbl: 'Informativos', uni: 'info', campo: 'Info nº' },
+  }
 
   const abrirEstudo = (it: any) => { setEstudoDe(it); setEstudoTxt(it.estudado || '') }
   const salvarEstudo = () => { if (estudoDe) st.salvarItem({ id: estudoDe.id, estudado: estudoTxt }); setEstudoDe(null) }
 
+  const renderItem = (it: any) => {
+    const pct = pctItem(it); const m = META[it.tipo] || META.pdf
+    return (
+      <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '9px 11px', background: it.lido ? 'rgba(22,163,74,.06)' : 'var(--card-bg)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <span style={{ fontSize: '0.95rem' }}>{m.ico}</span>
+          <input defaultValue={it.titulo} onBlur={e => st.salvarItem({ id: it.id, titulo: e.target.value })} placeholder="Título" style={{ ...inpD, flex: 1, minWidth: 0, fontWeight: 600 }} />
+          {it.tipo === 'info' && (
+            <select defaultValue={it.tribunal || 'STF'} onChange={e => st.salvarItem({ id: it.id, tribunal: e.target.value })} style={{ ...inpD, padding: '5px 6px', cursor: 'pointer' }}>
+              <option>STF</option><option>STJ</option><option value="Outro">Outro</option>
+            </select>
+          )}
+          {it.tipo === 'info' && it.tribunal === 'Outro' && (
+            <input defaultValue={it.tribunalLivre || ''} onBlur={e => st.salvarItem({ id: it.id, tribunalLivre: e.target.value })} placeholder="Tribunal" style={{ ...inpD, width: 80 }} />
+          )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <input type="checkbox" checked={!!it.lido} onChange={e => st.salvarItem({ id: it.id, lido: e.target.checked })} style={{ accentColor: '#16A34A', width: 15, height: 15 }} /> {it.tipo === 'info' ? 'em dia' : 'lido'}
+          </label>
+          <button onClick={() => abrirEstudo(it)} title="O que foi estudado" style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '0.7rem', background: it.estudado ? '#5b5bd6' : 'var(--surface)', color: it.estudado ? '#fff' : 'var(--text-secondary)', border: it.estudado ? 'none' : '1px solid var(--border)' }}>📝</button>
+          <button onClick={() => { if (confirm('Excluir este item?')) st.removerItem(it.id) }} title="Excluir" style={{ ...btn, width: 'auto', padding: '0 7px' }}>🗑</button>
+        </div>
+        <input defaultValue={it.descricao} onBlur={e => st.salvarItem({ id: it.id, descricao: e.target.value })} placeholder={it.tipo === 'info' ? 'Tema / assunto da jurisprudência…' : 'Descrição (tema, assunto, observações…)'} style={{ ...inpD, width: '100%', boxSizing: 'border-box', marginBottom: 8, fontSize: '0.78rem', color: 'var(--text-secondary)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{m.campo}</span>
+          <input type="number" min={0} defaultValue={it.atual || 0} onChange={e => st.salvarItem({ id: it.id, atual: Number(e.target.value) })} style={{ ...inpD, width: 64, textAlign: 'center' }} />
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>de</span>
+          <input type="number" min={0} defaultValue={it.total || 0} onChange={e => st.salvarItem({ id: it.id, total: Number(e.target.value) })} style={{ ...inpD, width: 64, textAlign: 'center' }} />
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{m.uni}</span>
+          <Barra pct={pct} cor="#5b5bd6" />
+          <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#5b5bd6', width: 38, textAlign: 'right' }}>{Math.round(pct)}%</span>
+        </div>
+      </div>
+    )
+  }
+
   return createPortal(<>
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9000 }} />
     <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9001, width: '94vw', height: '92vh', maxWidth: 1180, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
-      {/* cabeçalho */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)' }}>
         <span style={{ fontSize: '1.3rem' }}>📖</span>
         <b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Diário de Leitura</b>
@@ -1220,8 +1267,8 @@ function DiarioLeitura({ onClose }: any) {
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {/* coluna de concursos/temas */}
-        <div style={{ width: 230, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* concursos / temas */}
+        <div style={{ width: 250, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 7 }}>Concursos / Temas</div>
             <div style={{ display: 'flex', gap: 5 }}>
@@ -1232,75 +1279,76 @@ function DiarioLeitura({ onClose }: any) {
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 8 }}>
             {st.concursos.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: 8 }}>Crie um concurso ou tema acima.</div>}
             {st.concursos.map(c => {
-              const nd = st.disciplinas.filter(d => d.concursoId === c.id).length
+              const p = pctConc(c.id); const nd = st.disciplinas.filter(d => d.concursoId === c.id).length
+              const on = sel === c.id
               return (
-                <div key={c.id} onClick={() => setSel(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 10px', borderRadius: 9, cursor: 'pointer', marginBottom: 3, background: sel === c.id ? '#5b5bd6' : 'transparent', color: sel === c.id ? '#fff' : 'var(--text-secondary)' }}>
-                  <span style={{ flex: 1, fontWeight: sel === c.id ? 700 : 600, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nome}</span>
-                  <span style={{ fontSize: '0.66rem', opacity: 0.8 }}>{nd}</span>
-                  <button onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${c.nome}" e tudo dentro?`)) st.removerConcurso(c.id) }} title="Excluir" style={{ border: 'none', background: 'transparent', color: sel === c.id ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>🗑</button>
+                <div key={c.id} onClick={() => setSel(c.id)} style={{ padding: '9px 10px', borderRadius: 9, cursor: 'pointer', marginBottom: 4, background: on ? '#5b5bd6' : 'transparent', color: on ? '#fff' : 'var(--text-secondary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ flex: 1, fontWeight: on ? 700 : 600, fontSize: '0.86rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.nome}</span>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 700 }}>{Math.round(p)}%</span>
+                    <button onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${c.nome}" e tudo dentro?`)) st.removerConcurso(c.id) }} title="Excluir" style={{ border: 'none', background: 'transparent', color: on ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem' }}>🗑</button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5 }}>
+                    <Barra pct={p} cor={on ? '#fff' : '#16A34A'} />
+                    <span style={{ fontSize: '0.6rem', opacity: 0.8, whiteSpace: 'nowrap' }}>{nd} disc.</span>
+                  </div>
                 </div>
               )
             })}
           </div>
         </div>
 
-        {/* conteúdo do concurso selecionado */}
+        {/* conteúdo do concurso */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           {!sel ? <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>Selecione um concurso/tema.</div> : <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
               <b style={{ fontSize: '0.98rem', color: 'var(--text-primary)' }}>{st.concursos.find(c => c.id === sel)?.nome}</b>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16A34A' }}>{Math.round(pctConc(sel))}% concluído</span>
               <span style={{ flex: 1 }} />
               <button onClick={addDisciplina} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none', fontWeight: 700 }}>＋ Disciplina</button>
             </div>
-            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {discs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.86rem' }}>Nenhuma disciplina ainda. Clique em "＋ Disciplina".</div>}
               {discs.map(d => {
                 const its = itensDe(d.id)
+                const cont = { pdf: its.filter(i => i.tipo === 'pdf'), lei: its.filter(i => i.tipo === 'lei'), info: its.filter(i => i.tipo === 'info') }
                 const lidos = its.filter(i => i.lido).length
-                const pctDisc = its.length ? (lidos / its.length) * 100 : 0
+                const p = pctDisc(d.id); const isOpen = !!aberta[d.id]
+                const aba = abaTipo[d.id] || 'pdf'
+                const lista = cont[aba]
                 return (
                   <div key={d.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--card-bg)' }}>
-                    {/* cabeçalho da disciplina */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'var(--surface)' }}>
-                      <input defaultValue={d.nome} onBlur={e => e.target.value.trim() && st.salvarDisciplina({ id: d.id, nome: e.target.value.trim() })} style={{ ...inpD, background: 'transparent', border: '1px solid transparent', fontWeight: 700, fontSize: '0.92rem', flex: 1, minWidth: 0 }} />
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{lidos}/{its.length} lidos</span>
-                      <div style={{ width: 90, display: 'flex' }}><Barra pct={pctDisc} cor="#16A34A" /></div>
-                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16A34A', width: 38, textAlign: 'right' }}>{Math.round(pctDisc)}%</span>
-                      <button onClick={() => addItem(d.id, 'pdf')} title="Adicionar PDF" style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '0.7rem' }}>＋PDF</button>
-                      <button onClick={() => addItem(d.id, 'lei')} title="Adicionar legislação" style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '0.7rem' }}>＋Lei</button>
-                      <button onClick={() => { if (confirm(`Excluir disciplina "${d.nome}"?`)) st.removerDisciplina(d.id) }} title="Excluir disciplina" style={{ ...btn, width: 'auto', padding: '0 7px' }}>🗑</button>
+                    {/* cabeçalho recolhível */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', background: 'var(--surface)', cursor: 'pointer' }} onClick={() => setAberta(a => ({ ...a, [d.id]: !a[d.id] }))}>
+                      <span style={{ width: 14, color: 'var(--text-muted)' }}>{isOpen ? '▾' : '▸'}</span>
+                      <b style={{ flex: 1, minWidth: 0, fontSize: '0.92rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.nome}</b>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>📄{cont.pdf.length} · §{cont.lei.length} · ⚖️{cont.info.length}</span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {lidos}/{its.length} ok</span>
+                      <div style={{ width: 100, display: 'flex' }}><Barra pct={p} cor="#16A34A" /></div>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#16A34A', width: 38, textAlign: 'right' }}>{Math.round(p)}%</span>
+                      <button onClick={e => { e.stopPropagation(); const nome = prompt('Renomear disciplina:', d.nome); if (nome?.trim()) st.salvarDisciplina({ id: d.id, nome: nome.trim() }) }} title="Renomear" style={{ ...btn, width: 'auto', padding: '0 7px' }}>✎</button>
+                      <button onClick={e => { e.stopPropagation(); if (confirm(`Excluir disciplina "${d.nome}"?`)) st.removerDisciplina(d.id) }} title="Excluir" style={{ ...btn, width: 'auto', padding: '0 7px' }}>🗑</button>
                     </div>
-                    {/* itens (PDFs e Leis) */}
-                    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {its.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '4px 6px' }}>Adicione PDFs (＋PDF) ou legislação (＋Lei).</div>}
-                      {its.map(it => {
-                        const pct = it.total > 0 ? (it.atual / it.total) * 100 : (it.lido ? 100 : 0)
-                        const unidade = it.tipo === 'pdf' ? 'pág.' : 'art.'
-                        return (
-                          <div key={it.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: '9px 11px', background: it.lido ? 'rgba(22,163,74,.06)' : 'var(--card-bg)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                              <span title={it.tipo === 'pdf' ? 'PDF' : 'Legislação'} style={{ fontSize: '0.95rem' }}>{it.tipo === 'pdf' ? '📄' : '§'}</span>
-                              <input defaultValue={it.titulo} onBlur={e => st.salvarItem({ id: it.id, titulo: e.target.value })} placeholder="Título" style={{ ...inpD, flex: 1, minWidth: 0, fontWeight: 600 }} />
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                                <input type="checkbox" checked={!!it.lido} onChange={e => st.salvarItem({ id: it.id, lido: e.target.checked })} style={{ accentColor: '#16A34A', width: 15, height: 15 }} /> lido
-                              </label>
-                              <button onClick={() => abrirEstudo(it)} title="O que foi estudado" style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '0.7rem', background: it.estudado ? '#5b5bd6' : 'var(--surface)', color: it.estudado ? '#fff' : 'var(--text-secondary)', border: it.estudado ? 'none' : '1px solid var(--border)' }}>📝</button>
-                              <button onClick={() => { if (confirm('Excluir este item?')) st.removerItem(it.id) }} title="Excluir" style={{ ...btn, width: 'auto', padding: '0 7px' }}>🗑</button>
-                            </div>
-                            <input defaultValue={it.descricao} onBlur={e => st.salvarItem({ id: it.id, descricao: e.target.value })} placeholder="Descrição (tema, assunto, observações…)" style={{ ...inpD, width: '100%', boxSizing: 'border-box', marginBottom: 8, fontSize: '0.78rem', color: 'var(--text-secondary)' }} />
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{it.tipo === 'pdf' ? 'Página' : 'Artigo'}</span>
-                              <input type="number" min={0} defaultValue={it.atual || 0} onChange={e => st.salvarItem({ id: it.id, atual: Number(e.target.value) })} style={{ ...inpD, width: 56, textAlign: 'center' }} />
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>de</span>
-                              <input type="number" min={0} defaultValue={it.total || 0} onChange={e => st.salvarItem({ id: it.id, total: Number(e.target.value) })} style={{ ...inpD, width: 56, textAlign: 'center' }} />
-                              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{unidade}</span>
-                              <Barra pct={pct} cor="#5b5bd6" />
-                              <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#5b5bd6', width: 38, textAlign: 'right' }}>{Math.round(pct)}%</span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                    {/* corpo (só quando aberta) */}
+                    {isOpen && (
+                      <div style={{ padding: 12 }}>
+                        {/* sub-abas por tipo */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                          {(['pdf', 'lei', 'info'] as const).map(t => (
+                            <button key={t} onClick={() => setAbaTipo(a => ({ ...a, [d.id]: t }))}
+                              style={{ height: 30, padding: '0 11px', borderRadius: 8, border: aba === t ? 'none' : '1px solid var(--border)', cursor: 'pointer', fontSize: '0.76rem', fontWeight: 700, background: aba === t ? '#5b5bd6' : 'var(--surface)', color: aba === t ? '#fff' : 'var(--text-secondary)' }}>
+                              {META[t].ico} {META[t].lbl} <span style={{ opacity: 0.75 }}>({cont[t].length})</span>
+                            </button>
+                          ))}
+                          <span style={{ flex: 1 }} />
+                          <button onClick={() => addItem(d.id, aba)} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none', fontWeight: 700 }}>＋ {META[aba].lbl.replace(/s$/, '')}</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {lista.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '4px 6px' }}>Nenhum item em {META[aba].lbl}. Clique em "＋ {META[aba].lbl.replace(/s$/, '')}".</div>}
+                          {lista.sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0)).map(renderItem)}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
