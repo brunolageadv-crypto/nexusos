@@ -672,19 +672,47 @@ async function callGeminiHoje(prompt: string): Promise<string> {
   const cfg = (() => { try { return JSON.parse(localStorage.getItem('nexus_ai_cfg') || '{}') } catch { return {} } })()
   if (!cfg.key) throw new Error('Chave Gemini não configurada. Configure em nexus_ai_cfg no localStorage.')
   const url = cfg.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
-  const r = await fetch(`${url}?key=${cfg.key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+  const model = cfg.model || 'gemini-2.5-flash'
+  const corpo = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { maxOutputTokens: 8192, temperature: 0.7 }
   })
-  const d = await r.json()
-  return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+  const extrair = (d: any): string => {
+    if (d?.error) throw new Error(`Gemini: ${d.error.message}`)
+    const text = d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (!text) throw new Error('Gemini não retornou conteúdo. Tente novamente.')
+    return text
+  }
+
+  // 1º tenta direto; se falhar (firewall, 503, CORS) e houver Worker, usa fallback
+  try {
+    const r = await fetch(`${url}?key=${cfg.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corpo })
+    if (!r.ok && cfg.workerUrl) throw new Error(`HTTP ${r.status}`)
+    return extrair(await r.json())
+  } catch (err) {
+    if (cfg.workerUrl) {
+      const r = await fetch(`${cfg.workerUrl}?model=${model}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corpo })
+      return extrair(await r.json())
+    }
+    throw err
+  }
 }
 
 const CACHE_KEY_HOJE = 'nexus_hoje_mundo_cache'
 
 function buildPromptHoje(dateStr: string, dayOfWeek: string): string {
-  return `Você é um assistente cultural e informativo. Hoje é ${dayOfWeek}, ${dateStr}.\n\nGere um relatório do dia em formato JSON com a seguinte estrutura EXATA (responda APENAS com o JSON, sem markdown, sem texto antes ou depois):\n{\n  "dataFormatada": "dia de mês de ano",\n  "diaSemana": "${dayOfWeek}",\n  "manchete": "uma frase impactante que resume o espírito deste dia",\n  "efemerides": [\n    {"ano": 1969, "emoji": "🚀", "evento": "Descrição do evento histórico"},\n    {"ano": 1789, "emoji": "🏛", "evento": "Outro evento histórico"},\n    {"ano": 1954, "emoji": "🎬", "evento": "Evento cultural"},\n    {"ano": 2001, "emoji": "💡", "evento": "Evento mais recente"},\n    {"ano": 1453, "emoji": "⚔", "evento": "Evento medieval"}\n  ],\n  "datasComemoretivas": [\n    {"emoji": "🌍", "nome": "Nome da data comemorativa", "descricao": "Breve explicação"},\n    {"emoji": "🏆", "nome": "Outra data ou celebração", "descricao": "Breve descrição"}\n  ],\n  "nascidos": [\n    {"nome": "Nome Famoso", "ano": 1900, "profissao": "Área de atuação", "emoji": "🎭"},\n    {"nome": "Outra pessoa famosa", "ano": 1945, "profissao": "Cientista/Artista/etc", "emoji": "🔬"}\n  ],\n  "falecidos": [\n    {"nome": "Pessoa histórica", "ano": 1950, "legado": "O que deixou para o mundo", "emoji": "🕊"}\n  ],\n  "curiosidades": [\n    {"emoji": "🧩", "titulo": "Curiosidade fascinante", "detalhe": "Explicação mais detalhada em 1-2 frases"},\n    {"emoji": "🌟", "titulo": "Fato surpreendente", "detalhe": "Mais detalhes sobre este fato"}\n  ],\n  "pensamentoDoDia": "Uma citação ou reflexão inspiradora relacionada ao dia ou à época do ano",\n  "autorPensamento": "Autor da citação ou 'Sabedoria popular'"\n}\n\nRegras:\n- Sejam precisos nas datas históricas — só inclua eventos que REALMENTE ocorreram neste dia\n- Variedade: inclua eventos históricos mundiais e brasileiros\n- Efemérides: mínimo 5 eventos históricos variados  \n- Nascidos/Falecidos: pessoas reais que nasceram/morreram neste dia\n- Curiosidades: fatos interessantes sobre o dia ou período do ano\n- Datas comemorativas: nacionais e internacionais que caem nesta data\n- Responda em português brasileiro`
+  return `Hoje é ${dayOfWeek}, ${dateStr}. Responda APENAS com JSON válido e completo, sem markdown, sem texto extra.
+
+{"dataFormatada":"string","diaSemana":"string","manchete":"frase impactante sobre este dia","efemerides":[{"ano":0,"emoji":"string","evento":"string"}],"datasComemoretivas":[{"emoji":"string","nome":"string","descricao":"string"}],"nascidos":[{"nome":"string","ano":0,"profissao":"string","emoji":"string"}],"falecidos":[{"nome":"string","ano":0,"legado":"string","emoji":"string"}],"curiosidades":[{"emoji":"string","titulo":"string","detalhe":"string"}],"pensamentoDoDia":"string","autorPensamento":"string"}
+
+Preencha com dados REAIS sobre ${dateStr}:
+- efemerides: 5 eventos históricos mundiais/brasileiros que ocorreram NESTE DIA
+- datasComemoretivas: datas comemorativas nacionais/internacionais de hoje
+- nascidos: 3 personalidades famosas que nasceram neste dia
+- falecidos: 2 personalidades históricas que morreram neste dia  
+- curiosidades: 3 fatos interessantes sobre o dia ou a época do ano
+- Textos curtos e objetivos. Português brasileiro.`
 }
 
 interface HojeData {
@@ -721,7 +749,11 @@ function HojeNoMundoModal({ onClose }: { onClose: () => void }) {
     setLoading(true); setError(null)
     try {
       const raw = await callGeminiHoje(buildPromptHoje(dateStr, DIAS_PT[hoje.getDay()]))
-      const clean = raw.replace(/```json\n?|```\n?/g, '').trim()
+      const stripped = raw.replace(/```json\n?|```\n?/g, '').trim()
+      const start = stripped.indexOf('{')
+      const end = stripped.lastIndexOf('}')
+      if (start === -1 || end === -1) throw new Error('Resposta da IA fora do formato esperado. Tente novamente.')
+      const clean = stripped.slice(start, end + 1)
       const parsed: HojeData = JSON.parse(clean)
       setData(parsed)
       localStorage.setItem(cacheKey, JSON.stringify(parsed))

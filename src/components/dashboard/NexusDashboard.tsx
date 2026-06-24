@@ -2799,13 +2799,21 @@ async function callGeminiHoje(prompt: string): Promise<string> {
   const cfg = (() => { try { return JSON.parse(localStorage.getItem('nexus_ai_cfg') || '{}') } catch { return {} } })()
   if (!cfg.key) throw new Error('Chave Gemini não configurada. Configure em nexus_ai_cfg no localStorage.')
   const url = cfg.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
-  const r = await fetch(`${url}?key=${cfg.key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-  })
-  const d = await r.json()
-  return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  const model = cfg.model || 'gemini-2.5-flash'
+  const corpo = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+  try {
+    const r = await fetch(`${url}?key=${cfg.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corpo })
+    if (!r.ok && cfg.workerUrl) throw new Error(`HTTP ${r.status}`)
+    const d = await r.json()
+    return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  } catch (err) {
+    if (cfg.workerUrl) {
+      const r = await fetch(`${cfg.workerUrl}?model=${model}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corpo })
+      const d = await r.json()
+      return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    }
+    throw err
+  }
 }
 
 const CACHE_KEY = 'nexus_hoje_mundo_cache'

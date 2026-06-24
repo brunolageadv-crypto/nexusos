@@ -90,19 +90,48 @@ function parsePerguntas(raw: string): string[] {
   return raw.split('\n').map(l => l.replace(/^[\s\-\*\d\.\)]+/, '').trim()).filter(l => l.endsWith('?')).slice(0, 8)
 }
 /* chamada genérica ao LLM — pluga no seu provider.  TODO-WIRE
-   cfg em localStorage('nexus_ai_cfg') = { url, key, model, kind:'openai'|'anthropic'|'gemini' } */
+   cfg em localStorage('nexus_ai_cfg') = { url, key, model, kind:'openai'|'anthropic'|'gemini', workerUrl } */
+
+// Chamada direta ao Gemini (pode falhar atrás de firewall corporativo)
+async function geminiDireto(cfg: any, prompt: string): Promise<string> {
+  const r = await fetch(`${cfg.url}?key=${cfg.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) })
+  if (!r.ok) throw new Error(`Gemini direto falhou (HTTP ${r.status})`)
+  const d = await r.json()
+  if (d?.error) throw new Error(d.error.message)
+  return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+}
+
+// Chamada via Worker (proxy próprio — contorna bloqueios de rede; chave fica no servidor)
+async function geminiViaWorker(cfg: any, prompt: string): Promise<string> {
+  const model = cfg.model || 'gemini-2.5-flash'
+  const r = await fetch(`${cfg.workerUrl}?model=${model}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) })
+  if (!r.ok) throw new Error(`Worker falhou (HTTP ${r.status})`)
+  const d = await r.json()
+  if (d?.error) throw new Error(d.error.message)
+  return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+}
+
 async function callLLM(prompt: string): Promise<string> {
   const cfg = (() => { try { return JSON.parse(localStorage.getItem('nexus_ai_cfg') || '{}') } catch { return {} } })()
-  if (!cfg.url || !cfg.key) throw new Error('IA não configurada (defina nexus_ai_cfg: url, key, model).')
   if (cfg.kind === 'gemini') {
-    const r = await fetch(`${cfg.url}?key=${cfg.key}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) })
-    const d = await r.json(); return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+    if (!cfg.url || !cfg.key) throw new Error('IA não configurada (defina nexus_ai_cfg: url, key, model).')
+    // 1º tenta direto; se falhar (firewall, 503, CORS) e houver Worker, usa o fallback
+    try {
+      return await geminiDireto(cfg, prompt)
+    } catch (err) {
+      if (cfg.workerUrl) {
+        try { return await geminiViaWorker(cfg, prompt) } catch (e2: any) { throw new Error(`Direto e Worker falharam. ${e2?.message || ''}`) }
+      }
+      throw err
+    }
   }
   if (cfg.kind === 'anthropic') {
+    if (!cfg.url || !cfg.key) throw new Error('IA não configurada (defina nexus_ai_cfg: url, key, model).')
     const r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': cfg.key, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: cfg.model || 'claude-haiku-4-5', max_tokens: 600, messages: [{ role: 'user', content: prompt }] }) })
     const d = await r.json(); return (d?.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('\n')
   }
   // OpenAI-compatible (DeepSeek, etc.)
+  if (!cfg.url || !cfg.key) throw new Error('IA não configurada (defina nexus_ai_cfg: url, key, model).')
   const r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.key}` }, body: JSON.stringify({ model: cfg.model || 'gpt-4o-mini', temperature: 0.4, messages: [{ role: 'user', content: prompt }] }) })
   const d = await r.json(); return d?.choices?.[0]?.message?.content || ''
 }
@@ -308,9 +337,9 @@ function RichEditor({ editorRef, onChange }: any) {
         <Btn cmd="strikeThrough" title="Tachado">S̶</Btn>
         <Sep />
         <MenuBtn id="alinhar" label="Alinhar" title="Alinhamento" />
-        <MenuBtn id="cor" label="🎨 Cor" title="Cores" />
-        <MenuBtn id="marcadores" label="≔ Marcadores" title="Marcadores e listas" />
-        <MenuBtn id="inserir" label="＋ Inserir" title="Linha divisória e tabela" />
+        <MenuBtn id="cor" label="🎨" title="Cores" />
+        <MenuBtn id="marcadores" label="≔" title="Marcadores e listas" />
+        <MenuBtn id="inserir" label="＋" title="Linha divisória e tabela" />
         <Sep />
         <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
         <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
@@ -1104,12 +1133,13 @@ function ConfigIAModal({ store, onClose }: any) {
   const [url, setUrl] = useState(cur.url || 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent')
   const [key, setKey] = useState(cur.key || '')
   const [model, setModel] = useState(cur.model || 'gemini-2.5-flash')
+  const [workerUrl, setWorkerUrl] = useState(cur.workerUrl || '')
   const [status, setStatus] = useState('')
   const presetGemini = () => { setUrl('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'); setModel('gemini-2.5-flash') }
-  const salvar = async () => { await store.salvarAiCfg({ kind, url, key, model }); setStatus(store.uid ? '✓ Salvo e sincronizado' : '✓ Salvo neste navegador') }
+  const salvar = async () => { await store.salvarAiCfg({ kind, url, key, model, workerUrl }); setStatus(store.uid ? '✓ Salvo e sincronizado' : '✓ Salvo neste navegador') }
   const testar = async () => {
     setStatus('Testando…')
-    try { await store.salvarAiCfg({ kind, url, key, model }); const r = await gerarPerguntasIA('Direito Administrativo', 'Conceito e princípios.'); setStatus(r.length ? `✓ Funcionou — ${r.length} perguntas geradas` : '⚠ Resposta vazia (verifique modelo/endpoint)') }
+    try { await store.salvarAiCfg({ kind, url, key, model, workerUrl }); const r = await gerarPerguntasIA('Direito Administrativo', 'Conceito e princípios.'); setStatus(r.length ? `✓ Funcionou — ${r.length} perguntas geradas` : '⚠ Resposta vazia (verifique modelo/endpoint)') }
     catch (e: any) { setStatus('⚠ ' + (e?.message || 'falha na chamada')) }
   }
   return createPortal(<>
@@ -1132,6 +1162,11 @@ function ConfigIAModal({ store, onClose }: any) {
       <input type="password" value={key} onChange={e => setKey(e.target.value)} placeholder="cole sua API key" style={inpCfg} />
       <label style={lblCfg}>Modelo</label>
       <input value={model} onChange={e => setModel(e.target.value)} style={inpCfg} />
+      {kind === 'gemini' && <>
+        <label style={lblCfg}>Worker URL (fallback — opcional)</label>
+        <input value={workerUrl} onChange={e => setWorkerUrl(e.target.value)} placeholder="https://nexus-gemini.SEU-USUARIO.workers.dev" style={inpCfg} />
+        <div style={{ fontSize: '.62rem', color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.4 }}>Se a chamada direta ao Gemini falhar (ex.: bloqueio de rede no trabalho), o NexusOS usa este proxy automaticamente.</div>
+      </>}
       {kind !== 'gemini' && <div style={{ fontSize: '.66rem', color: '#EA580C', marginTop: 4 }}>OpenAI/DeepSeek/Anthropic costumam bloquear CORS no navegador — pode exigir um proxy serverless.</div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
         <button onClick={testar} style={{ ...btn, width: 'auto', flex: 1, padding: '0 10px' }}>⚡ Testar</button>
@@ -1523,23 +1558,26 @@ export default function PDFReader() {
         )}
         {/* coluna editor */}
         <div style={{ flex: 1, minWidth: 0, display: viewMode === 'pdf' ? 'none' : 'flex', flexDirection: 'column', minHeight: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ fontSize: '1rem' }}>✦</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ fontSize: '1rem', flexShrink: 0 }}>✦</span>
           <input value={titulo} onChange={e => onTitulo(e.target.value)} placeholder="Título do documento" disabled={!store.uid}
-            style={{ flex: 1, minWidth: 0, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
+            style={{ flex: 1, minWidth: 60, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
             onFocus={e => (e.target.style.border = '1px solid var(--border)')} onBlur={e => (e.target.style.border = '1px solid transparent')} />
-          <span style={{ fontSize: '0.66rem', color: salvo ? 'var(--text-muted)' : '#EA580C', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{salvo ? '✓ salvo' : '● não salvo'}</span>
-          {/* botões de modo de visualização */}
-          {(['pdf', 'split', 'editor'] as const).map(m => (
-            <button key={m} onClick={() => setViewMode(m)} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]}
-              style={{ ...btn, width: 'auto', padding: '0 8px', background: viewMode === m ? '#5b5bd6' : 'var(--surface)', color: viewMode === m ? '#fff' : 'var(--text-secondary)', border: viewMode === m ? 'none' : '1px solid var(--border)', fontSize: '0.72rem' }}>
-              {{ pdf: '📄 PDF', split: '⬜ Dividir', editor: '✦ Editor' }[m]}
-            </button>
-          ))}
-          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 'auto', padding: '0 10px' }}>📖 Diário</button>
-          <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 'auto', padding: '0 9px' }}>⚙</button>
-          <button onClick={onSalvar} disabled={!store.uid} style={{ ...btn, width: 'auto', padding: '0 12px' }}>💾 Salvar</button>
-          <button onClick={abrirPrevia} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none' }}>🖨️ Exportar…</button>
+          <span title={salvo ? 'Salvo' : 'Não salvo'} style={{ fontSize: '0.8rem', color: salvo ? '#22c55e' : '#EA580C', flexShrink: 0, marginRight: 2 }}>{salvo ? '✓' : '●'}</span>
+          {/* botões de modo de visualização — só ícones, agrupados */}
+          <div style={{ display: 'flex', gap: 2, flexShrink: 0, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
+            {(['pdf', 'split', 'editor'] as const).map(m => (
+              <button key={m} onClick={() => setViewMode(m)} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]}
+                style={{ ...btn, width: 30, padding: 0, background: viewMode === m ? '#5b5bd6' : 'transparent', color: viewMode === m ? '#fff' : 'var(--text-secondary)', border: 'none', fontSize: '0.85rem' }}>
+                {{ pdf: '📄', split: '⬜', editor: '✦' }[m]}
+              </button>
+            ))}
+          </div>
+          <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, fontSize: '0.9rem', flexShrink: 0 }}>📖</button>
+          <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0 }}>⚙</button>
+          <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, fontSize: '0.9rem', flexShrink: 0 }}>💾</button>
+          <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', background: '#5b5bd6', color: '#fff', border: 'none', fontSize: '0.78rem', flexShrink: 0 }}>🖨️ Exportar</button>
         </div>
         {!store.uid && <div style={{ padding: '6px 12px', fontSize: '0.7rem', color: '#EA580C', background: 'var(--surface)' }}>Faça login para salvar documentos no Firestore.</div>}
         <div style={{ flex: 1, minHeight: 0 }}>
