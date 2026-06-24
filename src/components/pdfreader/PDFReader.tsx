@@ -1187,6 +1187,11 @@ const Barra = ({ pct, cor }: any) => (
   </div>
 )
 const inpD: any = { padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem', outline: 'none' }
+const DIFIC = [
+  { id: 'tranquila', emoji: '😌', label: 'Tranquila', cor: '#16A34A' },
+  { id: 'mediana', emoji: '😐', label: 'Mediana', cor: '#EA580C' },
+  { id: 'dificil', emoji: '🥵', label: 'Difícil', cor: '#DC2626' },
+]
 
 function DiarioLeitura({ onClose }: any) {
   const st = useDiarioStore()
@@ -1194,6 +1199,7 @@ function DiarioLeitura({ onClose }: any) {
   const [novoConc, setNovoConc] = useState('')
   const [aberta, setAberta] = useState<Record<string, boolean>>({})        // disciplinas abertas
   const [abaTipo, setAbaTipo] = useState<Record<string, 'pdf' | 'lei' | 'info'>>({})  // sub-aba por disciplina
+  const [filtroDif, setFiltroDif] = useState<string>('')  // '', 'tranquila', 'mediana', 'dificil'
   const [estudoDe, setEstudoDe] = useState<any | null>(null)
   const [estudoTxt, setEstudoTxt] = useState('')
 
@@ -1228,13 +1234,20 @@ function DiarioLeitura({ onClose }: any) {
           <span style={{ fontSize: '0.95rem' }}>{m.ico}</span>
           <input defaultValue={it.titulo} onBlur={e => st.salvarItem({ id: it.id, titulo: e.target.value })} placeholder="Título" style={{ ...inpD, flex: 1, minWidth: 0, fontWeight: 600 }} />
           {it.tipo === 'info' && (
-            <select defaultValue={it.tribunal || 'STF'} onChange={e => st.salvarItem({ id: it.id, tribunal: e.target.value })} style={{ ...inpD, padding: '5px 6px', cursor: 'pointer' }}>
+            <select value={it.tribunal || 'STF'} onChange={e => st.salvarItem({ id: it.id, tribunal: e.target.value })} style={{ ...inpD, padding: '5px 6px', cursor: 'pointer' }}>
               <option>STF</option><option>STJ</option><option value="Outro">Outro</option>
             </select>
           )}
           {it.tipo === 'info' && it.tribunal === 'Outro' && (
             <input defaultValue={it.tribunalLivre || ''} onBlur={e => st.salvarItem({ id: it.id, tribunalLivre: e.target.value })} placeholder="Tribunal" style={{ ...inpD, width: 80 }} />
           )}
+          {/* classificação de dificuldade da leitura */}
+          <div style={{ display: 'flex', gap: 2 }}>
+            {DIFIC.map(d => (
+              <button key={d.id} onClick={() => st.salvarItem({ id: it.id, dificuldade: it.dificuldade === d.id ? '' : d.id })} title={d.label}
+                style={{ width: 26, height: 26, borderRadius: 6, border: it.dificuldade === d.id ? `2px solid ${d.cor}` : '1px solid var(--border)', background: it.dificuldade === d.id ? d.cor + '22' : 'var(--surface)', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, padding: 0, opacity: it.dificuldade && it.dificuldade !== d.id ? 0.4 : 1 }}>{d.emoji}</button>
+            ))}
+          </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={!!it.lido} onChange={e => st.salvarItem({ id: it.id, lido: e.target.checked })} style={{ accentColor: '#16A34A', width: 15, height: 15 }} /> {it.tipo === 'info' ? 'em dia' : 'lido'}
           </label>
@@ -1244,9 +1257,9 @@ function DiarioLeitura({ onClose }: any) {
         <input defaultValue={it.descricao} onBlur={e => st.salvarItem({ id: it.id, descricao: e.target.value })} placeholder={it.tipo === 'info' ? 'Tema / assunto da jurisprudência…' : 'Descrição (tema, assunto, observações…)'} style={{ ...inpD, width: '100%', boxSizing: 'border-box', marginBottom: 8, fontSize: '0.78rem', color: 'var(--text-secondary)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{m.campo}</span>
-          <input type="number" min={0} defaultValue={it.atual || 0} onChange={e => st.salvarItem({ id: it.id, atual: Number(e.target.value) })} style={{ ...inpD, width: 64, textAlign: 'center' }} />
+          <input type="number" min={0} value={it.atual ?? 0} onChange={e => st.salvarItem({ id: it.id, atual: e.target.value === '' ? 0 : Number(e.target.value) })} style={{ ...inpD, width: 70, textAlign: 'center' }} />
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>de</span>
-          <input type="number" min={0} defaultValue={it.total || 0} onChange={e => st.salvarItem({ id: it.id, total: Number(e.target.value) })} style={{ ...inpD, width: 64, textAlign: 'center' }} />
+          <input type="number" min={0} value={it.total ?? 0} onChange={e => st.salvarItem({ id: it.id, total: e.target.value === '' ? 0 : Number(e.target.value) })} style={{ ...inpD, width: 70, textAlign: 'center' }} />
           <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{m.uni}</span>
           <Barra pct={pct} cor="#5b5bd6" />
           <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#5b5bd6', width: 38, textAlign: 'right' }}>{Math.round(pct)}%</span>
@@ -1304,6 +1317,20 @@ function DiarioLeitura({ onClose }: any) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
               <b style={{ fontSize: '0.98rem', color: 'var(--text-primary)' }}>{st.concursos.find(c => c.id === sel)?.nome}</b>
               <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#16A34A' }}>{Math.round(pctConc(sel))}% concluído</span>
+              {(() => {
+                const dids = discs.map(d => d.id)
+                const dificeis = st.itens.filter(i => dids.includes(i.disciplinaId) && i.dificuldade === 'dificil').length
+                const medianos = st.itens.filter(i => dids.includes(i.disciplinaId) && i.dificuldade === 'mediana').length
+                if (!dificeis && !medianos) return null
+                return (
+                  <button onClick={() => setFiltroDif(f => f === 'dificil' ? '' : 'dificil')} title="Filtrar itens difíceis em todas as disciplinas"
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 16, border: filtroDif === 'dificil' ? '2px solid #DC2626' : '1px solid var(--border)', background: filtroDif === 'dificil' ? '#DC262615' : 'var(--surface)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    {!!dificeis && <span style={{ color: '#DC2626' }}>🥵 {dificeis} difícil{dificeis > 1 ? 's' : ''}</span>}
+                    {!!medianos && <span style={{ color: '#EA580C' }}>😐 {medianos}</span>}
+                    <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>· revisar</span>
+                  </button>
+                )
+              })()}
               <span style={{ flex: 1 }} />
               <button onClick={addDisciplina} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none', fontWeight: 700 }}>＋ Disciplina</button>
             </div>
@@ -1313,9 +1340,9 @@ function DiarioLeitura({ onClose }: any) {
                 const its = itensDe(d.id)
                 const cont = { pdf: its.filter(i => i.tipo === 'pdf'), lei: its.filter(i => i.tipo === 'lei'), info: its.filter(i => i.tipo === 'info') }
                 const lidos = its.filter(i => i.lido).length
-                const p = pctDisc(d.id); const isOpen = !!aberta[d.id]
+                const p = pctDisc(d.id); const isOpen = !!aberta[d.id] || !!filtroDif
                 const aba = abaTipo[d.id] || 'pdf'
-                const lista = cont[aba]
+                const lista = (cont[aba] as any[]).filter(i => !filtroDif || i.dificuldade === filtroDif)
                 return (
                   <div key={d.id} style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--card-bg)' }}>
                     {/* cabeçalho recolhível */}
@@ -1341,10 +1368,18 @@ function DiarioLeitura({ onClose }: any) {
                             </button>
                           ))}
                           <span style={{ flex: 1 }} />
+                          {/* filtro por dificuldade */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginRight: 6 }}>
+                            <button onClick={() => setFiltroDif('')} title="Todas as dificuldades" style={{ height: 28, padding: '0 8px', borderRadius: 7, border: filtroDif === '' ? 'none' : '1px solid var(--border)', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, background: filtroDif === '' ? '#5b5bd6' : 'var(--surface)', color: filtroDif === '' ? '#fff' : 'var(--text-secondary)' }}>Todas</button>
+                            {DIFIC.map(df => (
+                              <button key={df.id} onClick={() => setFiltroDif(f => f === df.id ? '' : df.id)} title={`Filtrar: ${df.label}`}
+                                style={{ width: 28, height: 28, borderRadius: 7, border: filtroDif === df.id ? `2px solid ${df.cor}` : '1px solid var(--border)', cursor: 'pointer', fontSize: '0.9rem', padding: 0, background: filtroDif === df.id ? df.cor + '22' : 'var(--surface)' }}>{df.emoji}</button>
+                            ))}
+                          </div>
                           <button onClick={() => addItem(d.id, aba)} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none', fontWeight: 700 }}>＋ {META[aba].lbl.replace(/s$/, '')}</button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {lista.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '4px 6px' }}>Nenhum item em {META[aba].lbl}. Clique em "＋ {META[aba].lbl.replace(/s$/, '')}".</div>}
+                          {lista.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: '4px 6px' }}>{filtroDif ? `Nenhum item ${DIFIC.find(x => x.id === filtroDif)?.label.toLowerCase()} em ${META[aba].lbl}.` : `Nenhum item em ${META[aba].lbl}. Clique em "＋ ${META[aba].lbl.replace(/s$/, '')}".`}</div>}
                           {lista.sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0)).map(renderItem)}
                         </div>
                       </div>
