@@ -156,6 +156,82 @@ async function gerarPalavrasChaveIA(trecho: string): Promise<string[]> {
   return parsePerguntas(raw)  // mesmo parser robusto de array JSON
 }
 
+/* ─────────── RESUMO (feature 5) — resume uma página/seleção em tópicos curtos ─────────── */
+function promptResumo(texto: string, foco = '') {
+  return [
+    'Você é um assistente de estudos jurídicos para concursos públicos brasileiros (foco AGU/CEBRASPE).',
+    foco ? `Contexto: ${foco}.` : '',
+    'Resuma o trecho abaixo de forma fiel e enxuta, em 3 a 6 tópicos curtos (bullets), preservando termos técnicos, números de artigos e nomes de institutos.',
+    'Não invente nada que não esteja no texto. Responda em português, apenas os tópicos, um por linha, iniciando cada linha com "• ".',
+    'Trecho:', '"""', (texto || '').slice(0, 8000), '"""',
+  ].filter(Boolean).join('\n')
+}
+async function resumirIA(texto: string, foco = ''): Promise<string> {
+  return (await callLLM(promptResumo(texto, foco))).trim()
+}
+
+/* ─────────── CHAT COM O DOCUMENTO (feature 1) — pergunta livre usando o texto como contexto ─────────── */
+function promptChat(contexto: string, historico: { role: 'user' | 'assistant'; text: string }[], pergunta: string) {
+  const hist = historico.slice(-8).map(m => `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.text}`).join('\n')
+  return [
+    'Você é um assistente de leitura e estudo. Responda SOMENTE com base no DOCUMENTO fornecido.',
+    'Se a resposta não estiver no documento, diga claramente que o trecho não trata disso (mas pode dar contexto jurídico geral, sinalizando que é conhecimento externo).',
+    'Seja objetivo, cite o número da página quando o documento indicar "[p. N]". Responda em português.',
+    '',
+    '===== DOCUMENTO =====',
+    (contexto || '(documento vazio)').slice(0, 24000),
+    '===== FIM DO DOCUMENTO =====',
+    '',
+    hist ? 'Conversa até aqui:\n' + hist : '',
+    '',
+    'Pergunta do usuário: ' + pergunta,
+  ].filter(Boolean).join('\n')
+}
+async function perguntarAoDocIA(contexto: string, historico: any[], pergunta: string): Promise<string> {
+  return (await callLLM(promptChat(contexto, historico, pergunta))).trim()
+}
+
+/* ─────────── FLASHCARDS (feature 2) — gera cards frente/verso a partir de um trecho ─────────── */
+function promptFlashcards(trecho: string, foco = '') {
+  return [
+    'Você é um gerador de flashcards de estudo ativo para concursos públicos brasileiros (foco AGU/CEBRASPE).',
+    foco ? `Tema: ${foco}.` : '',
+    'A partir do trecho abaixo, crie de 2 a 6 flashcards de recordação ativa (pergunta na frente, resposta objetiva no verso).',
+    'Priorize definições, requisitos, exceções, prazos e classificações. Verso curto e preciso. Não invente conteúdo fora do trecho.',
+    'Responda ESTRITAMENTE com um array JSON de objetos {"frente": "...", "verso": "..."}, sem markdown, sem texto antes ou depois.',
+    'Trecho:', '"""', (trecho || '').slice(0, 6000), '"""',
+  ].filter(Boolean).join('\n')
+}
+function parseFlashcards(raw: string): { frente: string; verso: string }[] {
+  if (!raw) return []
+  let t = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  const m = t.match(/\[[\s\S]*\]/); if (m) t = m[0]
+  try {
+    const arr = JSON.parse(t)
+    if (Array.isArray(arr)) return arr.map((x: any) => ({ frente: String(x?.frente ?? x?.q ?? x?.pergunta ?? '').trim(), verso: String(x?.verso ?? x?.a ?? x?.resposta ?? '').trim() })).filter(c => c.frente && c.verso).slice(0, 12)
+  } catch {}
+  return []
+}
+async function gerarFlashcardsIA(trecho: string, foco = ''): Promise<{ frente: string; verso: string }[]> {
+  return parseFlashcards(await callLLM(promptFlashcards(trecho, foco)))
+}
+
+/* agendamento de revisão (SM-2 simplificado) — usado pelo módulo de flashcards (feature 2) */
+const hojeISO = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)   // UTC-3 (padrão NexusOS)
+function agendarRevisao(card: any, acerto: 'errei' | 'dificil' | 'facil') {
+  let ef = card.ef ?? 2.5, rep = card.rep ?? 0, intervalo = card.intervalo ?? 0
+  if (acerto === 'errei') { rep = 0; intervalo = 1; ef = Math.max(1.3, ef - 0.2) }
+  else {
+    rep += 1
+    if (rep === 1) intervalo = 1
+    else if (rep === 2) intervalo = acerto === 'facil' ? 4 : 3
+    else intervalo = Math.round(intervalo * ef)
+    ef = Math.max(1.3, ef + (acerto === 'facil' ? 0.15 : -0.02))
+  }
+  const prox = new Date(Date.now() - 3 * 3600000 + intervalo * 86400000).toISOString().slice(0, 10)
+  return { ef: +ef.toFixed(2), rep, intervalo, proxRevisao: prox, ultimaRevisao: hojeISO() }
+}
+
 /* ═══════════════════════════════ EXPORTAÇÃO ═══════════════════════════════ */
 function wordDoc(innerHTML: string, titulo: string) {
   const t = (titulo || 'Palavras Destacadas').replace(/[<>]/g, '')
@@ -165,6 +241,63 @@ function wordDoc(innerHTML: string, titulo: string) {
 function download(name: string, content: string, mime: string) {
   const blob = new Blob(['\ufeff', content], { type: mime })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+}
+
+/* ─────────── EXPORTAR NOTAS COMO MARKDOWN (feature 7) — converte o HTML do editor em .md ─────────── */
+function htmlToMarkdown(html: string): string {
+  if (!html) return ''
+  const root = document.createElement('div'); root.innerHTML = html
+  const walk = (node: Node, depth = 0): string => {
+    let out = ''
+    node.childNodes.forEach(ch => {
+      if (ch.nodeType === 3) { out += (ch.textContent || '').replace(/\s+/g, ' ') ; return }
+      if (ch.nodeType !== 1) return
+      const el = ch as HTMLElement; const tag = el.tagName.toLowerCase()
+      const inner = () => walk(el, depth)
+      switch (tag) {
+        case 'h1': out += `\n# ${el.textContent?.trim()}\n\n`; break
+        case 'h2': out += `\n## ${el.textContent?.trim()}\n\n`; break
+        case 'h3': out += `\n### ${el.textContent?.trim()}\n\n`; break
+        case 'b': case 'strong': out += `**${inner().trim()}**`; break
+        case 'i': case 'em': out += `*${inner().trim()}*`; break
+        case 'u': out += `${inner().trim()}`; break
+        case 'br': out += '\n'; break
+        case 'hr': out += '\n---\n\n'; break
+        case 'li': out += `${'  '.repeat(depth)}- ${inner().trim()}\n`; break
+        case 'ul': case 'ol': out += '\n' + walk(el, depth + 1) + '\n'; break
+        case 'table': {
+          const rows = Array.from(el.querySelectorAll('tr'))
+          rows.forEach((tr, ri) => {
+            const cells = Array.from(tr.children).map(td => (td.textContent || '').trim().replace(/\|/g, '\\|'))
+            out += '| ' + cells.join(' | ') + ' |\n'
+            if (ri === 0) out += '| ' + cells.map(() => '---').join(' | ') + ' |\n'
+          })
+          out += '\n'; break
+        }
+        case 'p': case 'div': { const c = inner().trim(); out += c ? c + '\n\n' : ''; break }
+        default: out += inner()
+      }
+    })
+    return out
+  }
+  return walk(root).replace(/\n{3,}/g, '\n\n').trim() + '\n'
+}
+
+/* ─────────── HISTÓRICO DE PDFs RECENTES (feature 11) — só metadados + miniatura (o PDF nunca é salvo) ─────────── */
+const RECENTS_KEY = 'nexus_pr_recents'
+function lerRecentes(): any[] { try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]') } catch { return [] } }
+function salvarRecente(rec: { name: string; numPages: number; thumb?: string; lastPage?: number }) {
+  try {
+    const list = lerRecentes().filter((r: any) => r.name !== rec.name)
+    list.unshift({ ...rec, at: Date.now() })
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 8)))
+  } catch {}
+}
+function atualizarProgressoRecente(name: string, lastPage: number, numPages: number) {
+  try {
+    const list = lerRecentes(); const r = list.find((x: any) => x.name === name)
+    if (r) { r.lastPage = Math.max(r.lastPage || 0, lastPage); r.numPages = numPages; r.at = Date.now(); localStorage.setItem(RECENTS_KEY, JSON.stringify(list)) }
+  } catch {}
 }
 
 /* ═══════════════════════════════ EDITOR RICH TEXT ═══════════════════════════════ */
@@ -680,14 +813,100 @@ const TONS: { id: string; label: string; icon: string; filter: string }[] = [
   { id: 'escuro', label: 'Modo escuro', icon: '🌙', filter: 'invert(0.92) hue-rotate(180deg) contrast(0.95) brightness(1.05)' },
 ]
 const tomFilter = (id: string) => (TONS.find(t => t.id === id) || TONS[0]).filter
-function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
+
+/* ─────────── MINIATURAS DAS PÁGINAS (feature 9) — tira lateral colapsável ─────────── */
+function ThumbStrip({ pdf, numPages, curPage, onGo }: any) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const doneRef = useRef<Set<number>>(new Set())
+  useEffect(() => {
+    const host = hostRef.current; if (!host || !pdf) return
+    const io = new IntersectionObserver(ents => {
+      ents.forEach(async e => {
+        if (!e.isIntersecting) return
+        const n = Number((e.target as HTMLElement).dataset.n); if (doneRef.current.has(n)) return
+        doneRef.current.add(n)
+        try {
+          const pg = await pdf.getPage(n); const vp0 = pg.getViewport({ scale: 1 })
+          const sc = 104 / vp0.width; const vp = pg.getViewport({ scale: sc })
+          const cv = document.createElement('canvas'); cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height)
+          await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise
+          const holder = e.target.querySelector('.pr-thumb-canvas') as HTMLElement
+          if (holder) { holder.innerHTML = ''; cv.style.cssText = 'width:100%;height:auto;display:block;border-radius:3px'; holder.appendChild(cv) }
+        } catch {}
+      })
+    }, { root: host, rootMargin: '300px 0px' })
+    host.querySelectorAll('.pr-thumb').forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [pdf, numPages])
+  // mantém a página atual visível na tira
+  useEffect(() => { const el = hostRef.current?.querySelector(`[data-n="${curPage}"]`) as HTMLElement; if (el) el.scrollIntoView({ block: 'nearest' }) }, [curPage])
+  return (
+    <div ref={hostRef} style={{ position: 'absolute', top: 4, bottom: 0, left: 0, width: 120, zIndex: 44, overflowY: 'auto', background: 'var(--card-bg)', borderRight: '1px solid var(--border)', padding: '8px 6px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {Array.from({ length: numPages }, (_, i) => i + 1).map(n => (
+        <div key={n} className="pr-thumb" data-n={n} onClick={() => onGo(n)} title={`Página ${n}`}
+          style={{ cursor: 'pointer', borderRadius: 5, border: n === curPage ? '2px solid #5b5bd6' : '1px solid var(--border)', padding: 2, background: n === curPage ? 'rgba(91,91,214,.1)' : 'transparent' }}>
+          <div className="pr-thumb-canvas" style={{ width: '100%', aspectRatio: '0.72', background: 'var(--surface)', borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>{n}</div>
+          <div style={{ textAlign: 'center', fontSize: '0.62rem', color: n === curPage ? '#5b5bd6' : 'var(--text-muted)', fontWeight: 700, marginTop: 2 }}>{n}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ─────────── CHAT COM O DOCUMENTO (feature 1) — drawer lateral ─────────── */
+function ChatDocumento({ chat, onEnviar, onClose, onLimpar, onInserir }: any) {
+  const [txt, setTxt] = useState('')
+  const fimRef = useRef<HTMLDivElement>(null)
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [chat.msgs, chat.carregando])
+  const enviar = () => { const t = txt.trim(); if (!t) return; setTxt(''); onEnviar(t) }
+  return (
+    <div style={{ position: 'absolute', top: 4, bottom: 0, right: 0, width: 332, zIndex: 44, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', borderLeft: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 11px', borderBottom: '1px solid var(--border)' }}>
+        <span style={{ color: '#5b5bd6' }}>💬</span><b style={{ fontSize: '0.84rem', color: 'var(--text-primary)' }}>Conversar com o PDF</b>
+        <span style={{ flex: 1 }} />
+        <button onClick={onLimpar} title="Limpar conversa" style={{ ...btn, width: 28 }}>🧹</button>
+        <button onClick={onClose} title="Fechar" style={{ ...btn, width: 28 }}>✕</button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {chat.msgs.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>Pergunte qualquer coisa sobre o documento aberto. A IA responde usando o texto extraído como contexto. Ex.: <i>"Quais os prazos previstos no edital?"</i> ou <i>"Resuma a cláusula de rescisão."</i></div>}
+        {chat.msgs.map((m: any, i: number) => (
+          <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%' }}>
+            <div style={{ padding: '8px 11px', borderRadius: 12, fontSize: '0.82rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', background: m.role === 'user' ? '#5b5bd6' : 'var(--surface)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', border: m.role === 'user' ? 'none' : '1px solid var(--border)' }}>{m.text}</div>
+            {m.role === 'assistant' && <button onClick={() => onInserir(m.text)} title="Inserir resposta no editor" style={{ marginTop: 3, fontSize: '0.66rem', color: 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer' }}>↳ inserir no editor</button>}
+          </div>
+        ))}
+        {chat.carregando && <div style={{ alignSelf: 'flex-start', fontSize: '0.78rem', color: 'var(--text-muted)', padding: '6px 10px' }}>pensando…</div>}
+        <div ref={fimRef} />
+      </div>
+      <div style={{ display: 'flex', gap: 6, padding: 10, borderTop: '1px solid var(--border)' }}>
+        <textarea value={txt} onChange={e => setTxt(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar() } }} placeholder="Pergunte sobre o documento…" rows={2}
+          style={{ flex: 1, resize: 'none', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem', padding: '7px 9px', borderRadius: 9, outline: 'none', fontFamily: 'inherit' }} />
+        <button onClick={enviar} disabled={chat.carregando} style={{ alignSelf: 'stretch', padding: '0 14px', borderRadius: 9, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>➤</button>
+      </div>
+    </div>
+  )
+}
+
+function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewerApi, onFileLoaded, onAddBookmark, onGerarFlashcard, foco = false, onToggleFoco }: any) {
+  const uid = useUid()
   const wrapRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const pdfRef = useRef<any>(null); const libRef = useRef<any>(null)
   const [numPages, setNumPages] = useState(0)
   const [curPage, setCurPage] = useState(1)
+  const [maxPage, setMaxPage] = useState(1)                 // feature 12: página mais avançada já alcançada
   const [pageBox, setPageBox] = useState(1)
   useEffect(() => { setPageBox(curPage) }, [curPage])
-  useEffect(() => { setPaginaImagem(!!semTextoRef.current[curPage]) }, [curPage])
+  useEffect(() => { setPaginaImagem(!!semTextoRef.current[curPage]); setMaxPage(m => Math.max(m, curPage)) }, [curPage])
+  // feature 8: sessão de leitura (início, página máx) → alimenta o Diário ao trocar/fechar o arquivo
+  const sessaoRef = useRef<{ arquivo: string; inicio: number; pagInicial: number; pagMax: number } | null>(null)
+  // feature 1: cache do texto completo extraído (lazy)
+  const fullTextRef = useRef<string>('')
+  const [busca, setBusca] = useState<{ open: boolean; termo: string; hits: any[]; idx: number; buscando: boolean }>({ open: false, termo: '', hits: [], idx: 0, buscando: false })  // feature 3
+  const [thumbsOpen, setThumbsOpen] = useState(false)        // feature 9
+  const [recentes, setRecentes] = useState<any[]>(() => lerRecentes())  // feature 11
+  const [chat, setChat] = useState<{ open: boolean; msgs: { role: 'user' | 'assistant'; text: string }[]; carregando: boolean }>({ open: false, msgs: [], carregando: false })  // feature 1
+  const [resumindo, setResumindo] = useState(false)          // feature 5
   const [zoom, setZoom] = useState(1.25)
   const [fitWidth, setFitWidth] = useState(true)
   const fitRef = useRef(true); fitRef.current = fitWidth
@@ -695,6 +914,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   const [tomOpen, setTomOpen] = useState(false)
   useEffect(() => { try { localStorage.setItem('nexus_pr_tom', tom) } catch {} }, [tom])
   const [nome, setNome] = useState('')
+  const nomeRef = useRef(''); nomeRef.current = nome
   const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco'>('none')
   const [modo, setModo] = useState<'selecionar' | 'realcar'>('selecionar')  // marquee → editor  ou  marquee → realce
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
@@ -736,12 +956,17 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
 
   // importa o PDF (apenas em memória — nunca persistido)
   const importar = async (file: File) => {
+    flushSessao()                                   // feature 8: fecha a sessão do arquivo anterior
     const buf = await file.arrayBuffer()
     const lib = await ensurePdfjs(); libRef.current = lib
     const pdf = await lib.getDocument({ data: buf }).promise
-    pdfRef.current = pdf; setNumPages(pdf.numPages); setNome(file.name.replace(/\.pdf$/i, '')); setCurPage(1)
+    pdfRef.current = pdf; setNumPages(pdf.numPages); setNome(file.name.replace(/\.pdf$/i, '')); setCurPage(1); setMaxPage(1)
     pageElsRef.current = {}; rsRef.current = {}; tcRef.current = {}; visRef.current = new Set()
     ocrRef.current = {}; semTextoRef.current = {}; setPaginaImagem(false); setOcrStatus(null)
+    fullTextRef.current = ''                          // feature 1: invalida cache de texto completo
+    setBusca({ open: false, termo: '', hits: [], idx: 0, buscando: false })  // feature 3
+    setChat(c => ({ ...c, msgs: [] }))                // feature 1: novo documento, nova conversa
+    sessaoRef.current = { arquivo: file.name, inicio: Date.now(), pagInicial: 1, pagMax: 1 }  // feature 8
     try { anotKeyRef.current = 'nexus_pr_annot_' + file.name; anotRef.current = JSON.parse(localStorage.getItem(anotKeyRef.current) || '{}') } catch { anotRef.current = {} }
     // metadados (tamanho em escala 1) p/ placeholders — não renderiza nada ainda
     const metas: any[] = []
@@ -749,7 +974,34 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
     metaRef.current = metas
     if (fitRef.current) { const z = calcFit(metas); if (z) { setZoom(z); scaleRef.current = z } }
     requestAnimationFrame(montarPlaceholders)
+    onFileLoaded?.(file.name, pdf.numPages)           // feature 4/11: avisa o pai (bookmarks por arquivo)
+    salvarRecente({ name: file.name, numPages: pdf.numPages, lastPage: 1 })  // feature 11
+    setRecentes(lerRecentes())
+    gerarThumbRecente(pdf, file.name)                 // feature 11: miniatura da capa (assíncrona)
   }
+  // feature 11: gera uma miniatura pequena da 1ª página e guarda no recente
+  const gerarThumbRecente = async (pdf: any, name: string) => {
+    try {
+      const pg = await pdf.getPage(1); const vp0 = pg.getViewport({ scale: 1 })
+      const sc = Math.min(0.5, 150 / vp0.width); const vp = pg.getViewport({ scale: sc })
+      const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height)
+      await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise
+      const thumb = c.toDataURL('image/jpeg', 0.6)
+      const list = lerRecentes(); const r = list.find((x: any) => x.name === name); if (r) { r.thumb = thumb; localStorage.setItem(RECENTS_KEY, JSON.stringify(list)); setRecentes(lerRecentes()) }
+    } catch {}
+  }
+  // feature 8: grava a sessão de leitura corrente no Diário (coleção leituraSessoes), se relevante
+  const flushSessao = () => {
+    const s = sessaoRef.current; sessaoRef.current = null
+    if (!s || !uid) return
+    const minutos = Math.round((Date.now() - s.inicio) / 60000)
+    const pagMax = Math.max(s.pagMax, maxPageRef.current)
+    if (minutos < 1 && pagMax - s.pagInicial < 1) return   // sessão insignificante
+    const id = newId()
+    try { setDoc(doc(db, 'users', uid, 'leituraSessoes', id), clean({ id, arquivo: s.arquivo.replace(/\.pdf$/i, ''), pagInicio: s.pagInicial, pagFim: pagMax, minutos, data: hojeISO(), criadoEm: Date.now() }), { merge: true }) } catch {}
+  }
+  const maxPageRef = useRef(1); maxPageRef.current = maxPage
+  useEffect(() => { const s = sessaoRef.current; if (s && maxPage > s.pagMax) s.pagMax = maxPage; if (nomeRef.current) atualizarProgressoRecente(nomeRef.current + '.pdf', maxPage, numPages) }, [maxPage, numPages])
   // calcula a escala que faz a página caber na largura da coluna
   const calcFit = (metas = metaRef.current) => {
     const host = wrapRef.current; if (!host || !metas.length) return 0
@@ -759,6 +1011,134 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   const ajustarLargura = () => { setFitWidth(true); const z = calcFit(); if (z) setZoom(z) }
   const mudarZoom = (delta: number) => { setFitWidth(false); setZoom(z => +Math.max(0.4, Math.min(3, z + delta)).toFixed(2)) }
   const irParaPagina = (n: number) => { const p = Math.max(1, Math.min(numPages || 1, n || 1)); const el = pageElsRef.current[p]; const host = wrapRef.current; if (el && host) { host.scrollTo({ top: el.offsetTop - 12, behavior: 'smooth' }); setCurPage(p) } }
+
+  /* ─────────── TEXTO POR PÁGINA / TEXTO COMPLETO (features 1, 3, 5) ─────────── */
+  const textoDaPagina = async (n: number): Promise<string> => {
+    const pdf = pdfRef.current; if (!pdf) return ''
+    if (ocrRef.current[n]?.length) return prNormalize(ocrRef.current[n].map((w: any) => w.text).join(' '))
+    try {
+      const tc = tcRef.current[n] || await (await pdf.getPage(n)).getTextContent(); tcRef.current[n] = tc
+      return prNormalize((tc.items || []).map((it: any) => it.str).join(' '))
+    } catch { return '' }
+  }
+  // texto completo do documento (com marcadores [p. N]) — cacheado p/ o chat
+  const obterTextoCompleto = async (): Promise<string> => {
+    if (fullTextRef.current) return fullTextRef.current
+    const pdf = pdfRef.current; if (!pdf) return ''
+    const partes: string[] = []
+    for (let n = 1; n <= (pdf.numPages || 0); n++) { const t = await textoDaPagina(n); if (t) partes.push(`[p. ${n}] ${t}`) }
+    fullTextRef.current = partes.join('\n\n')
+    return fullTextRef.current
+  }
+
+  /* ─────────── BUSCA NO DOCUMENTO (feature 3) ─────────── */
+  const buscaRef = useRef(busca); buscaRef.current = busca
+  const rodarBusca = async (termo: string) => {
+    const t = termo.trim()
+    if (!t) { setBusca(b => ({ ...b, termo, hits: [], idx: 0 })); pintarBusca([], -1); return }
+    setBusca(b => ({ ...b, termo, buscando: true }))
+    const pdf = pdfRef.current; if (!pdf) return
+    const alvo = t.toLowerCase(); const hits: any[] = []
+    for (let n = 1; n <= pdf.numPages; n++) {
+      const txt = (await textoDaPagina(n)).toLowerCase()
+      let i = txt.indexOf(alvo)
+      while (i !== -1) { hits.push({ page: n }); i = txt.indexOf(alvo, i + alvo.length); if (hits.length > 4000) break }
+    }
+    setBusca(b => ({ ...b, hits, idx: hits.length ? 0 : -1, buscando: false }))
+    if (hits.length) { irParaPagina(hits[0].page); requestAnimationFrame(() => pintarBusca(hits, 0)) }
+    else pintarBusca([], -1)
+  }
+  const navegarBusca = (delta: number) => {
+    setBusca(b => {
+      if (!b.hits.length) return b
+      const idx = (b.idx + delta + b.hits.length) % b.hits.length
+      irParaPagina(b.hits[idx].page); requestAnimationFrame(() => pintarBusca(b.hits, idx))
+      return { ...b, idx }
+    })
+  }
+  // realça as ocorrências do termo nas camadas de texto renderizadas (overlay por página)
+  const pintarBusca = (hits: any[], idxAtivo: number) => {
+    const host = wrapRef.current; if (!host) return
+    host.querySelectorAll('.pr-search').forEach(e => e.remove())
+    const termo = buscaRef.current.termo.trim().toLowerCase(); if (!termo) return
+    const ativoPage = idxAtivo >= 0 && hits[idxAtivo] ? hits[idxAtivo].page : -1
+    const paginasComHit = new Set(hits.map(h => h.page))
+    paginasComHit.forEach(pn => {
+      const pageEl = pageElsRef.current[pn]; if (!pageEl) return
+      const tl = pageEl.querySelector('.pr-textlayer') as HTMLElement; if (!tl) return
+      const layer = document.createElement('div'); layer.className = 'pr-search'; layer.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2'
+      const W = pageEl.clientWidth, H = pageEl.clientHeight; const pr = pageEl.getBoundingClientRect()
+      tl.querySelectorAll('span').forEach((span: any) => {
+        const node = span.firstChild; const text = (node?.textContent || '').toLowerCase(); if (!text.includes(termo)) return
+        let from = 0, i: number
+        while ((i = text.indexOf(termo, from)) !== -1) {
+          try {
+            const r = document.createRange(); r.setStart(node, i); r.setEnd(node, i + termo.length)
+            const rect = r.getBoundingClientRect()
+            const d = document.createElement('div')
+            d.style.cssText = `position:absolute;left:${(rect.left - pr.left) / W * 100}%;top:${(rect.top - pr.top) / H * 100}%;width:${rect.width / W * 100}%;height:${rect.height / H * 100}%;background:${pn === ativoPage ? '#ff9632' : '#ffe14d'};opacity:.5;border-radius:2px`
+            layer.appendChild(d)
+          } catch {}
+          from = i + termo.length
+        }
+      })
+      pageEl.appendChild(layer)
+    })
+  }
+  // repinta a busca quando novas páginas entram em tela
+  useEffect(() => { if (busca.termo && busca.hits.length) requestAnimationFrame(() => pintarBusca(busca.hits, busca.idx)) }, [curPage, zoom])
+
+  /* ─────────── RESUMO DA PÁGINA (feature 5) ─────────── */
+  const resumirPagina = async () => {
+    if (resumindo) return
+    setResumindo(true)
+    try {
+      const t = await textoDaPagina(curPageRef.current)
+      if (!t) { alert('Esta página não tem texto selecionável. Rode o OCR antes de resumir.'); setResumindo(false); return }
+      const r = await resumirIA(t, nomeRef.current)
+      onExtract?.(`📝 Resumo — ${nomeRef.current || 'documento'} (p. ${curPageRef.current})\n${r}`, curPageRef.current)
+    } catch (e: any) { alert('Falha ao resumir: ' + (e?.message || e)) }
+    setResumindo(false)
+  }
+  // resumir o trecho atualmente selecionado (a partir do pop-up)
+  const resumirSelecao = async () => {
+    const trecho = popup?.shown; if (!trecho) return
+    setPopup(null); acumRef.current = ''; setAcumLen(0)
+    try { const r = await resumirIA(trecho, nomeRef.current); onExtract?.(`📝 Resumo da seleção${curPageRef.current ? ` (p. ${curPageRef.current})` : ''}\n${r}`, curPageRef.current) }
+    catch (e: any) { alert('Falha ao resumir: ' + (e?.message || e)) }
+  }
+
+  /* ─────────── CHAT COM O DOCUMENTO (feature 1) ─────────── */
+  const enviarChat = async (texto: string) => {
+    const q = texto.trim(); if (!q || chat.carregando) return
+    setChat(c => ({ ...c, msgs: [...c.msgs, { role: 'user', text: q }], carregando: true }))
+    try {
+      const ctx = await obterTextoCompleto()
+      const resp = await perguntarAoDocIA(ctx, chat.msgs, q)
+      setChat(c => ({ ...c, msgs: [...c.msgs, { role: 'assistant', text: resp || '(resposta vazia)' }], carregando: false }))
+    } catch (e: any) {
+      setChat(c => ({ ...c, msgs: [...c.msgs, { role: 'assistant', text: '⚠ ' + (e?.message || 'falha na IA') }], carregando: false }))
+    }
+  }
+
+  // expõe ações imperativas ao componente pai (feature 4: ir p/ marcador; feature 6: importar no painel de comparação)
+  useEffect(() => { if (viewerApi) viewerApi.current = { gotoPage: irParaPagina, importarArquivo: importar, getNumPages: () => numPages, getCurPage: () => curPageRef.current } })
+  // flush da sessão ao desmontar (feature 8)
+  useEffect(() => () => flushSessao(), [])
+  // feature 3: Ctrl+F abre a busca (só no visualizador principal com PDF carregado)
+  useEffect(() => {
+    if (secondary) return
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F') && pdfRef.current) { e.preventDefault(); setBusca(b => ({ ...b, open: true })) }
+    }
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
+  }, [secondary])
+  // feature 8: grava a sessão quando a aba perde visibilidade (sem perder tempo de leitura)
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'hidden') { flushSessao(); if (nomeRef.current) sessaoRef.current = { arquivo: nomeRef.current + '.pdf', inicio: Date.now(), pagInicial: curPageRef.current, pagMax: maxPageRef.current } } }
+    document.addEventListener('visibilitychange', onVis); return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
   // re-ajusta à largura quando a coluna muda de tamanho (divisória / tela cheia)
   useEffect(() => {
     const host = wrapRef.current; if (!host) return
@@ -1062,7 +1442,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
       {/* TOOLBAR DE LEITURA */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
         <label style={{ padding: '6px 12px', borderRadius: 8, background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
-          ↥ Importar PDF<input type="file" accept="application/pdf" hidden onChange={e => e.target.files?.[0] && importar(e.target.files[0])} />
+          ↥ Importar PDF<input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={e => e.target.files?.[0] && importar(e.target.files[0])} />
         </label>
         <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nome || '—'}</span>
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
@@ -1126,6 +1506,22 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
           {ocrStatus?.running ? `OCR… ${ocrStatus.pct}%` : '🔎 OCR'}
         </button>
 
+        <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
+        {/* feature 3: busca no documento */}
+        <button onClick={() => setBusca(b => ({ ...b, open: !b.open }))} disabled={!numPages} title="Buscar no documento (Ctrl+F)" style={{ ...btn, width: 'auto', padding: '0 8px', background: busca.open ? '#5b5bd6' : 'var(--surface)', color: busca.open ? '#fff' : 'var(--text-secondary)', border: busca.open ? 'none' : '1px solid var(--border)' }}>🔎 Buscar</button>
+        {/* feature 9: miniaturas */}
+        <button onClick={() => setThumbsOpen(o => !o)} disabled={!numPages} title="Miniaturas das páginas" style={{ ...btn, width: 'auto', padding: '0 8px', background: thumbsOpen ? '#5b5bd6' : 'var(--surface)', color: thumbsOpen ? '#fff' : 'var(--text-secondary)', border: thumbsOpen ? 'none' : '1px solid var(--border)' }}>▦</button>
+        {!secondary && <>
+          {/* feature 5: resumir página */}
+          <button onClick={resumirPagina} disabled={!numPages || resumindo} title="Resumir esta página (IA) → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px' }}>{resumindo ? '…' : '🧠 Resumir'}</button>
+          {/* feature 1: chat com o PDF */}
+          <button onClick={() => setChat(c => ({ ...c, open: !c.open }))} disabled={!numPages} title="Conversar com o documento (IA)" style={{ ...btn, width: 'auto', padding: '0 8px', background: chat.open ? '#5b5bd6' : 'var(--surface)', color: chat.open ? '#fff' : 'var(--text-secondary)', border: chat.open ? 'none' : '1px solid var(--border)' }}>💬 Chat</button>
+          {/* feature 4: marcar página */}
+          <button onClick={() => onAddBookmark?.(curPageRef.current)} disabled={!numPages} title="Marcar esta página (bookmark)" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🔖</button>
+          {/* feature 10: modo foco / leitura imersiva */}
+          <button onClick={onToggleFoco} disabled={!numPages} title="Modo foco / leitura imersiva (oculta painéis)" style={{ ...btn, width: 'auto', padding: '0 8px', background: foco ? '#5b5bd6' : 'var(--surface)', color: foco ? '#fff' : 'var(--text-secondary)', border: foco ? 'none' : '1px solid var(--border)' }}>⛶</button>
+        </>}
+
         <span style={{ flex: 1 }} />
         {/* indicador de página + ir para página (campo integrado, sem setinhas) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1153,9 +1549,68 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
 
       {/* SCROLLER DO PDF + overlays de foco */}
       <div ref={viewBoxRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
-        <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll} style={{ position: 'absolute', inset: 0, overflow: 'auto', padding: 18, background: 'var(--bg-subtle, #1112)', ['--pr-filter' as any]: tomFilter(tom) }}>
-          {!numPages && <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Importe um PDF para começar a leitura.</div>}
+        {/* feature 12: indicador de progresso de leitura */}
+        {numPages > 0 && (
+          <div title={`Página ${curPage} de ${numPages} — ${Math.round((maxPage / numPages) * 100)}% lido`}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, zIndex: 47, background: 'var(--surface)' }}>
+            <div style={{ height: '100%', width: `${(maxPage / numPages) * 100}%`, background: 'linear-gradient(90deg,#5b5bd6,#8b5cf6)', transition: 'width .25s' }} />
+            <div style={{ position: 'absolute', left: `calc(${(curPage / numPages) * 100}% - 1px)`, top: 0, width: 2, height: '100%', background: '#ff9632' }} />
+          </div>
+        )}
+        {/* feature 3: barra de busca */}
+        {busca.open && numPages > 0 && (
+          <div style={{ position: 'absolute', top: 12, right: 14, zIndex: 60, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,.28)' }}>
+            <input autoFocus value={busca.termo} placeholder="Buscar no PDF…"
+              onChange={e => setBusca(b => ({ ...b, termo: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter') { if (busca.hits.length && busca.termo === buscaRef.current.termo) navegarBusca(e.shiftKey ? -1 : 1); else rodarBusca(busca.termo) } if (e.key === 'Escape') { setBusca(b => ({ ...b, open: false })); pintarBusca([], -1) } }}
+              style={{ width: 180, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem', padding: '5px 8px', borderRadius: 7, outline: 'none' }} />
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', minWidth: 56, textAlign: 'center', fontFamily: 'var(--font-mono)' }}>{busca.buscando ? '…' : busca.hits.length ? `${busca.idx + 1}/${busca.hits.length}` : (busca.termo ? '0' : '')}</span>
+            <button onClick={() => navegarBusca(-1)} disabled={!busca.hits.length} style={{ ...btn, width: 26 }}>▲</button>
+            <button onClick={() => navegarBusca(1)} disabled={!busca.hits.length} style={{ ...btn, width: 26 }}>▼</button>
+            <button onClick={() => { setBusca(b => ({ ...b, open: false })); pintarBusca([], -1) }} style={{ ...btn, width: 26 }}>✕</button>
+          </div>
+        )}
+        {/* feature 9: tira de miniaturas (colapsável) */}
+        {thumbsOpen && numPages > 0 && (
+          <ThumbStrip pdf={pdfRef.current} numPages={numPages} curPage={curPage} onGo={irParaPagina} />
+        )}
+        <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll}
+          style={{ position: 'absolute', top: numPages ? 4 : 0, bottom: 0, left: thumbsOpen && numPages ? 120 : 0, right: chat.open && numPages ? 332 : 0, overflow: 'auto', padding: foco ? '40px 8%' : 18, background: foco ? 'var(--card-bg)' : 'var(--bg-subtle, #1112)', transition: 'padding .25s', ['--pr-filter' as any]: tomFilter(tom) }}>
+          {!numPages && (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, color: 'var(--text-muted)', fontSize: '0.9rem', padding: 20 }}>
+              <div>Importe um PDF para começar a leitura.</div>
+              {/* feature 11: documentos recentes */}
+              {recentes.length > 0 && (
+                <div style={{ width: '100%', maxWidth: 560 }}>
+                  <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 10, textAlign: 'center' }}>Abertos recentemente</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(96px,1fr))', gap: 12 }}>
+                    {recentes.slice(0, 5).map((r: any) => {
+                      const pct = r.numPages ? Math.round(((r.lastPage || 0) / r.numPages) * 100) : 0
+                      return (
+                        <button key={r.name} onClick={() => fileInputRef.current?.click()} title={`${r.name}\nClique para reimportar (o PDF não fica salvo por privacidade)`}
+                          style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 6, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', textAlign: 'left' }}>
+                          <div style={{ width: '100%', aspectRatio: '0.72', borderRadius: 5, overflow: 'hidden', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            {r.thumb ? <img src={r.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 22 }}>📄</span>}
+                          </div>
+                          <div style={{ fontSize: '0.66rem', color: 'var(--text-secondary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name.replace(/\.pdf$/i, '')}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <div style={{ flex: 1, height: 4, borderRadius: 3, background: 'var(--surface)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: '#5b5bd6' }} /></div>
+                            <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{pct}%</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 8, textAlign: 'center' }}>Por privacidade, o NexusOS não guarda o arquivo — só o histórico. Clique para reimportar.</div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+        {/* feature 1: chat com o documento (drawer lateral direito) */}
+        {chat.open && numPages > 0 && (
+          <ChatDocumento chat={chat} onEnviar={enviarChat} onClose={() => setChat(c => ({ ...c, open: false }))} onLimpar={() => setChat(c => ({ ...c, msgs: [] }))} onInserir={(t: string) => onExtract?.(t, curPageRef.current)} />
+        )}
         {/* régua (confinada à coluna do PDF) */}
         {ferramenta === 'regua' && <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y, height: 2, background: '#5b5bd6cc', pointerEvents: 'none', zIndex: 40 }} />}
         {/* máscara de leitura (faixa clara, resto escurecido) */}
@@ -1202,6 +1657,10 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
           <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.4, maxHeight: 90, overflowY: 'auto', padding: '6px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>{popup.shown}</div>
           <button onMouseDown={e => { e.preventDefault(); enviar() }} style={{ ...popBtn, background: '#15803D', color: '#fff', border: 'none', fontWeight: 700 }}>➜ Enviar para Palavras Destacadas</button>
           <button onMouseDown={e => { e.preventDefault(); pedirPalavrasChave() }} style={{ ...popBtn, background: '#EA580C', color: '#fff', border: 'none', fontWeight: 700 }}>✦ Extrair palavras-chave (IA)</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onMouseDown={e => { e.preventDefault(); resumirSelecao() }} style={{ ...popBtn, flex: 1, textAlign: 'center' }}>🧠 Resumir (IA)</button>
+            <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onGerarFlashcard?.(t, nomeRef.current) }} style={{ ...popBtn, flex: 1, textAlign: 'center' }}>🃏 Flashcard (IA)</button>
+          </div>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
         </div>
       </>, document.body)}
@@ -1280,7 +1739,7 @@ function usePdfReaderStore() {
 
 /* ═══════════════════════════════ SIDEBAR DE PASTAS (árvore Firestore + DnD) ═══════════════════════════════ */
 const miniBtn: any = { width: 22, height: 22, borderRadius: 5, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.72rem' }
-function PastasSidebar({ open, onToggle, store, docId, onOpenDoc, onNewDoc }: any) {
+function PastasSidebar({ open, onToggle, store, docId, onOpenDoc, onNewDoc, bookmarks = [], pdfNome, onGotoBookmark, onRemoveBookmark }: any) {
   const { pastas, docs, salvarPasta, removerPasta, removerDoc, moverDoc, moverPasta } = store
   const [exp, setExp] = useState<Record<string, boolean>>({})
   const drag = useRef<{ tipo: 'doc' | 'pasta'; id: string } | null>(null)
@@ -1343,13 +1802,36 @@ function PastasSidebar({ open, onToggle, store, docId, onOpenDoc, onNewDoc }: an
         {pastas.length === 0 && docs.length === 0 && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', padding: 8 }}>Crie uma pasta (＋) ou um documento (📄). Arraste para reorganizar.</div>}
         {nivel(null, 0)}
       </div>
+      {/* feature 4: marcadores de página do PDF aberto */}
+      <div style={{ flexShrink: 0, borderTop: '1px solid var(--border)', maxHeight: '40%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px' }}>
+          <b style={{ fontSize: '0.74rem', color: 'var(--text-primary)' }}>🔖 Marcadores</b>
+          <span style={{ flex: 1 }} />
+          {pdfNome && <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 110 }}>{pdfNome.replace(/\.pdf$/i, '')}</span>}
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 6px 8px' }}>
+          {!pdfNome && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', padding: '4px 8px' }}>Abra um PDF para usar marcadores.</div>}
+          {pdfNome && bookmarks.length === 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', padding: '4px 8px' }}>Use 🔖 na barra do PDF para marcar a página atual.</div>}
+          {bookmarks.map((b: any) => (
+            <div key={b.id} className="pr-row" style={{ paddingLeft: 8 }}>
+              <span onClick={() => onGotoBookmark?.(b.page)} style={{ flex: 1, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`Ir para a página ${b.page}`}>
+                <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#5b5bd6', background: 'rgba(91,91,214,.12)', borderRadius: 5, padding: '1px 5px', flexShrink: 0 }}>p.{b.page}</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.rotulo}</span>
+              </span>
+              <span className="pr-acts"><button title="Remover marcador" onClick={() => onRemoveBookmark?.(b.id)} style={miniBtn}>🗑</button></span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
 
 /* ═══════════════════════════════ MODAL PRÉ-VISUALIZAÇÃO DE IMPRESSÃO ═══════════════════════════════ */
 function PreviaImpressao({ html, titulo, onClose }: any) {
-  const exportarWord = () => download(`${(titulo || 'palavras_destacadas').replace(/[^\w\-]+/g, '_')}.doc`, wordDoc(html, titulo), 'application/msword;charset=utf-8')
+  const slug = (titulo || 'palavras_destacadas').replace(/[^\w\-]+/g, '_')
+  const exportarWord = () => download(`${slug}.doc`, wordDoc(html, titulo), 'application/msword;charset=utf-8')
+  const exportarMd = () => download(`${slug}.md`, `# ${(titulo || 'Palavras Destacadas')}\n\n${htmlToMarkdown(html)}`, 'text/markdown;charset=utf-8')   // feature 7
   const imprimirPDF = () => {
     const w = window.open('', '_blank'); if (!w) return
     w.document.write(wordDoc(html, titulo)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
@@ -1358,10 +1840,11 @@ function PreviaImpressao({ html, titulo, onClose }: any) {
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 8000 }} />
     <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8001, width: 'min(840px,94vw)', height: 'min(640px,90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
-        <b style={{ fontSize: '0.92rem', color: 'var(--text-primary)' }}>🖨️ Pré-visualização de Impressão</b>
+        <b style={{ fontSize: '0.92rem', color: 'var(--text-primary)' }}>🖨️ Pré-visualização / Exportar</b>
         <span style={{ flex: 1 }} />
         <button onClick={imprimirPDF} style={{ ...btn, width: 'auto', padding: '0 12px', background: '#5b5bd6', color: '#fff', border: 'none' }}>⬇ PDF / Imprimir</button>
         <button onClick={exportarWord} style={{ ...btn, width: 'auto', padding: '0 12px' }}>⬇ Word (.docx)</button>
+        <button onClick={exportarMd} style={{ ...btn, width: 'auto', padding: '0 12px' }}>⬇ Markdown (.md)</button>
         <button onClick={onClose} style={btn}>✕</button>
       </div>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 24, background: '#525659' }}>
@@ -1492,8 +1975,64 @@ const DIFIC = [
   { id: 'dificil', emoji: '🥵', label: 'Difícil', cor: '#DC2626' },
 ]
 
+/* ─────────── LINHA DO TEMPO DE LEITURA (feature 8) ─────────── */
+function TimelineLeitura({ sess }: any) {
+  const fmtData = (iso: string) => { try { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}` } catch { return iso } }
+  // agrupa sessões por dia (desc) e ordena por horário de criação
+  const porDia = useMemo(() => {
+    const map: Record<string, any[]> = {}
+    ;[...sess.sessoes].sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0)).forEach(s => { (map[s.data || '—'] ||= []).push(s) })
+    return Object.entries(map).sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  }, [sess.sessoes])
+  const totalMin = sess.sessoes.reduce((s: number, x: any) => s + (x.minutos || 0), 0)
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 22px' }}>
+      {!sess.uid && <div style={{ color: '#EA580C', fontSize: '.86rem' }}>Faça login para registrar sua leitura.</div>}
+      {sess.uid && sess.sessoes.length === 0 && (
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '.9rem', lineHeight: 1.7, padding: '40px 0' }}>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>🕒</div>
+          Ainda não há sessões registradas.<br />
+          <span style={{ fontSize: '.8rem' }}>Abra um PDF e leia — o NexusOS registra automaticamente as páginas lidas e o tempo de cada sessão.</span>
+        </div>
+      )}
+      {sess.sessoes.length > 0 && (
+        <div style={{ display: 'flex', gap: 18, marginBottom: 18, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 130, padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Sessões</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#5b5bd6' }}>{sess.sessoes.length}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: 130, padding: '12px 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <div style={{ fontSize: '.62rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Tempo total</div>
+            <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#16A34A' }}>{Math.floor(totalMin / 60)}h{String(totalMin % 60).padStart(2, '0')}</div>
+          </div>
+        </div>
+      )}
+      {porDia.map(([dia, lista]) => (
+        <div key={dia} style={{ marginBottom: 18 }}>
+          <div style={{ position: 'sticky', top: 0, fontSize: '.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: '#5b5bd6', padding: '4px 0 8px', background: 'var(--card-bg)' }}>{fmtData(dia)}</div>
+          <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {(lista as any[]).map(s => (
+              <div key={s.id} style={{ position: 'relative', padding: '9px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                <div style={{ position: 'absolute', left: -21, top: 14, width: 10, height: 10, borderRadius: '50%', background: '#5b5bd6', border: '2px solid var(--card-bg)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>📄 {s.arquivo || 'documento'}</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>⏱ {s.minutos || 0} min</span>
+                </div>
+                <div style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginTop: 3 }}>Leu páginas {s.pagInicio}–{s.pagFim} <span style={{ color: 'var(--text-muted)' }}>({Math.max(0, (s.pagFim || 0) - (s.pagInicio || 0) + 1)} pág.)</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function DiarioLeitura({ onClose }: any) {
   const st = useDiarioStore()
+  const sess = useSessoesStore()                            // feature 8
+  const [aba, setAba] = useState<'diario' | 'timeline'>('diario')  // feature 8
   const [sel, setSel] = useState<string | null>(null)
   const [novoConc, setNovoConc] = useState('')
   const [aberta, setAberta] = useState<Record<string, boolean>>({})        // disciplinas abertas
@@ -1573,11 +2112,17 @@ function DiarioLeitura({ onClose }: any) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)' }}>
         <span style={{ display: 'inline-flex', color: '#5b5bd6' }}><Icon e="📖" size={22} /></span>
         <b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Diário de Leitura</b>
+        <div style={{ display: 'flex', gap: 2, marginLeft: 8, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
+          {([['diario', '📋 Acompanhamento'], ['timeline', '🕒 Linha do tempo']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setAba(k)} style={{ ...btn, width: 'auto', padding: '0 11px', fontSize: '0.74rem', background: aba === k ? '#5b5bd6' : 'transparent', color: aba === k ? '#fff' : 'var(--text-secondary)', border: 'none' }}>{l}</button>
+          ))}
+        </div>
         <span style={{ flex: 1 }} />
         {!st.uid && <span style={{ fontSize: '0.72rem', color: '#EA580C' }}>Faça login para salvar</span>}
         <button onClick={onClose} style={btn}>✕</button>
       </div>
 
+      {aba === 'timeline' ? <TimelineLeitura sess={sess} /> : (
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {/* concursos / temas */}
         <div style={{ width: 250, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1690,6 +2235,7 @@ function DiarioLeitura({ onClose }: any) {
           </>}
         </div>
       </div>
+      )}
     </div>
 
     {/* modal "o que foi estudado" */}
@@ -1784,6 +2330,151 @@ function AguaPop({ cor, agua, meta, pct, L, add }: any) {
   )
 }
 
+/* ═══════════════════════════════ FLASHCARDS · ESTUDO ATIVO (feature 2) ═══════════════════════════════
+   users/{uid}/flashcards/{id} -> { id, frente, verso, fonte, tema, ef, rep, intervalo, proxRevisao, ultimaRevisao, criadoEm } */
+function useFlashcardsStore() {
+  const uid = useUid()
+  const [cards, setCards] = useState<any[]>([])
+  useEffect(() => {
+    if (!uid) return
+    return onSnapshot(collection(db, 'users', uid, 'flashcards'), s => setCards(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+  }, [uid])
+  const salvarCard = useCallback(async (c: any) => { if (uid) await setDoc(doc(db, 'users', uid, 'flashcards', c.id), clean(c), { merge: true }) }, [uid])
+  const removerCard = useCallback(async (id: string) => { if (uid) await deleteDoc(doc(db, 'users', uid, 'flashcards', id)) }, [uid])
+  return { uid, cards, salvarCard, removerCard }
+}
+
+/* sessões de leitura (feature 8) — leitura da timeline alimentada pelo PdfViewer */
+function useSessoesStore() {
+  const uid = useUid()
+  const [sessoes, setSessoes] = useState<any[]>([])
+  useEffect(() => {
+    if (!uid) return
+    return onSnapshot(collection(db, 'users', uid, 'leituraSessoes'), s => setSessoes(s.docs.map(d => ({ id: d.id, ...d.data() }))))
+  }, [uid])
+  const removerSessao = useCallback(async (id: string) => { if (uid) await deleteDoc(doc(db, 'users', uid, 'leituraSessoes', id)) }, [uid])
+  return { uid, sessoes, removerSessao }
+}
+
+/* MODAL: gerar flashcards a partir de um trecho (revisão antes de salvar) */
+function FlashcardGerarModal({ trecho, fonte, store, onClose }: any) {
+  const [estado, setEstado] = useState<'gerando' | 'pronto' | 'erro'>('gerando')
+  const [erro, setErro] = useState('')
+  const [cards, setCards] = useState<{ frente: string; verso: string; on: boolean }[]>([])
+  const [tema, setTema] = useState(fonte || '')
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try { const r = await gerarFlashcardsIA(trecho, fonte); if (!vivo) return; setCards(r.map(c => ({ ...c, on: true }))); setEstado(r.length ? 'pronto' : 'erro'); if (!r.length) setErro('A IA não retornou flashcards. Tente um trecho com definições mais claras.') }
+      catch (e: any) { if (vivo) { setErro(e?.message || 'Falha na IA'); setEstado('erro') } }
+    })()
+    return () => { vivo = false }
+  }, [])
+  const salvar = async () => {
+    const sel = cards.filter(c => c.on && c.frente.trim() && c.verso.trim())
+    for (const c of sel) {
+      const id = newId()
+      await store.salvarCard({ id, frente: c.frente.trim(), verso: c.verso.trim(), fonte: fonte || '', tema: tema.trim(), ef: 2.5, rep: 0, intervalo: 0, proxRevisao: hojeISO(), ultimaRevisao: '', criadoEm: Date.now() })
+    }
+    onClose(sel.length)
+  }
+  const upd = (i: number, campo: 'frente' | 'verso', v: string) => setCards(cs => cs.map((c, j) => j === i ? { ...c, [campo]: v } : c))
+  return createPortal(<>
+    <div onMouseDown={() => onClose(0)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9200 }} />
+    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(560px,95vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', padding: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+        <span style={{ fontSize: '1.15rem' }}>🃏</span><b style={{ color: 'var(--text-primary)' }}>Gerar flashcards</b>
+        <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); onClose(0) }} style={btn}>✕</button>
+      </div>
+      {!store.uid && <div style={{ fontSize: '.72rem', color: '#EA580C', marginBottom: 8 }}>Faça login para salvar os flashcards no Firestore.</div>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 700 }}>Tema/baralho</span>
+        <input value={tema} onChange={e => setTema(e.target.value)} placeholder="Ex.: Poder Constituinte" style={{ flex: 1, ...inpCfg }} />
+      </div>
+      {estado === 'gerando' && <div style={{ padding: '28px 0', textAlign: 'center', color: 'var(--text-muted)' }}>Gerando flashcards com a IA…</div>}
+      {estado === 'erro' && <div style={{ padding: '14px', color: '#DC2626', fontSize: '.84rem' }}>⚠ {erro}</div>}
+      {estado === 'pronto' && (
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+          {cards.map((c, i) => (
+            <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 11, padding: 10, background: c.on ? 'var(--surface)' : 'transparent', opacity: c.on ? 1 : 0.55 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+                <input type="checkbox" checked={c.on} onChange={() => setCards(cs => cs.map((x, j) => j === i ? { ...x, on: !x.on } : x))} style={{ width: 16, height: 16, accentColor: '#5b5bd6' }} />
+                <span style={{ fontSize: '.64rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>Card {i + 1}</span>
+              </div>
+              <textarea value={c.frente} onChange={e => upd(i, 'frente', e.target.value)} rows={2} placeholder="Frente (pergunta)" style={{ width: '100%', boxSizing: 'border-box', marginBottom: 6, resize: 'vertical', ...inpCfg, fontWeight: 600 }} />
+              <textarea value={c.verso} onChange={e => upd(i, 'verso', e.target.value)} rows={2} placeholder="Verso (resposta)" style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', ...inpCfg }} />
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <span style={{ flex: 1, fontSize: '.7rem', color: 'var(--text-muted)', alignSelf: 'center' }}>{fonte ? `Fonte: ${fonte}` : ''}</span>
+        <button onMouseDown={e => { e.preventDefault(); onClose(0) }} style={{ ...btn, width: 'auto', padding: '0 12px' }}>Cancelar</button>
+        <button onMouseDown={e => { e.preventDefault(); salvar() }} disabled={estado !== 'pronto' || !store.uid || !cards.some(c => c.on)} style={{ height: 32, padding: '0 16px', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '.84rem', cursor: 'pointer', opacity: (estado !== 'pronto' || !store.uid) ? 0.5 : 1 }}>💾 Salvar {cards.filter(c => c.on).length}</button>
+      </div>
+    </div>
+  </>, document.body)
+}
+
+/* MODAL: revisar flashcards (sessão de recordação ativa com agendamento) */
+function FlashcardRevisarModal({ store, onClose }: any) {
+  const hoje = hojeISO()
+  const [tema, setTema] = useState<string>('__todos__')
+  const temas = useMemo(() => Array.from(new Set(store.cards.map((c: any) => c.tema).filter(Boolean))).sort(), [store.cards])
+  const devidos = useMemo(() => store.cards.filter((c: any) => (!c.proxRevisao || c.proxRevisao <= hoje) && (tema === '__todos__' || c.tema === tema)), [store.cards, tema, hoje])
+  const [i, setI] = useState(0)
+  const [virado, setVirado] = useState(false)
+  const [fila, setFila] = useState<any[]>([])
+  useEffect(() => { setFila(devidos); setI(0); setVirado(false) }, [tema])
+  const atual = fila[i]
+  const responder = async (q: 'errei' | 'dificil' | 'facil') => {
+    if (!atual) return
+    await store.salvarCard({ id: atual.id, ...agendarRevisao(atual, q) })
+    if (i + 1 < fila.length) { setI(i + 1); setVirado(false) } else { setFila([]); setI(0) }
+  }
+  const totalDeck = store.cards.filter((c: any) => tema === '__todos__' || c.tema === tema).length
+  return createPortal(<>
+    <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9200 }} />
+    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(620px,95vw)', minHeight: 420, maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.5)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)' }}>
+        <span style={{ fontSize: '1.2rem' }}>🃏</span><b style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Estudo ativo — Flashcards</b>
+        <span style={{ flex: 1 }} />
+        <select value={tema} onChange={e => setTema(e.target.value)} style={{ ...inpD, cursor: 'pointer', maxWidth: 180 }}>
+          <option value="__todos__">Todos os temas</option>
+          {temas.map((t: any) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <button onClick={onClose} style={btn}>✕</button>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: 18 }}>
+        {!store.uid ? <div style={{ margin: 'auto', color: '#EA580C', fontSize: '.86rem' }}>Faça login para usar os flashcards.</div>
+          : store.cards.length === 0 ? <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)', fontSize: '.88rem', lineHeight: 1.6 }}>Nenhum flashcard ainda.<br />Selecione um trecho no PDF e use <b>🃏 Flashcard (IA)</b> para criar.</div>
+          : !atual ? <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '.9rem', lineHeight: 1.6 }}>
+              <div style={{ fontSize: '2rem', marginBottom: 8 }}>✅</div>
+              Revisões em dia neste tema!<br />
+              <span style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>{totalDeck} card(s) no baralho · próximas revisões agendadas.</span>
+            </div>
+          : <>
+            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginBottom: 10, textAlign: 'center' }}>{i + 1} de {fila.length} devido(s){atual.fonte ? ` · ${atual.fonte}` : ''}{atual.tema ? ` · ${atual.tema}` : ''}</div>
+            <div onClick={() => setVirado(v => !v)} style={{ flex: 1, minHeight: 180, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24, borderRadius: 14, border: '1px solid var(--border)', background: virado ? 'rgba(91,91,214,.08)' : 'var(--surface)', position: 'relative' }}>
+              <span style={{ position: 'absolute', top: 10, left: 14, fontSize: '.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{virado ? 'Verso' : 'Frente'}</span>
+              <div style={{ fontSize: '1.02rem', color: 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap', fontWeight: virado ? 500 : 600 }}>{virado ? atual.verso : atual.frente}</div>
+              {!virado && <div style={{ marginTop: 16, fontSize: '.74rem', color: 'var(--text-muted)' }}>clique para revelar</div>}
+            </div>
+            {virado ? (
+              <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                <button onClick={() => responder('errei')} style={{ flex: 1, height: 42, borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Errei</button>
+                <button onClick={() => responder('dificil')} style={{ flex: 1, height: 42, borderRadius: 10, border: 'none', background: '#EA580C', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Difícil</button>
+                <button onClick={() => responder('facil')} style={{ flex: 1, height: 42, borderRadius: 10, border: 'none', background: '#16A34A', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Fácil</button>
+              </div>
+            ) : (
+              <button onClick={() => setVirado(true)} style={{ marginTop: 14, height: 42, borderRadius: 10, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Revelar resposta</button>
+            )}
+          </>}
+      </div>
+    </div>
+  </>, document.body)
+}
+
 export default function PDFReader() {
   const editorRef = useRef<HTMLDivElement>(null)
   const store = usePdfReaderStore()
@@ -1793,9 +2484,44 @@ export default function PDFReader() {
   const [diario, setDiario] = useState(false)
   const [split, setSplit] = useState(0.56)
   const [viewMode, setViewMode] = useState<'split' | 'pdf' | 'editor'>('split')               // fração de largura da coluna do PDF
-  const [autoEditor, setAutoEditor] = useState(false)   // feature 3: editor oculto, surge ao passar o mouse na lateral direita
+  const [autoEditor, setAutoEditor] = useState(false)   // editor oculto, surge ao passar o mouse na lateral direita
   const [autoHover, setAutoHover] = useState(false)
   const editorAberto = !autoEditor || autoHover
+  // ── novos recursos ──
+  const fcStore = useFlashcardsStore()                 // feature 2
+  const [fcGerar, setFcGerar] = useState<{ trecho: string; fonte: string } | null>(null)  // feature 2
+  const [fcRevisar, setFcRevisar] = useState(false)    // feature 2
+  const viewerApi = useRef<any>({})                    // feature 4/6: ações imperativas do visualizador principal
+  const viewerApiB = useRef<any>({})                   // feature 6: visualizador de comparação
+  const [pdfAtual, setPdfAtual] = useState<{ name: string; numPages: number } | null>(null)  // feature 4/11
+  const [bookmarks, setBookmarks] = useState<any[]>([])  // feature 4 (por arquivo, em localStorage)
+  const [foco, setFoco] = useState(false)              // feature 10
+  const [comparar, setComparar] = useState(false)      // feature 6
+  const focoPrev = useRef<{ sidebar: boolean; view: any } | null>(null)
+  // chave de bookmarks por arquivo
+  const bmKey = (name: string) => 'nexus_pr_bookmarks_' + name
+  const carregarBookmarks = (name: string) => { try { setBookmarks(JSON.parse(localStorage.getItem(bmKey(name)) || '[]')) } catch { setBookmarks([]) } }
+  const persistBookmarks = (name: string, list: any[]) => { try { localStorage.setItem(bmKey(name), JSON.stringify(list)) } catch {} }
+  const onFileLoaded = useCallback((name: string, numPages: number) => { setPdfAtual({ name, numPages }); carregarBookmarks(name) }, [])
+  const addBookmark = useCallback((page: number) => {
+    if (!pdfAtual) return
+    const rotulo = prompt(`Marcador para a página ${page}:`, `Página ${page}`)
+    if (rotulo == null) return
+    setBookmarks(prev => { const list = [...prev.filter(b => b.page !== page), { id: newId(), page, rotulo: rotulo.trim() || `Página ${page}` }].sort((a, b) => a.page - b.page); persistBookmarks(pdfAtual.name, list); return list })
+  }, [pdfAtual])
+  const removeBookmark = useCallback((id: string) => { setBookmarks(prev => { const list = prev.filter(b => b.id !== id); if (pdfAtual) persistBookmarks(pdfAtual.name, list); return list }) }, [pdfAtual])
+  const irBookmark = useCallback((page: number) => { viewerApi.current?.gotoPage?.(page) }, [])
+  // feature 10: modo foco — oculta sidebar e editor, PDF imersivo
+  const toggleFoco = useCallback(() => {
+    setFoco(f => {
+      if (!f) { focoPrev.current = { sidebar: sidebarOpen, view: viewMode }; setSidebarOpen(false); setViewMode('pdf'); setComparar(false) }
+      else { setSidebarOpen(focoPrev.current?.sidebar ?? true); setViewMode(focoPrev.current?.view ?? 'split') }
+      return !f
+    })
+  }, [sidebarOpen, viewMode])
+  // feature 2: gerar flashcard a partir de um trecho do PDF
+  const gerarFlashcard = useCallback((trecho: string, fonte: string) => { setFcGerar({ trecho, fonte: fonte || '' }) }, [])
+  const fcDevidos = useMemo(() => { const h = hojeISO(); return fcStore.cards.filter((c: any) => !c.proxRevisao || c.proxRevisao <= h).length }, [fcStore.cards])
   const rowRef = useRef<HTMLDivElement>(null)
   const startSplit = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -1825,12 +2551,21 @@ export default function PDFReader() {
   scheduleRef.current = agendarSalvar
   useEffect(() => () => clearTimeout(saveT.current), [])
 
-  // trecho extraído do PDF → insere no editor
-  const onExtract = useCallback((texto: string) => {
+  // trecho extraído do PDF → insere no editor (com referência de página — feature 7)
+  const onExtract = useCallback((texto: string, page?: number) => {
     const ed = editorRef.current; if (!ed) return
     if (ed.querySelector('p')?.textContent?.startsWith('Os trechos extraídos')) ed.innerHTML = ''
-    const p = document.createElement('p'); p.textContent = texto
-    ed.appendChild(p); ed.scrollTop = ed.scrollHeight
+    const ehResumoOuMulti = /\n/.test(texto)
+    if (ehResumoOuMulti) {
+      // resumo/multi-linha: cada linha vira um parágrafo, preservando a referência no título
+      texto.split('\n').forEach((linha, idx) => { const p = document.createElement('p'); p.textContent = linha; if (idx === 0) p.style.fontWeight = '600'; ed.appendChild(p) })
+    } else {
+      const p = document.createElement('p')
+      p.textContent = texto
+      if (page) { const ref = document.createElement('span'); ref.textContent = `  (p. ${page})`; ref.style.cssText = 'color:var(--text-muted);font-size:.8em'; ref.contentEditable = 'false'; p.appendChild(ref) }
+      ed.appendChild(p)
+    }
+    ed.scrollTop = ed.scrollHeight
     scheduleRef.current()
   }, [])
   const onEditorChange = useCallback(() => { scheduleRef.current() }, [])
@@ -1866,28 +2601,43 @@ export default function PDFReader() {
 
   return (
     <div style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--card-bg)' }}>
-      <PastasSidebar open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} store={store} docId={docId} onOpenDoc={abrirDoc} onNewDoc={novoDoc} />
+      <PastasSidebar open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} store={store} docId={docId} onOpenDoc={abrirDoc} onNewDoc={novoDoc}
+        bookmarks={bookmarks} pdfNome={pdfAtual?.name} onGotoBookmark={irBookmark} onRemoveBookmark={removeBookmark} />
       {/* linha redimensionável: PDF | divisória | editor */}
       <div ref={rowRef} style={{ flex: 1, minWidth: 0, display: 'flex', position: 'relative' }}>
         {/* coluna PDF */}
-        <div style={{ flexBasis: autoEditor ? '100%' : viewMode === 'editor' ? '0%' : viewMode === 'pdf' ? '100%' : `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0, overflow: 'hidden', display: (!autoEditor && viewMode === 'editor') ? 'none' : 'block' }}>
-          <PdfViewer onExtract={onExtract} viewMode={viewMode} setViewMode={setViewMode} />
+        <div style={{ flexBasis: comparar ? '50%' : autoEditor ? '100%' : viewMode === 'editor' ? '0%' : viewMode === 'pdf' ? '100%' : `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0, overflow: 'hidden', display: (!autoEditor && !comparar && viewMode === 'editor') ? 'none' : 'block' }}>
+          <PdfViewer onExtract={onExtract} viewMode={viewMode} setViewMode={setViewMode}
+            viewerApi={viewerApi} onFileLoaded={onFileLoaded} onAddBookmark={addBookmark} onGerarFlashcard={gerarFlashcard} foco={foco} onToggleFoco={toggleFoco} />
         </div>
+        {/* feature 6: painel de comparação (segundo PDF) — ocupa o lugar do editor */}
+        {comparar && (
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', borderLeft: '2px solid #5b5bd6' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--border)', background: 'rgba(91,91,214,.06)' }}>
+              <span style={{ fontSize: '.74rem', fontWeight: 700, color: '#5b5bd6' }}>⇆ Comparação (Documento B)</span>
+              <span style={{ flex: 1 }} />
+              <button onClick={() => setComparar(false)} title="Fechar comparação" style={{ ...btn, width: 'auto', padding: '0 9px', fontSize: '.74rem' }}>✕ Fechar</button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0 }}>
+              <PdfViewer onExtract={onExtract} viewMode={'pdf'} setViewMode={() => {}} secondary viewerApi={viewerApiB} />
+            </div>
+          </div>
+        )}
         {/* divisória arrastável — só no modo dividido e quando o editor não está em auto-ocultar */}
-        {viewMode === 'split' && !autoEditor && (
+        {viewMode === 'split' && !autoEditor && !comparar && (
           <div onMouseDown={startSplit} title="Arraste para ajustar" style={{ width: 6, flexShrink: 0, cursor: 'col-resize', background: 'var(--border)' }}
             onMouseEnter={e => (e.currentTarget.style.background = '#5b5bd6')} onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')} />
         )}
         {/* faixa de detecção na lateral direita — revela o editor no modo auto-ocultar */}
-        {autoEditor && !autoHover && (
+        {autoEditor && !autoHover && !comparar && (
           <div onMouseEnter={() => setAutoHover(true)}
             style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 18, zIndex: 45, cursor: 'pointer', background: 'linear-gradient(to left, rgba(91,91,214,0.16), transparent)' }}
             title="Passe o mouse para abrir o editor" />
         )}
-        {/* coluna editor (drawer quando auto-ocultar) */}
+        {/* coluna editor (drawer quando auto-ocultar) — oculta durante a comparação */}
         <div
           onMouseLeave={() => autoEditor && setAutoHover(false)}
-          style={autoEditor ? {
+          style={comparar ? { display: 'none' } : autoEditor ? {
             position: 'absolute', top: 0, bottom: 0, right: 0, width: 'min(620px, 52%)', zIndex: 46,
             display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--card-bg)',
             borderLeft: '1px solid var(--border)', boxShadow: editorAberto ? '-12px 0 40px rgba(0,0,0,0.32)' : 'none',
@@ -1919,6 +2669,10 @@ export default function PDFReader() {
             </button>
           </div>
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+          <button onClick={() => setComparar(c => !c)} title="Comparar dois PDFs lado a lado" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, background: comparar ? '#5b5bd6' : 'var(--surface)', color: comparar ? '#fff' : 'var(--text-secondary)', border: comparar ? 'none' : '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⇆</button>
+          <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            🃏{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}
+          </button>
           <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📖" size={16} /></button>
           <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⚙" size={16} /></button>
           <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
@@ -1933,6 +2687,8 @@ export default function PDFReader() {
       {previa != null && <PreviaImpressao html={previa} titulo={titulo || 'Palavras Destacadas'} onClose={() => setPrevia(null)} />}
       {cfgIA && <ConfigIAModal store={store} onClose={() => setCfgIA(false)} />}
       {diario && <DiarioLeitura onClose={() => setDiario(false)} />}
+      {fcGerar && <FlashcardGerarModal trecho={fcGerar.trecho} fonte={fcGerar.fonte} store={fcStore} onClose={(n: number) => { setFcGerar(null); if (n) { /* salvo */ } }} />}
+      {fcRevisar && <FlashcardRevisarModal store={fcStore} onClose={() => setFcRevisar(false)} />}
       <style>{`
         .pr-page{position:relative;margin:0 auto 16px;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden;cursor:crosshair}
         .pr-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c4c4c4;font:600 22px/1 system-ui;z-index:0}
