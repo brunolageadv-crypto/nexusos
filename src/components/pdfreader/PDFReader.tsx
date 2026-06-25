@@ -851,7 +851,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   const onDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return
     if (!(e.target as HTMLElement).closest('.pr-page')) return   // só inicia sobre uma página
-    if (ferramenta !== 'none') return                            // ferramentas de foco não capturam
+    // os auxílios de leitura (lupa/máscara/régua/foco) têm pointer-events:none, então
+    // a seleção de palavras/trechos continua ativa mesmo com eles ligados.
     e.preventDefault(); window.getSelection()?.removeAllRanges()
     dragRef.current = { x0: e.clientX, y0: e.clientY }
     setBox({ left: e.clientX, top: e.clientY, width: 0, height: 0 })
