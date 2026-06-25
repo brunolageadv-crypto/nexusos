@@ -325,6 +325,52 @@ function ajustarRecuo(ed: HTMLElement, delta: number) {
   ed.focus()
 }
 
+/* fontes disponíveis no editor (feature 1) — com fallbacks seguros */
+const FONTES: { nome: string; css: string }[] = [
+  { nome: 'Calibri', css: "Calibri, 'Segoe UI', system-ui, sans-serif" },
+  { nome: 'Aptos', css: "Aptos, Calibri, 'Segoe UI', system-ui, sans-serif" },
+  { nome: 'Avenir Next', css: "'Avenir Next', Avenir, 'Segoe UI', system-ui, sans-serif" },
+  { nome: 'Marope', css: "Marope, 'Segoe UI', system-ui, sans-serif" },
+  { nome: 'Optima', css: "Optima, 'Segoe UI', Candara, sans-serif" },
+  { nome: 'Open Sans', css: "'Open Sans', system-ui, sans-serif" },
+  { nome: 'Lato', css: "Lato, system-ui, sans-serif" },
+  { nome: 'Frutiger', css: "Frutiger, 'Segoe UI', 'Open Sans', system-ui, sans-serif" },
+  { nome: 'Source Sans 3', css: "'Source Sans 3', 'Source Sans Pro', system-ui, sans-serif" },
+  { nome: 'Segoe UI', css: "'Segoe UI', system-ui, sans-serif" },
+  { nome: 'Noto Sans', css: "'Noto Sans', system-ui, sans-serif" },
+]
+
+/* aplica família de fonte ao trecho selecionado (feature 1) */
+function aplicarFonte(css: string) {
+  document.execCommand('fontName', false, css)
+}
+
+/* aplica tamanho (px, 7..20) ao trecho selecionado, envolvendo num span (feature 2).
+   execCommand('fontSize') só aceita 1..7; por isso usamos um span com font-size em px. */
+function aplicarTamanho(ed: HTMLElement, px: number) {
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) { ed.focus(); return }
+  const range = sel.getRangeAt(0)
+  if (range.collapsed) {
+    // sem seleção: ajusta o tamanho do bloco atual (parágrafo)
+    let n: Node | null = range.startContainer
+    while (n && n !== ed && (n as HTMLElement).nodeType !== 1) n = n.parentElement
+    let bloco = n as HTMLElement | null
+    while (bloco && bloco !== ed && !/^(P|DIV|LI|H1|H2|H3|BLOCKQUOTE)$/.test(bloco.tagName)) bloco = bloco.parentElement
+    if (bloco && bloco !== ed) bloco.style.fontSize = px + 'px'
+    ed.focus(); return
+  }
+  const span = document.createElement('span')
+  span.style.fontSize = px + 'px'
+  try {
+    span.appendChild(range.extractContents())
+    range.insertNode(span)
+    // reposiciona o cursor após o span
+    sel.removeAllRanges()
+    const r2 = document.createRange(); r2.selectNodeContents(span); sel.addRange(r2)
+  } catch { document.execCommand('fontSize', false, '4') }
+  ed.focus()
+}
+
 function RichEditor({ editorRef, onChange }: any) {
   const [aiBtn, setAiBtn] = useState<{ x: number; y: number; termo: string } | null>(null)
   const [aiMenu, setAiMenu] = useState<{ x: number; y: number; loading: boolean; opts: string[] } | null>(null)
@@ -444,6 +490,8 @@ function RichEditor({ editorRef, onChange }: any) {
       {/* ── TOOLBAR (uma linha) ── */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 4, padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>
         <MenuBtn id="estilo" label="Estilo" title="Título / parágrafo" />
+        <MenuBtn id="fonte" label="Fonte" title="Família da fonte" />
+        <MenuBtn id="tamanho" label="A↕" title="Tamanho da letra (7 a 20)" />
         <Sep />
         <Btn cmd="bold" title="Negrito (Ctrl+B)">B</Btn>
         <Btn cmd="italic" title="Itálico (Ctrl+I)"><i>I</i></Btn>
@@ -482,6 +530,27 @@ function RichEditor({ editorRef, onChange }: any) {
         {[['h1', 'Título 1'], ['h2', 'Título 2'], ['h3', 'Título 3'], ['p', 'Parágrafo']].map(([v, l]) => (
           <button key={v} onMouseDown={e => { e.preventDefault(); exec('formatBlock', v); setMenu(null) }} style={menuItem}>{l}</button>
         ))}
+      </Painel>
+
+      <Painel id="fonte" width={196}>
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 6 }}>Família da fonte</div>
+        <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+          {FONTES.map(f => (
+            <button key={f.nome} onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => aplicarFonte(f.css)); setMenu(null) }}
+              style={{ ...menuItem, fontFamily: f.css, fontSize: '0.9rem' }}>{f.nome}</button>
+          ))}
+        </div>
+      </Painel>
+
+      <Painel id="tamanho" width={150}>
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 6 }}>Tamanho (7–20)</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+          {Array.from({ length: 14 }, (_, i) => i + 7).map(px => (
+            <button key={px} onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => aplicarTamanho(ed, px)) }}
+              style={{ height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700, fontSize: '0.78rem' }}>{px}</button>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 6, fontSize: '0.62rem', color: 'var(--text-muted)' }}>Selecione o texto e escolha o tamanho.</div>
       </Painel>
 
       <Painel id="alinhar" width={150}>
@@ -1644,6 +1713,77 @@ function DiarioLeitura({ onClose }: any) {
   </>, document.body)
 }
 
+/* ── Água rápida (feature 4): registra água sem sair do PDF Reader.
+   Grava no MESMO lugar da aba Saúde (users/{uid}/saude/{data}), então sincroniza tudo. ── */
+function AguaRapida() {
+  const uid = useUid()
+  const hoje = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
+  const [reg, setReg] = useState<any>(null)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    if (!uid || !db) return
+    return onSnapshot(doc(db, 'users', uid, 'saude', hoje), s => setReg(s.exists() ? s.data() : null))
+  }, [uid, hoje])
+  const agua = reg?.agua ?? 0
+  const meta = reg?.metaAgua ?? 2000
+  const pct = Math.min(Math.round((agua / Math.max(meta, 1)) * 100), 100)
+  const add = async (ml: number) => {
+    if (!uid) return
+    const novo = Math.max(0, Math.min(agua + ml, 6000))
+    if (reg) await setDoc(doc(db, 'users', uid, 'saude', hoje), { agua: novo }, { merge: true })
+    else await setDoc(doc(db, 'users', uid, 'saude', hoje), {
+      id: Math.random().toString(36).slice(2, 10), data: hoje, agua: novo, metaAgua: 2000,
+      sono: { inicio: '', fim: '', qualidade: 3 }, humor: 3, energia: 3,
+      treino: { realizado: false, tipo: '', duracao: 0 }, peso: 0, sintomas: [], notas: '', criadoEm: Date.now(),
+    })
+  }
+  const L = (ml: number) => (ml / 1000).toFixed(ml % 1000 === 0 ? 0 : 1) + 'L'
+  const cor = '#3B82F6'
+  return (
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button onClick={() => setOpen(o => !o)} disabled={!uid}
+        title={uid ? `Água hoje: ${L(agua)} de ${L(meta)} (${pct}%) — clique para registrar` : 'Faça login para registrar água'}
+        style={{ ...btn, width: 'auto', padding: '0 9px', display: 'inline-flex', alignItems: 'center', gap: 6, background: open ? `${cor}1a` : 'var(--surface)', border: `1px solid ${open ? cor + '66' : 'var(--border)'}`, color: cor, fontWeight: 700, fontSize: '0.74rem' }}>
+        <Icon e="💧" size={14} /> {L(agua)}
+        <span style={{ width: 26, height: 4, borderRadius: 3, background: `${cor}22`, overflow: 'hidden', display: 'inline-block' }}>
+          <span style={{ display: 'block', height: '100%', width: `${pct}%`, background: cor }} />
+        </span>
+      </button>
+      {open && createPortal(<>
+        <div onMouseDown={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 7800 }} />
+        <AguaPop cor={cor} agua={agua} meta={meta} pct={pct} L={L} add={add} />
+      </>, document.body)}
+    </div>
+  )
+}
+// painel flutuante posicionado abaixo do botão (ancora simples no canto sup. direito da área)
+function AguaPop({ cor, agua, meta, pct, L, add }: any) {
+  return (
+    <div style={{ position: 'fixed', top: 96, right: 18, zIndex: 7801, width: 232, padding: 14, background: 'var(--card-bg)', border: `1px solid ${cor}44`, borderRadius: 14, boxShadow: '0 16px 44px rgba(0,0,0,.34)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ display: 'inline-flex', color: cor }}><Icon e="💧" size={18} /></span>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: '0.95rem', color: cor, lineHeight: 1 }}>{L(agua)} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>/ {L(meta)}</span></div>
+          <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{pct}% da meta de hoje</div>
+        </div>
+      </div>
+      <div style={{ height: 6, borderRadius: 4, background: `${cor}1f`, overflow: 'hidden', marginBottom: 12 }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: cor, transition: 'width .25s' }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+        {[200, 250, 330, 500, 1000].map(ml => (
+          <button key={ml} onClick={() => add(ml)}
+            style={{ padding: '7px 0', borderRadius: 9, border: `1px solid ${cor}40`, background: `${cor}12`, color: cor, fontWeight: 700, fontSize: '0.74rem', cursor: 'pointer' }}>
+            +{ml >= 1000 ? '1L' : ml + 'ml'}
+          </button>
+        ))}
+        <button onClick={() => add(-200)} title="Remover 200ml (corrigir)"
+          style={{ padding: '7px 0', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.74rem', cursor: 'pointer' }}>−200</button>
+      </div>
+    </div>
+  )
+}
+
 export default function PDFReader() {
   const editorRef = useRef<HTMLDivElement>(null)
   const store = usePdfReaderStore()
@@ -1653,6 +1793,9 @@ export default function PDFReader() {
   const [diario, setDiario] = useState(false)
   const [split, setSplit] = useState(0.56)
   const [viewMode, setViewMode] = useState<'split' | 'pdf' | 'editor'>('split')               // fração de largura da coluna do PDF
+  const [autoEditor, setAutoEditor] = useState(false)   // feature 3: editor oculto, surge ao passar o mouse na lateral direita
+  const [autoHover, setAutoHover] = useState(false)
+  const editorAberto = !autoEditor || autoHover
   const rowRef = useRef<HTMLDivElement>(null)
   const startSplit = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -1725,32 +1868,55 @@ export default function PDFReader() {
     <div style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--card-bg)' }}>
       <PastasSidebar open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} store={store} docId={docId} onOpenDoc={abrirDoc} onNewDoc={novoDoc} />
       {/* linha redimensionável: PDF | divisória | editor */}
-      <div ref={rowRef} style={{ flex: 1, minWidth: 0, display: 'flex' }}>
+      <div ref={rowRef} style={{ flex: 1, minWidth: 0, display: 'flex', position: 'relative' }}>
         {/* coluna PDF */}
-        <div style={{ flexBasis: viewMode === 'editor' ? '0%' : viewMode === 'pdf' ? '100%' : `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0, overflow: 'hidden', display: viewMode === 'editor' ? 'none' : 'block' }}>
+        <div style={{ flexBasis: autoEditor ? '100%' : viewMode === 'editor' ? '0%' : viewMode === 'pdf' ? '100%' : `${split * 100}%`, flexGrow: 0, flexShrink: 0, minWidth: 0, overflow: 'hidden', display: (!autoEditor && viewMode === 'editor') ? 'none' : 'block' }}>
           <PdfViewer onExtract={onExtract} viewMode={viewMode} setViewMode={setViewMode} />
         </div>
-        {/* divisória arrastável — só no modo dividido */}
-        {viewMode === 'split' && (
+        {/* divisória arrastável — só no modo dividido e quando o editor não está em auto-ocultar */}
+        {viewMode === 'split' && !autoEditor && (
           <div onMouseDown={startSplit} title="Arraste para ajustar" style={{ width: 6, flexShrink: 0, cursor: 'col-resize', background: 'var(--border)' }}
             onMouseEnter={e => (e.currentTarget.style.background = '#5b5bd6')} onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')} />
         )}
-        {/* coluna editor */}
-        <div style={{ flex: 1, minWidth: 0, display: viewMode === 'pdf' ? 'none' : 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* faixa de detecção na lateral direita — revela o editor no modo auto-ocultar */}
+        {autoEditor && !autoHover && (
+          <div onMouseEnter={() => setAutoHover(true)}
+            style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 18, zIndex: 45, cursor: 'pointer', background: 'linear-gradient(to left, rgba(91,91,214,0.16), transparent)' }}
+            title="Passe o mouse para abrir o editor" />
+        )}
+        {/* coluna editor (drawer quando auto-ocultar) */}
+        <div
+          onMouseLeave={() => autoEditor && setAutoHover(false)}
+          style={autoEditor ? {
+            position: 'absolute', top: 0, bottom: 0, right: 0, width: 'min(620px, 52%)', zIndex: 46,
+            display: 'flex', flexDirection: 'column', minHeight: 0, background: 'var(--card-bg)',
+            borderLeft: '1px solid var(--border)', boxShadow: editorAberto ? '-12px 0 40px rgba(0,0,0,0.32)' : 'none',
+            transform: editorAberto ? 'translateX(0)' : 'translateX(100%)', transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
+          } : {
+            flex: 1, minWidth: 0, display: viewMode === 'pdf' ? 'none' : 'flex', flexDirection: 'column', minHeight: 0,
+          }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: '1rem', flexShrink: 0 }}>✦</span>
           <input value={titulo} onChange={e => onTitulo(e.target.value)} placeholder="Título do documento" disabled={!store.uid}
             style={{ flex: 1, minWidth: 60, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
             onFocus={e => (e.target.style.border = '1px solid var(--border)')} onBlur={e => (e.target.style.border = '1px solid transparent')} />
           <span title={salvo ? 'Salvo' : 'Não salvo'} style={{ fontSize: '0.8rem', color: salvo ? '#22c55e' : '#EA580C', flexShrink: 0, marginRight: 2 }}>{salvo ? '✓' : '●'}</span>
+          {/* água rápida (feature 4) */}
+          <AguaRapida />
           {/* botões de modo de visualização — só ícones, agrupados */}
           <div style={{ display: 'flex', gap: 2, flexShrink: 0, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
             {(['pdf', 'split', 'editor'] as const).map(m => (
-              <button key={m} onClick={() => setViewMode(m)} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]}
-                style={{ ...btn, width: 30, padding: 0, background: viewMode === m ? '#5b5bd6' : 'transparent', color: viewMode === m ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button key={m} onClick={() => { setAutoEditor(false); setViewMode(m) }} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]}
+                style={{ ...btn, width: 30, padding: 0, background: (!autoEditor && viewMode === m) ? '#5b5bd6' : 'transparent', color: (!autoEditor && viewMode === m) ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Icon e={{ pdf: '📄', split: '⬜', editor: '✦' }[m]} size={16} />
               </button>
             ))}
+            {/* feature 3: editor auto-ocultável (PDF em tela cheia, editor surge na lateral direita) */}
+            <button onClick={() => { setAutoEditor(v => !v); setAutoHover(false) }}
+              title={autoEditor ? 'Editor auto-ocultável ATIVO — PDF em tela cheia; o editor surge ao passar o mouse na lateral direita (clique para desativar)' : 'Editor auto-ocultável — PDF em tela cheia e editor surge ao encostar o mouse na direita'}
+              style={{ ...btn, width: 30, padding: 0, background: autoEditor ? '#5b5bd6' : 'transparent', color: autoEditor ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon e="⇥" size={16} />
+            </button>
           </div>
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
           <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📖" size={16} /></button>
