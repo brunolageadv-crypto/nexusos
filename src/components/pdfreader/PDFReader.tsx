@@ -290,6 +290,41 @@ function insertPostit(ed: HTMLElement) {
     '<div contenteditable="true" style="padding:7px 9px;outline:none;min-height:54px">Escreva aqui…</div>'
   ed.appendChild(note)
 }
+
+/* ajusta o recuo (margem esquerda) dos parágrafos no trecho selecionado (feature 11).
+   delta em px; passos finos dão mais controle que o execCommand('indent') padrão. */
+function ajustarRecuo(ed: HTMLElement, delta: number) {
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) { ed.focus(); return }
+  const range = sel.getRangeAt(0)
+  const ehBloco = (el: HTMLElement) => el.nodeType === 1 && /^(P|DIV|LI|H1|H2|H3|BLOCKQUOTE)$/.test(el.tagName)
+  const subir = (n: Node | null): HTMLElement | null => {
+    let x: Node | null = n
+    while (x && x !== ed) { const el = x as HTMLElement; if (ehBloco(el)) return el; x = x.parentElement }
+    return null
+  }
+  const blocos = new Set<HTMLElement>()
+  if (range.collapsed) {
+    const b = subir(range.startContainer); if (b) blocos.add(b)
+  } else {
+    const walker = document.createTreeWalker(ed, NodeFilter.SHOW_ELEMENT, {
+      acceptNode: (node: any) => ehBloco(node) && range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+    } as any)
+    let node = walker.nextNode()
+    while (node) { blocos.add(node as HTMLElement); node = walker.nextNode() }
+    const bi = subir(range.startContainer); if (bi) blocos.add(bi)
+    const bf = subir(range.endContainer); if (bf) blocos.add(bf)
+  }
+  if (blocos.size === 0) {
+    document.execCommand('formatBlock', false, 'p')
+    const b = subir(window.getSelection()?.getRangeAt(0).startContainer || null); if (b) blocos.add(b)
+  }
+  blocos.forEach(b => {
+    const atual = parseFloat(b.style.marginLeft || '0') || 0
+    b.style.marginLeft = Math.max(0, Math.min(320, atual + delta)) + 'px'
+  })
+  ed.focus()
+}
+
 function RichEditor({ editorRef, onChange }: any) {
   const [aiBtn, setAiBtn] = useState<{ x: number; y: number; termo: string } | null>(null)
   const [aiMenu, setAiMenu] = useState<{ x: number; y: number; loading: boolean; opts: string[] } | null>(null)
@@ -416,6 +451,10 @@ function RichEditor({ editorRef, onChange }: any) {
         <Btn cmd="strikeThrough" title="Tachado">S̶</Btn>
         <Sep />
         <MenuBtn id="alinhar" label="Alinhar" title="Alinhamento" />
+        <IBtn title="Diminuir recuo (trazer parágrafo para a esquerda)"
+          onClick={() => { const ed = editorRef.current; if (ed) run(() => ajustarRecuo(ed, -24)) }}>⇤</IBtn>
+        <IBtn title="Aumentar recuo (empurrar parágrafo para a direita)"
+          onClick={() => { const ed = editorRef.current; if (ed) run(() => ajustarRecuo(ed, 24)) }}>⇥</IBtn>
         <MenuBtn id="cor" label="🎨" title="Cores" />
         <MenuBtn id="marcadores" label="≔" title="Marcadores e listas" />
         <MenuBtn id="inserir" label="＋" title="Linha divisória e tabela" />
