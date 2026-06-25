@@ -141,7 +141,10 @@ function AppShell() {
     localStorage.setItem('nexusos-dash-view', next)
   }
   const [sidebarHovered, setSidebarHovered] = useState(false)
-  const sidebarVisible = sidebarMode === 'fixed' || sidebarHovered
+  // Dentro do PDF Reader a sidebar fica sempre oculta e NÃO aparece no hover
+  // (para não atrapalhar o uso das Pastas internas). Fora dele, comportamento normal.
+  const inPdf = active === 'pdfreader'
+  const sidebarVisible = !inPdf && (sidebarMode === 'fixed' || sidebarHovered)
 
   const toggleSidebarMode = () => {
     const next = sidebarMode === 'fixed' ? 'auto' : 'fixed'
@@ -158,20 +161,20 @@ function AppShell() {
     <div className="app-shell" style={{ position: 'relative' }}>
 
       {/* ── SIDEBAR DESKTOP ── */}
-      {sidebarMode === 'auto' && (
+      {sidebarMode === 'auto' && !inPdf && (
         <div onMouseEnter={() => setSidebarHovered(true)}
           style={{ position: 'fixed', left: 0, top: 0, bottom: 0, width: 16, zIndex: 40 }} />
       )}
 
       <aside className="sidebar desktop-sidebar"
-        onMouseEnter={() => sidebarMode === 'auto' && setSidebarHovered(true)}
-        onMouseLeave={() => sidebarMode === 'auto' && setSidebarHovered(false)}
+        onMouseEnter={() => sidebarMode === 'auto' && !inPdf && setSidebarHovered(true)}
+        onMouseLeave={() => sidebarMode === 'auto' && !inPdf && setSidebarHovered(false)}
         style={{
-          position: sidebarMode === 'auto' ? 'fixed' : 'relative',
+          position: (sidebarMode === 'auto' || inPdf) ? 'fixed' : 'relative',
           top: 0, left: 0, bottom: 0, zIndex: 50,
           transform: sidebarVisible ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.28s cubic-bezier(0.4,0,0.2,1)',
-          boxShadow: sidebarMode === 'auto' && sidebarHovered ? '4px 0 32px rgba(0,0,0,0.5)' : 'none',
+          boxShadow: sidebarMode === 'auto' && sidebarHovered && !inPdf ? '4px 0 32px rgba(0,0,0,0.5)' : 'none',
         }}>
         <div className="sidebar-logo"><NexusLogo /></div>
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 8 }}>
