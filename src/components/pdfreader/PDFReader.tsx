@@ -754,7 +754,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
       const span = document.createElement('span')
       const h = w.fh * H
       span.textContent = w.text
-      span.style.cssText = `position:absolute;left:${w.fx * W}px;top:${w.fy * H}px;width:${w.fw * W}px;height:${h}px;font-size:${Math.max(6, h * 0.86)}px;line-height:${h}px;color:transparent;white-space:pre;overflow:hidden`
+      span.dataset.ocr = '1'   // marca: hit-test usa a CAIXA do Tesseract (precisa), não o texto interno
+      span.style.cssText = `position:absolute;left:${w.fx * W}px;top:${w.fy * H}px;width:${w.fw * W}px;height:${h}px;font-size:${Math.max(6, h * 0.78)}px;line-height:${h}px;color:transparent;white-space:nowrap;overflow:hidden`
       frag.appendChild(span)
     }
     tl.appendChild(frag)
@@ -762,20 +763,32 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
   // roda OCR na página (sob demanda) e injeta a camada de texto reconhecida
   const ocrPagina = async (n: number) => {
     if (ocrStatus?.running) return
-    const el = pageElsRef.current[n]; if (!el) return
-    let canvas = el.querySelector('canvas') as HTMLCanvasElement
-    if (!canvas) { await renderPage(n); canvas = el.querySelector('canvas') as HTMLCanvasElement }
-    if (!canvas) return
+    const pdf = pdfRef.current; if (!pdf) return
     setOcrStatus({ running: true, pct: 0, page: n })
     try {
+      const page = await pdf.getPage(n)
+      // Render dedicado em ALTA resolução (independe do zoom de exibição) → ~300 DPI.
+      // É o fator nº 1 de acurácia: o Tesseract acerta muito mais com imagem grande e nítida.
+      const base = page.getViewport({ scale: 1 })
+      const escalaOCR = Math.min(4, Math.max(2.2, 2200 / base.width))
+      const vp = page.getViewport({ scale: escalaOCR })
+      const oc = document.createElement('canvas')
+      oc.width = Math.floor(vp.width); oc.height = Math.floor(vp.height)
+      const octx = oc.getContext('2d', { willReadFrequently: true })!
+      octx.fillStyle = '#ffffff'; octx.fillRect(0, 0, oc.width, oc.height)   // fundo branco = melhor contraste
+      await page.render({ canvasContext: octx, viewport: vp }).promise
       const T = await ensureTesseract()
       const worker = await T.createWorker('por', 1, { logger: (m: any) => { if (m.status === 'recognizing text') setOcrStatus({ running: true, pct: Math.round((m.progress || 0) * 100), page: n }) } })
-      const { data } = await worker.recognize(canvas)
+      try { await worker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: '3' }) } catch {}
+      const { data } = await worker.recognize(oc)
       await worker.terminate()
-      const ws = (data?.words || []).filter((w: any) => (w.text || '').trim())
-        .map((w: any) => ({ fx: w.bbox.x0 / canvas.width, fy: w.bbox.y0 / canvas.height, fw: (w.bbox.x1 - w.bbox.x0) / canvas.width, fh: (w.bbox.y1 - w.bbox.y0) / canvas.height, text: w.text.trim() }))
+      // fractions (0..1) são independentes de escala → válidas para qualquer zoom de exibição
+      const ws = (data?.words || [])
+        .filter((w: any) => (w.text || '').trim() && (w.confidence == null || w.confidence > 12))
+        .map((w: any) => ({ fx: w.bbox.x0 / oc.width, fy: w.bbox.y0 / oc.height, fw: (w.bbox.x1 - w.bbox.x0) / oc.width, fh: (w.bbox.y1 - w.bbox.y0) / oc.height, text: w.text.trim() }))
       ocrRef.current[n] = ws; semTextoRef.current[n] = false
-      const tl = el.querySelector('.pr-textlayer') as HTMLElement
+      const el = pageElsRef.current[n]
+      const tl = el?.querySelector('.pr-textlayer') as HTMLElement
       if (tl) { tl.querySelectorAll('span').forEach(s => s.remove()); injetarOCR(tl, n) }
       if (n === curPageRef.current) setPaginaImagem(false)
       setOcrStatus(null)
@@ -821,7 +834,9 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
         if (sr.right < b.left || sr.left > b.right || sr.bottom < b.top || sr.top > b.bottom) return
         const node = span.firstChild
         const push = (rect: DOMRect, word: string) => words.push({ page: pn, top: rect.top, left: rect.left, word, frac: { fx: (rect.left - pr.left) / pr.width, fy: (rect.top - pr.top) / pr.height, fw: rect.width / pr.width, fh: rect.height / pr.height } })
-        if (!node || node.nodeType !== 3) { if (hit(sr)) { const tx = (span.textContent || '').trim(); if (tx) push(sr, tx) } return }
+        // Spans de OCR: usa a CAIXA do span (= bbox do Tesseract), não o texto interno —
+        // isso evita que o texto transparente transborde e "encoste" na palavra vizinha.
+        if (!node || node.nodeType !== 3 || (span as HTMLElement).dataset.ocr) { if (hit(sr)) { const tx = (span.textContent || '').trim(); if (tx) push(sr, tx) } return }
         const text = node.textContent || ''; const re = /\S+/g; let m: any
         while ((m = re.exec(text))) {
           const r = document.createRange(); try { r.setStart(node, m.index); r.setEnd(node, m.index + m[0].length) } catch { continue }
