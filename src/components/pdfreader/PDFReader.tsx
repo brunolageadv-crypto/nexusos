@@ -254,11 +254,49 @@ function shiftBulletDepth(ed: HTMLElement, delta: number, symbol: string) {
 const menuItem: any = { display: 'block', width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 7, border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.84rem' }
 const menuItemRow: any = { flex: 1, padding: '7px 4px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600 }
 const inpNum: any = { width: 60, padding: '4px 7px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.82rem' }
+
+/* símbolos para inserir no texto (feature 10) */
+const SIMBOLOS: { s: string; t: string }[] = [
+  { s: '|', t: 'Barra vertical' }, { s: '★', t: 'Estrela cheia' }, { s: '☆', t: 'Estrela vazia' }, { s: '⭐', t: 'Estrela' },
+  { s: '→', t: 'Seta direita' }, { s: '←', t: 'Seta esquerda' }, { s: '↑', t: 'Seta cima' }, { s: '↓', t: 'Seta baixo' },
+  { s: '↔', t: 'Seta dupla' }, { s: '⇒', t: 'Implica' }, { s: '⇐', t: 'Implicado por' }, { s: '➜', t: 'Seta grossa' },
+  { s: '➤', t: 'Ponta' }, { s: '▶', t: 'Play' }, { s: '◀', t: 'Voltar' }, { s: '»', t: 'Avançar' },
+  { s: '👍', t: 'Joinha (positivo)' }, { s: '👎', t: 'Joinha (negativo)' }, { s: '💣', t: 'Bomba' }, { s: '⚠️', t: 'Perigo / atenção' },
+  { s: '❗', t: 'Importante' }, { s: '‼️', t: 'Muito importante' }, { s: '✅', t: 'OK / feito' }, { s: '❌', t: 'Errado' },
+  { s: '✔', t: 'Check' }, { s: '✘', t: 'X' }, { s: '👀', t: 'Olhos (atenção)' }, { s: '🔥', t: 'Quente / urgente' },
+  { s: '📌', t: 'Fixar' }, { s: '💡', t: 'Ideia' }, { s: '🔑', t: 'Chave' }, { s: '⭕', t: 'Círculo' },
+  { s: '§', t: 'Parágrafo (lei)' }, { s: '¶', t: 'Pilcrow' }, { s: '•', t: 'Bola' }, { s: '◦', t: 'Bola vazia' },
+]
+
+/* insere um símbolo no ponto do cursor (feature 10) */
+function insertSymbol(ed: HTMLElement, symbol: string) {
+  ed.focus()
+  document.execCommand('insertText', false, symbol)
+}
+
+/* insere uma nota adesiva (post-it) flutuante sobre a página (feature 9) */
+function insertPostit(ed: HTMLElement) {
+  const note = document.createElement('div')
+  note.className = 'nexus-postit'
+  note.contentEditable = 'false'
+  // posiciona próxima ao topo visível da área de edição
+  const left = 40 + Math.round(Math.random() * 30)
+  const top = (ed.scrollTop || 0) + 28 + Math.round(Math.random() * 30)
+  note.setAttribute('style', `position:absolute;left:${left}px;top:${top}px;width:190px;min-height:96px;background:#fff7ae;border:1px solid #e6d667;border-radius:5px;box-shadow:0 5px 16px rgba(0,0,0,.20);z-index:6;resize:both;overflow:auto;font-size:.82rem;color:#5b4b00;font-family:var(--font-body,inherit)`)
+  note.innerHTML =
+    '<div class="nexus-postit-drag" contenteditable="false" style="cursor:move;height:20px;background:#ffe96b;border-bottom:1px solid #e6d667;border-radius:5px 5px 0 0;display:flex;align-items:center;justify-content:space-between;padding:0 4px 0 7px;user-select:none">' +
+    '<span style="font-size:.62rem;font-weight:700;color:#8a7300;letter-spacing:.04em">NOTA</span>' +
+    '<span class="nexus-postit-x" style="cursor:pointer;font-weight:800;line-height:1;padding:0 4px;color:#8a6f00;font-size:1rem">×</span></div>' +
+    '<div contenteditable="true" style="padding:7px 9px;outline:none;min-height:54px">Escreva aqui…</div>'
+  ed.appendChild(note)
+}
 function RichEditor({ editorRef, onChange }: any) {
   const [aiBtn, setAiBtn] = useState<{ x: number; y: number; termo: string } | null>(null)
   const [aiMenu, setAiMenu] = useState<{ x: number; y: number; loading: boolean; opts: string[] } | null>(null)
   const savedRange = useRef<Range | null>(null)
   const [bulletSet, setBulletSet] = useState(DEFAULT_SET)
+  const [pageStyle, setPageStyle] = useState<'blank' | 'lined' | 'grid'>('blank')   // feature 1
+  const [autoQ, setAutoQ] = useState(false)                                          // feature 2
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)  // menu suspenso ancorado
   const openMenu = (id: string, e: React.MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu(m => m && m.id === id ? null : { id, x: r.left, y: r.bottom + 4 }) }
   const [tRows, setTRows] = useState(3)
@@ -266,8 +304,16 @@ function RichEditor({ editorRef, onChange }: any) {
   const exec = (cmd: string, val?: string) => { document.execCommand(cmd, false, val); editorRef.current?.focus(); onChange?.() }
   const symbols = BULLET_SETS[bulletSet]
 
-  /* Tab / Shift+Tab dentro do editor → ajusta profundidade do marcador */
+  /* Tab / Shift+Tab dentro do editor → ajusta profundidade do marcador.
+     Enter no "modo pergunta" → adiciona ? ao fim da linha antes de quebrar (feature 2). */
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && autoQ && !e.shiftKey) {
+      e.preventDefault()
+      document.execCommand('insertText', false, '?')
+      document.execCommand('insertParagraph')
+      onChange?.()
+      return
+    }
     if (e.key === 'Tab') {
       e.preventDefault()
       const ed = editorRef.current; if (!ed) return
@@ -275,6 +321,38 @@ function RichEditor({ editorRef, onChange }: any) {
       onChange?.()
     }
   }
+
+  /* arrastar / excluir post-its (feature 9) — via delegação no editor */
+  useEffect(() => {
+    const ed = editorRef.current; if (!ed) return
+    let drag: { note: HTMLElement; dx: number; dy: number } | null = null
+    const down = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (t.classList.contains('nexus-postit-x')) {
+        const n = t.closest('.nexus-postit'); if (n) { n.remove(); onChange?.() } e.preventDefault(); return
+      }
+      const handle = t.closest('.nexus-postit-drag') as HTMLElement | null
+      if (handle) {
+        const note = handle.closest('.nexus-postit') as HTMLElement; if (!note) return
+        const r = note.getBoundingClientRect()
+        drag = { note, dx: e.clientX - r.left, dy: e.clientY - r.top }
+        e.preventDefault()
+      }
+    }
+    const move = (e: MouseEvent) => {
+      if (!drag) return
+      const er = ed.getBoundingClientRect()
+      const left = e.clientX - er.left - drag.dx + ed.scrollLeft
+      const top = e.clientY - er.top - drag.dy + ed.scrollTop
+      drag.note.style.left = Math.max(0, left) + 'px'
+      drag.note.style.top = Math.max(0, top) + 'px'
+    }
+    const up = () => { if (drag) { drag = null; onChange?.() } }
+    ed.addEventListener('mousedown', down)
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', up)
+    return () => { ed.removeEventListener('mousedown', down); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+  }, [])
 
   const onMouseUp = () => {
     setTimeout(() => {
@@ -341,6 +419,20 @@ function RichEditor({ editorRef, onChange }: any) {
         <MenuBtn id="cor" label="🎨" title="Cores" />
         <MenuBtn id="marcadores" label="≔" title="Marcadores e listas" />
         <MenuBtn id="inserir" label="＋" title="Linha divisória e tabela" />
+        <MenuBtn id="simbolos" label="✶" title="Inserir símbolo (seta, estrela, joinha, perigo…)" />
+        <Sep />
+        {/* fundo da página: branca → pautada → quadriculada (feature 1) */}
+        <IBtn title={`Fundo da página: ${ { blank: 'branca', lined: 'pautada', grid: 'quadriculada' }[pageStyle] } (clique para alternar)`}
+          active={pageStyle !== 'blank'}
+          onClick={() => setPageStyle(p => p === 'blank' ? 'lined' : p === 'lined' ? 'grid' : 'blank')}>
+          {{ blank: '▢', lined: '▤', grid: '▦' }[pageStyle]}
+        </IBtn>
+        {/* modo pergunta: Enter adiciona "?" no fim da linha (feature 2) */}
+        <IBtn title={autoQ ? 'Modo pergunta ATIVO — Enter adiciona "?" no fim da linha (clique para desativar)' : 'Modo pergunta — ao dar Enter adiciona "?" no fim da linha'}
+          active={autoQ} onClick={() => setAutoQ(v => !v)}>?</IBtn>
+        {/* nota adesiva / post-it (feature 9) */}
+        <IBtn title="Inserir nota adesiva (post-it) — arraste, redimensione, feche no ×"
+          onClick={() => { const ed = editorRef.current; if (ed) run(() => insertPostit(ed)) }}>📌</IBtn>
         <Sep />
         <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
         <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
@@ -416,9 +508,32 @@ function RichEditor({ editorRef, onChange }: any) {
           style={{ width: '100%', padding: '7px 0', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}>⊞ Inserir {tRows}×{tCols}</button>
       </Painel>
 
+      <Painel id="simbolos" width={232}>
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 8 }}>Inserir símbolo</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 4 }}>
+          {SIMBOLOS.map((it, i) => (
+            <button key={i} title={it.t}
+              onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => insertSymbol(ed, it.s)) }}
+              style={{ height: 26, borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface)', cursor: 'pointer', fontSize: '0.92rem', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+              {it.s}
+            </button>
+          ))}
+        </div>
+        <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 6, fontSize: '0.62rem', color: 'var(--text-muted)' }}>Passe o mouse para ver o nome de cada símbolo.</div>
+      </Painel>
+
       {/* área editável */}
       <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={onChange} onMouseUp={onMouseUp} onKeyDown={onKeyDown}
-        style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px', outline: 'none', color: 'var(--text-primary)', lineHeight: 1.7, fontSize: '0.94rem' }}>
+        style={{
+          flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px', outline: 'none', color: 'var(--text-primary)', lineHeight: 1.7, fontSize: '0.94rem',
+          position: 'relative',
+          backgroundImage: pageStyle === 'lined'
+            ? 'repeating-linear-gradient(var(--border) 0 1px, transparent 1px 28px)'
+            : pageStyle === 'grid'
+              ? 'repeating-linear-gradient(var(--border) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, var(--border) 0 1px, transparent 1px 28px)'
+              : 'none',
+          backgroundAttachment: 'local',
+        }}>
         <p style={{ color: 'var(--text-muted)' }}>Os trechos extraídos do PDF aparecem aqui. Selecione um termo para gerar perguntas com IA.</p>
       </div>
 
@@ -961,8 +1076,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode }: any) {
             <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} title="Fechar" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>✕</button>
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.4, maxHeight: 90, overflowY: 'auto', padding: '6px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>{popup.shown}</div>
-          <button onMouseDown={e => { e.preventDefault(); enviar() }} style={popBtnPrim}>➜ Enviar para Palavras Destacadas</button>
-          <button onMouseDown={e => { e.preventDefault(); pedirPalavrasChave() }} style={{ ...popBtn, background: 'linear-gradient(135deg,#5b5bd6,#7c5cff)', color: '#fff', border: 'none', fontWeight: 700 }}>✦ Extrair palavras-chave (IA)</button>
+          <button onMouseDown={e => { e.preventDefault(); enviar() }} style={{ ...popBtn, background: '#15803D', color: '#fff', border: 'none', fontWeight: 700 }}>➜ Enviar para Palavras Destacadas</button>
+          <button onMouseDown={e => { e.preventDefault(); pedirPalavrasChave() }} style={{ ...popBtn, background: '#EA580C', color: '#fff', border: 'none', fontWeight: 700 }}>✦ Extrair palavras-chave (IA)</button>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
         </div>
       </>, document.body)}
@@ -1063,11 +1178,19 @@ function PastasSidebar({ open, onToggle, store, docId, onOpenDoc, onNewDoc }: an
         <div key={p.id}>
           <div className="pr-row" draggable onDragStart={() => (drag.current = { tipo: 'pasta', id: p.id })} onDragOver={e => e.preventDefault()} onDrop={() => soltar(p.id)} style={{ paddingLeft: 6 + depth * 14 }}>
             <span onClick={() => toggle(p.id)} style={{ cursor: 'pointer', width: 12, display: 'inline-block' }}>{aberta ? '▾' : '▸'}</span>
-            <span onClick={() => toggle(p.id)} style={{ flex: 1, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>📂 {p.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>({nf})</span></span>
+            <span onClick={() => toggle(p.id)} style={{ flex: 1, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ display: 'inline-flex', color: p.cor || '#EAB308' }}><Icon e="📁" size={15} /></span>
+              {p.name} <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>({nf})</span>
+            </span>
             <span className="pr-acts">
               <button title="Novo documento" onClick={() => onNewDoc(p.id)} style={miniBtn}>📄</button>
               <button title="Nova subpasta" onClick={() => novaPasta(p.id)} style={miniBtn}>📁</button>
               <button title="Renomear" onClick={() => renomearPasta(p)} style={miniBtn}>✎</button>
+              <label title="Cor da pasta" style={{ ...miniBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', position: 'relative', cursor: 'pointer' }}>
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: p.cor || '#EAB308', border: '1px solid var(--border)', display: 'inline-block' }} />
+                <input type="color" value={p.cor || '#EAB308'} onChange={e => salvarPasta({ id: p.id, cor: e.target.value })}
+                  style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%', height: '100%' }} />
+              </label>
               <button title="Excluir" onClick={() => { if (confirm('Excluir a pasta e tudo dentro dela?')) removerPasta(p.id) }} style={miniBtn}>🗑</button>
             </span>
           </div>
