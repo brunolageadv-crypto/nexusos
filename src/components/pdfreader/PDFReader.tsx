@@ -299,6 +299,9 @@ function atualizarProgressoRecente(name: string, lastPage: number, numPages: num
     if (r) { r.lastPage = Math.max(r.lastPage || 0, lastPage); r.numPages = numPages; r.at = Date.now(); localStorage.setItem(RECENTS_KEY, JSON.stringify(list)) }
   } catch {}
 }
+function removerRecente(name: string): any[] {   // feature 11: remove um item do histórico
+  try { const list = lerRecentes().filter((r: any) => r.name !== name); localStorage.setItem(RECENTS_KEY, JSON.stringify(list)); return list } catch { return lerRecentes() }
+}
 
 /* ═══════════════════════════════ EDITOR RICH TEXT ═══════════════════════════════ */
 
@@ -1587,8 +1590,10 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
                     {recentes.slice(0, 5).map((r: any) => {
                       const pct = r.numPages ? Math.round(((r.lastPage || 0) / r.numPages) * 100) : 0
                       return (
-                        <button key={r.name} onClick={() => fileInputRef.current?.click()} title={`${r.name}\nClique para reimportar (o PDF não fica salvo por privacidade)`}
-                          style={{ display: 'flex', flexDirection: 'column', gap: 5, padding: 6, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', textAlign: 'left' }}>
+                        <div key={r.name} onClick={() => fileInputRef.current?.click()} title={`${r.name}\nClique para reimportar (o PDF não fica salvo por privacidade)`}
+                          style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 5, padding: 6, borderRadius: 9, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', textAlign: 'left' }}>
+                          <span onClick={e => { e.stopPropagation(); setRecentes(removerRecente(r.name)) }} title="Remover do histórico"
+                            style={{ position: 'absolute', top: 3, right: 3, zIndex: 2, width: 18, height: 18, borderRadius: '50%', background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: 12, fontWeight: 800, lineHeight: '18px', textAlign: 'center', cursor: 'pointer' }}>×</span>
                           <div style={{ width: '100%', aspectRatio: '0.72', borderRadius: 5, overflow: 'hidden', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             {r.thumb ? <img src={r.thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 22 }}>📄</span>}
                           </div>
@@ -1597,7 +1602,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
                             <div style={{ flex: 1, height: 4, borderRadius: 3, background: 'var(--surface)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${pct}%`, background: '#5b5bd6' }} /></div>
                             <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{pct}%</span>
                           </div>
-                        </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -2420,26 +2425,39 @@ function FlashcardGerarModal({ trecho, fonte, store, onClose }: any) {
 function FlashcardRevisarModal({ store, onClose }: any) {
   const hoje = hojeISO()
   const [tema, setTema] = useState<string>('__todos__')
+  const [modo, setModo] = useState<'revisar' | 'gerenciar'>('revisar')   // gerenciar = listar/apagar
   const temas = useMemo(() => Array.from(new Set(store.cards.map((c: any) => c.tema).filter(Boolean))).sort(), [store.cards])
   const devidos = useMemo(() => store.cards.filter((c: any) => (!c.proxRevisao || c.proxRevisao <= hoje) && (tema === '__todos__' || c.tema === tema)), [store.cards, tema, hoje])
+  const doTema = useMemo(() => store.cards.filter((c: any) => tema === '__todos__' || c.tema === tema).sort((a: any, b: any) => (b.criadoEm || 0) - (a.criadoEm || 0)), [store.cards, tema])
   const [i, setI] = useState(0)
   const [virado, setVirado] = useState(false)
   const [fila, setFila] = useState<any[]>([])
-  useEffect(() => { setFila(devidos); setI(0); setVirado(false) }, [tema])
+  useEffect(() => { setFila(devidos); setI(0); setVirado(false) }, [tema, modo])
   const atual = fila[i]
   const responder = async (q: 'errei' | 'dificil' | 'facil') => {
     if (!atual) return
     await store.salvarCard({ id: atual.id, ...agendarRevisao(atual, q) })
     if (i + 1 < fila.length) { setI(i + 1); setVirado(false) } else { setFila([]); setI(0) }
   }
+  // exclui o card atualmente em revisão e avança a fila
+  const excluirAtual = async () => {
+    if (!atual || !confirm('Excluir este flashcard?')) return
+    await store.removerCard(atual.id)
+    setFila(f => { const nf = f.filter((_, j) => j !== i); if (i >= nf.length) setI(Math.max(0, nf.length - 1)); setVirado(false); return nf })
+  }
   const totalDeck = store.cards.filter((c: any) => tema === '__todos__' || c.tema === tema).length
   return createPortal(<>
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9200 }} />
     <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(620px,95vw)', minHeight: 420, maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.5)', overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)' }}>
-        <span style={{ fontSize: '1.2rem' }}>🃏</span><b style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Estudo ativo — Flashcards</b>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '1.2rem' }}>🃏</span><b style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Flashcards</b>
+        <div style={{ display: 'flex', gap: 2, marginLeft: 4, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
+          {([['revisar', 'Revisar'], ['gerenciar', 'Gerenciar']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setModo(k)} style={{ ...btn, width: 'auto', padding: '0 11px', fontSize: '0.74rem', background: modo === k ? '#5b5bd6' : 'transparent', color: modo === k ? '#fff' : 'var(--text-secondary)', border: 'none' }}>{l}</button>
+          ))}
+        </div>
         <span style={{ flex: 1 }} />
-        <select value={tema} onChange={e => setTema(e.target.value)} style={{ ...inpD, cursor: 'pointer', maxWidth: 180 }}>
+        <select value={tema} onChange={e => setTema(e.target.value)} style={{ ...inpD, cursor: 'pointer', maxWidth: 170 }}>
           <option value="__todos__">Todos os temas</option>
           {temas.map((t: any) => <option key={t} value={t}>{t}</option>)}
         </select>
@@ -2448,13 +2466,31 @@ function FlashcardRevisarModal({ store, onClose }: any) {
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: 18 }}>
         {!store.uid ? <div style={{ margin: 'auto', color: '#EA580C', fontSize: '.86rem' }}>Faça login para usar os flashcards.</div>
           : store.cards.length === 0 ? <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)', fontSize: '.88rem', lineHeight: 1.6 }}>Nenhum flashcard ainda.<br />Selecione um trecho no PDF e use <b>🃏 Flashcard (IA)</b> para criar.</div>
+          : modo === 'gerenciar' ? (
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginBottom: 2 }}>{doTema.length} card(s){tema !== '__todos__' ? ` em "${tema}"` : ''}. Clique no 🗑 para excluir.</div>
+              {doTema.map((c: any) => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 11px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>{c.frente}</div>
+                    <div style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginTop: 2 }}>{c.verso}</div>
+                    <div style={{ fontSize: '.64rem', color: 'var(--text-muted)', marginTop: 4 }}>{c.tema ? `${c.tema} · ` : ''}{c.fonte ? `${c.fonte} · ` : ''}próx. revisão: {c.proxRevisao || '—'}</div>
+                  </div>
+                  <button onClick={() => { if (confirm('Excluir este flashcard?')) store.removerCard(c.id) }} title="Excluir flashcard" style={{ ...btn, width: 30, flexShrink: 0, color: '#DC2626' }}>🗑</button>
+                </div>
+              ))}
+            </div>
+          )
           : !atual ? <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '.9rem', lineHeight: 1.6 }}>
               <div style={{ fontSize: '2rem', marginBottom: 8 }}>✅</div>
               Revisões em dia neste tema!<br />
               <span style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>{totalDeck} card(s) no baralho · próximas revisões agendadas.</span>
             </div>
           : <>
-            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginBottom: 10, textAlign: 'center' }}>{i + 1} de {fila.length} devido(s){atual.fonte ? ` · ${atual.fonte}` : ''}{atual.tema ? ` · ${atual.tema}` : ''}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ flex: 1, fontSize: '.72rem', color: 'var(--text-muted)', textAlign: 'center' }}>{i + 1} de {fila.length} devido(s){atual.fonte ? ` · ${atual.fonte}` : ''}{atual.tema ? ` · ${atual.tema}` : ''}</span>
+              <button onClick={excluirAtual} title="Excluir este flashcard" style={{ ...btn, width: 28, position: 'absolute', right: 18, color: '#DC2626' }}>🗑</button>
+            </div>
             <div onClick={() => setVirado(v => !v)} style={{ flex: 1, minHeight: 180, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 24, borderRadius: 14, border: '1px solid var(--border)', background: virado ? 'rgba(91,91,214,.08)' : 'var(--surface)', position: 'relative' }}>
               <span style={{ position: 'absolute', top: 10, left: 14, fontSize: '.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{virado ? 'Verso' : 'Frente'}</span>
               <div style={{ fontSize: '1.02rem', color: 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap', fontWeight: virado ? 500 : 600 }}>{virado ? atual.verso : atual.frente}</div>
