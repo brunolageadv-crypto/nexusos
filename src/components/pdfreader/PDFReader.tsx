@@ -170,6 +170,27 @@ async function resumirIA(texto: string, foco = ''): Promise<string> {
   return (await callLLM(promptResumo(texto, foco))).trim()
 }
 
+/* ─────────── GERAR PERGUNTAS (comando customizável e reutilizável) ─────────── */
+const QCMD_KEY = 'nexus_pr_qcmd'
+const QCMD_PADRAO = 'Transforme TODO o conteúdo desta página em perguntas para estudo ativo. Não deixe nada de fora — cubra cada informação. Gere o máximo de perguntas possível, bem escritas e claras. NÃO forneça as respostas: quero apenas as perguntas, numeradas.'
+function lerComandoPerguntas(): string { try { return localStorage.getItem(QCMD_KEY) || QCMD_PADRAO } catch { return QCMD_PADRAO } }
+function salvarComandoPerguntas(c: string) { try { localStorage.setItem(QCMD_KEY, c) } catch {} }
+function promptPerguntasCustom(comando: string, texto: string, foco = '') {
+  return [
+    'Você é um assistente de estudos para concursos públicos brasileiros (foco AGU/CEBRASPE).',
+    foco ? `Documento: ${foco}.` : '',
+    'Siga ESTRITAMENTE a instrução do usuário, usando apenas o conteúdo do TRECHO abaixo. Não invente nada fora do trecho. Responda em português.',
+    '',
+    'Instrução do usuário:',
+    (comando || QCMD_PADRAO).slice(0, 2000),
+    '',
+    'TRECHO:', '"""', (texto || '').slice(0, 9000), '"""',
+  ].filter(Boolean).join('\n')
+}
+async function gerarPerguntasCustomIA(comando: string, texto: string, foco = ''): Promise<string> {
+  return (await callLLM(promptPerguntasCustom(comando, texto, foco))).trim()
+}
+
 /* ─────────── CHAT COM O DOCUMENTO (feature 1) — pergunta livre usando o texto como contexto ─────────── */
 function promptChat(contexto: string, historico: { role: 'user' | 'assistant'; text: string }[], pergunta: string) {
   const hist = historico.slice(-8).map(m => `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.text}`).join('\n')
@@ -508,11 +529,10 @@ function aplicarTamanho(ed: HTMLElement, px: number) {
 }
 
 function RichEditor({ editorRef, onChange }: any) {
-  const [aiBtn, setAiBtn] = useState<{ x: number; y: number; termo: string } | null>(null)
-  const [aiMenu, setAiMenu] = useState<{ x: number; y: number; loading: boolean; opts: string[] } | null>(null)
-  const savedRange = useRef<Range | null>(null)
   const [bulletSet, setBulletSet] = useState(DEFAULT_SET)
   const [pageStyle, setPageStyle] = useState<'blank' | 'lined' | 'grid'>('blank')   // feature 1
+  const [baseFont, setBaseFont] = useState(15)   // tamanho-base da página (px) — comanda texto, altura de linha e passo da pauta
+  const pitch = Math.max(16, Math.round(baseFont * 1.85))   // espaçamento da pauta acompanha a fonte
   const [autoQ, setAutoQ] = useState(false)                                          // feature 2
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)  // menu suspenso ancorado
   const openMenu = (id: string, e: React.MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu(m => m && m.id === id ? null : { id, x: r.left, y: r.bottom + 4 }) }
@@ -571,31 +591,6 @@ function RichEditor({ editorRef, onChange }: any) {
     return () => { ed.removeEventListener('mousedown', down); window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
   }, [])
 
-  const onMouseUp = () => {
-    setTimeout(() => {
-      const sel = window.getSelection()
-      if (!sel || sel.isCollapsed || !sel.rangeCount) { setAiBtn(null); return }
-      const r = sel.getRangeAt(0)
-      if (!editorRef.current?.contains(r.commonAncestorContainer)) { setAiBtn(null); return }
-      const termo = sel.toString().trim(); if (!termo) { setAiBtn(null); return }
-      savedRange.current = r.cloneRange()
-      const rect = r.getBoundingClientRect()
-      setAiBtn({ x: rect.left + rect.width / 2, y: rect.top - 8, termo })
-    }, 10)
-  }
-  const pedirPerguntas = async () => {
-    if (!aiBtn) return
-    const ctx = editorRef.current?.innerText || ''
-    setAiMenu({ x: aiBtn.x, y: aiBtn.y + 26, loading: true, opts: [] }); setAiBtn(null)
-    try { const opts = await gerarPerguntasIA(aiBtn.termo, ctx); setAiMenu(m => m && { ...m, loading: false, opts }) }
-    catch (e: any) { setAiMenu(m => m && { ...m, loading: false, opts: ['⚠ ' + (e?.message || 'Falha na IA')] }) }
-  }
-  const aplicar = (pergunta: string) => {
-    const r = savedRange.current; if (r) { const sel = window.getSelection(); sel?.removeAllRanges(); sel?.addRange(r) }
-    document.execCommand('insertText', false, pergunta)
-    setAiMenu(null); onChange?.()
-  }
-
   const Sep = () => <span style={{ width: 1, background: 'var(--border)', alignSelf: 'stretch', margin: '0 2px' }} />
   const Btn = ({ cmd, val, children, title, active }: any) => (
     <button onMouseDown={e => { e.preventDefault(); exec(cmd, val) }} title={title}
@@ -615,10 +610,38 @@ function RichEditor({ editorRef, onChange }: any) {
   // painel suspenso ancorado (fecha ao clicar fora) — itens executam ações da família
   const Painel = ({ id, width, children }: any) => menu?.id === id ? createPortal(<>
     <div onMouseDown={() => setMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 7900 }} />
-    <div style={{ position: 'fixed', left: Math.min(menu.x, window.innerWidth - (width + 16)), top: menu.y, zIndex: 7901, width, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 11, boxShadow: '0 14px 40px rgba(0,0,0,.32)', padding: 10 }}>{children}</div>
+    <div className="pr-pop" style={{ position: 'fixed', left: Math.min(menu.x, window.innerWidth - (width + 16)), top: menu.y, zIndex: 7901, width, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 11, boxShadow: '0 14px 40px rgba(0,0,0,.32)', padding: 10 }}>{children}</div>
   </>, document.body) : null
 
   const run = (fn: () => void) => { fn(); onChange?.() }
+
+  // renumera perguntas/itens numerados em sequência contínua (controle de cadeia de numeração)
+  const renumerarPerguntas = () => {
+    const ed = editorRef.current; if (!ed) return
+    const selObj = window.getSelection()
+    const temSel = !!(selObj && selObj.rangeCount && !selObj.isCollapsed && ed.contains(selObj.anchorNode) && ed.contains(selObj.focusNode))
+    const range = temSel ? selObj!.getRangeAt(0) : null
+    const resp = prompt(temSel ? 'Renumerar as perguntas SELECIONADAS começando em qual número?\n(use 1 para recomeçar um capítulo)' : 'Renumerar TODAS as perguntas do editor começando em qual número?\n(use 1 para uma cadeia única; ou continue de onde parou)', '1')
+    if (resp == null) return
+    let n = parseInt(resp, 10); if (isNaN(n) || n < 0) n = 1
+    // blocos candidatos: parágrafos e itens de lista (evita contar <p> dentro de <li>)
+    const blocos = Array.from(ed.querySelectorAll('p, li')).filter((b: any) => !(b.tagName === 'P' && b.closest('li')))
+    let alterados = 0
+    blocos.forEach((b: any) => {
+      if (range && !range.intersectsNode(b)) return
+      const txt = b.textContent || ''
+      if (!/^\s*\d+\s*[.)\-–º°]\s+\S/.test(txt)) return        // só linhas que começam com "N. " / "N) " / "N - " etc
+      // localiza o primeiro nó de texto e reescreve apenas o número líder, preservando o resto
+      let node: any = b
+      while (node && node.nodeType === 1) node = node.firstChild
+      if (node && node.nodeType === 3 && /^(\s*)\d+(\s*[.)\-–º°])/.test(node.nodeValue)) {
+        node.nodeValue = node.nodeValue.replace(/^(\s*)\d+(\s*[.)\-–º°])/, `$1${n}$2`)
+        n++; alterados++
+      }
+    })
+    if (!alterados) { alert('Nenhuma pergunta numerada encontrada' + (temSel ? ' na seleção.' : '. Gere perguntas primeiro.')); return }
+    onChange?.()
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -653,6 +676,9 @@ function RichEditor({ editorRef, onChange }: any) {
         {/* modo pergunta: Enter adiciona "?" no fim da linha (feature 2) */}
         <IBtn title={autoQ ? 'Modo pergunta ATIVO — Enter adiciona "?" no fim da linha (clique para desativar)' : 'Modo pergunta — ao dar Enter adiciona "?" no fim da linha'}
           active={autoQ} onClick={() => setAutoQ(v => !v)}>?</IBtn>
+        {/* renumerar perguntas em sequência contínua (seleção = só o trecho; sem seleção = tudo) */}
+        <IBtn title="Renumerar perguntas em sequência — selecione o trecho para formar uma cadeia (ou deixe sem seleção para renumerar tudo); pergunta o número inicial"
+          onClick={renumerarPerguntas}>№</IBtn>
         {/* nota adesiva / post-it (feature 9) */}
         <IBtn title="Inserir nota adesiva (post-it) — arraste, redimensione, feche no ×"
           onClick={() => { const ed = editorRef.current; if (ed) run(() => insertPostit(ed)) }}>📌</IBtn>
@@ -678,15 +704,22 @@ function RichEditor({ editorRef, onChange }: any) {
         </div>
       </Painel>
 
-      <Painel id="tamanho" width={150}>
-        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 6 }}>Tamanho (7–20)</div>
+      <Painel id="tamanho" width={172}>
+        <div style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 6 }}>Tamanho base da página</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+          <button onMouseDown={e => { e.preventDefault(); setBaseFont(v => Math.max(9, v - 1)) }} style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}>−</button>
+          <div style={{ flex: 1, textAlign: 'center', fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{baseFont}px</div>
+          <button onMouseDown={e => { e.preventDefault(); setBaseFont(v => Math.min(40, v + 1)) }} style={{ width: 30, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800, fontSize: '1rem' }}>+</button>
+        </div>
+        <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: 8 }}>A pauta acompanha este tamanho.</div>
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8, fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', marginBottom: 6 }}>Tamanho do trecho (7–20)</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
           {Array.from({ length: 14 }, (_, i) => i + 7).map(px => (
             <button key={px} onMouseDown={e => { e.preventDefault(); const ed = editorRef.current; if (ed) run(() => aplicarTamanho(ed, px)) }}
               style={{ height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700, fontSize: '0.78rem' }}>{px}</button>
           ))}
         </div>
-        <div style={{ borderTop: '1px solid var(--border)', marginTop: 8, paddingTop: 6, fontSize: '0.62rem', color: 'var(--text-muted)' }}>Selecione o texto e escolha o tamanho.</div>
+        <div style={{ marginTop: 6, fontSize: '0.6rem', color: 'var(--text-muted)' }}>Selecione o texto e escolha o tamanho.</div>
       </Painel>
 
       <Painel id="alinhar" width={150}>
@@ -767,40 +800,24 @@ function RichEditor({ editorRef, onChange }: any) {
       </Painel>
 
       {/* área editável */}
-      <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={onChange} onMouseUp={onMouseUp} onKeyDown={onKeyDown}
+      <div ref={editorRef} contentEditable suppressContentEditableWarning onInput={onChange} onKeyDown={onKeyDown}
+        className={pageStyle !== 'blank' ? 'pr-ruled' : undefined}
         style={{
-          flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px', outline: 'none', color: 'var(--text-primary)', lineHeight: 1.7, fontSize: '0.94rem',
+          flex: 1, minHeight: 0, overflowY: 'auto', padding: '16px 20px', outline: 'none', color: 'var(--text-primary)',
+          lineHeight: pageStyle !== 'blank' ? 'var(--pr-pitch)' : 1.7, fontSize: baseFont + 'px',
+          ['--pr-pitch' as any]: pitch + 'px',
           position: 'relative',
           backgroundImage: pageStyle === 'lined'
-            ? 'repeating-linear-gradient(var(--border) 0 1px, transparent 1px 28px)'
+            ? 'repeating-linear-gradient(transparent 0 calc(var(--pr-pitch) - 1px), var(--border) calc(var(--pr-pitch) - 1px) var(--pr-pitch))'
             : pageStyle === 'grid'
-              ? 'repeating-linear-gradient(var(--border) 0 1px, transparent 1px 28px), repeating-linear-gradient(90deg, var(--border) 0 1px, transparent 1px 28px)'
+              ? 'repeating-linear-gradient(transparent 0 calc(var(--pr-pitch) - 1px), var(--border) calc(var(--pr-pitch) - 1px) var(--pr-pitch)), repeating-linear-gradient(90deg, transparent 0 calc(var(--pr-pitch) - 1px), var(--border) calc(var(--pr-pitch) - 1px) var(--pr-pitch))'
               : 'none',
+          backgroundOrigin: 'content-box', backgroundClip: 'border-box',
           backgroundAttachment: 'local',
         }}>
-        <p style={{ color: 'var(--text-muted)' }}>Os trechos extraídos do PDF aparecem aqui. Selecione um termo para gerar perguntas com IA.</p>
+        <p style={{ color: 'var(--text-muted)' }}>Os trechos extraídos do PDF aparecem aqui. Use os botões 🧠 Resumir e ❓ Perguntas na barra do PDF, ou selecione um trecho para enviar/realçar.</p>
       </div>
 
-      {/* botão flutuante de IA */}
-      {aiBtn && createPortal(
-        <button onMouseDown={e => { e.preventDefault(); pedirPerguntas() }}
-          style={{ position: 'fixed', left: aiBtn.x, top: aiBtn.y, transform: 'translate(-50%,-100%)', zIndex: 7000, padding: '5px 11px', borderRadius: 20, border: 'none', background: 'linear-gradient(135deg,#5b5bd6,#7c5cff)', color: '#fff', fontWeight: 700, fontSize: '0.74rem', cursor: 'pointer', boxShadow: '0 6px 18px rgba(91,91,214,0.45)', whiteSpace: 'nowrap' }}>
-          ✦ Gerar perguntas
-        </button>, document.body)}
-
-      {/* menu de perguntas da IA */}
-      {aiMenu && createPortal(<>
-        <div onMouseDown={() => setAiMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 7001 }} />
-        <div style={{ position: 'fixed', left: aiMenu.x, top: aiMenu.y, transform: 'translateX(-50%)', zIndex: 7002, width: 320, maxWidth: '90vw', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 18px 50px rgba(0,0,0,0.35)', padding: 8 }}>
-          <div style={{ fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-muted)', padding: '4px 8px' }}>Perguntas sugeridas</div>
-          {aiMenu.loading && <div style={{ padding: '10px 8px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gerando…</div>}
-          {!aiMenu.loading && aiMenu.opts.map((p, i) => (
-            <button key={i} onMouseDown={e => { e.preventDefault(); if (!p.startsWith('⚠')) aplicar(p) }}
-              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 8, border: 'none', background: 'transparent', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1.35 }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>{p}</button>
-          ))}
-        </div>
-      </>, document.body)}
     </div>
   )
 }
@@ -910,6 +927,11 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const [recentes, setRecentes] = useState<any[]>(() => lerRecentes())  // feature 11
   const [chat, setChat] = useState<{ open: boolean; msgs: { role: 'user' | 'assistant'; text: string }[]; carregando: boolean }>({ open: false, msgs: [], carregando: false })  // feature 1
   const [resumindo, setResumindo] = useState(false)          // feature 5
+  // gerar perguntas (comando customizável e reutilizável)
+  const [gerandoQ, setGerandoQ] = useState(false)
+  const [qCmd, setQCmd] = useState<string>(() => lerComandoPerguntas())
+  const [qEdit, setQEdit] = useState(false)
+  const qCmdRef = useRef(qCmd); qCmdRef.current = qCmd
   const [zoom, setZoom] = useState(1.25)
   const [fitWidth, setFitWidth] = useState(true)
   const fitRef = useRef(true); fitRef.current = fitWidth
@@ -1109,6 +1131,21 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     setPopup(null); acumRef.current = ''; setAcumLen(0)
     try { const r = await resumirIA(trecho, nomeRef.current); onExtract?.(`📝 Resumo da seleção${curPageRef.current ? ` (p. ${curPageRef.current})` : ''}\n${r}`, curPageRef.current) }
     catch (e: any) { alert('Falha ao resumir: ' + (e?.message || e)) }
+  }
+
+  /* ─────────── GERAR PERGUNTAS DA PÁGINA (comando reutilizável) ─────────── */
+  const gerarPerguntasPagina = async () => {
+    if (gerandoQ) return
+    // sem comando salvo ainda → abre o editor antes de gerar
+    if (!qCmdRef.current?.trim()) { setQEdit(true); return }
+    setGerandoQ(true)
+    try {
+      const t = await textoDaPagina(curPageRef.current)
+      if (!t) { alert('Esta página não tem texto selecionável. Rode o OCR antes de gerar perguntas.'); setGerandoQ(false); return }
+      const r = await gerarPerguntasCustomIA(qCmdRef.current, t, nomeRef.current)
+      onExtract?.(`❓ Perguntas — ${nomeRef.current || 'documento'} (p. ${curPageRef.current})\n${r}`, curPageRef.current)
+    } catch (e: any) { alert('Falha ao gerar perguntas: ' + (e?.message || e)) }
+    setGerandoQ(false)
   }
 
   /* ─────────── CHAT COM O DOCUMENTO (feature 1) ─────────── */
@@ -1517,6 +1554,11 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         {!secondary && <>
           {/* feature 5: resumir página */}
           <button onClick={resumirPagina} disabled={!numPages || resumindo} title="Resumir esta página (IA) → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px' }}>{resumindo ? '…' : '🧠 Resumir'}</button>
+          {/* gerar perguntas (comando customizável e reutilizável) */}
+          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+            <button onClick={gerarPerguntasPagina} disabled={!numPages || gerandoQ} title="Gerar perguntas desta página (IA) com seu comando salvo → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>{gerandoQ ? '…' : '❓ Perguntas'}</button>
+            <button onClick={() => setQEdit(true)} disabled={!numPages} title="Editar o comando das perguntas (define o estilo/estrutura)" style={{ ...btn, width: 26, padding: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: 'none' }}>✎</button>
+          </span>
           {/* feature 1: chat com o PDF */}
           <button onClick={() => setChat(c => ({ ...c, open: !c.open }))} disabled={!numPages} title="Conversar com o documento (IA)" style={{ ...btn, width: 'auto', padding: '0 8px', background: chat.open ? '#5b5bd6' : 'var(--surface)', color: chat.open ? '#fff' : 'var(--text-secondary)', border: chat.open ? 'none' : '1px solid var(--border)' }}>💬 Chat</button>
           {/* feature 4: marcar página */}
@@ -1616,6 +1658,27 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         {chat.open && numPages > 0 && (
           <ChatDocumento chat={chat} onEnviar={enviarChat} onClose={() => setChat(c => ({ ...c, open: false }))} onLimpar={() => setChat(c => ({ ...c, msgs: [] }))} onInserir={(t: string) => onExtract?.(t, curPageRef.current)} />
         )}
+        {/* editor do comando de perguntas (salvo e reutilizado em todas as páginas) */}
+        {qEdit && createPortal(<>
+          <div onMouseDown={() => setQEdit(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9200 }} />
+          <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(560px,95vw)', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', padding: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+              <span style={{ fontSize: '1.1rem' }}>❓</span><b style={{ color: 'var(--text-primary)' }}>Comando das perguntas</b>
+              <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); setQEdit(false) }} style={btn}>✕</button>
+            </div>
+            <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 10 }}>
+              Descreva como a IA deve montar as perguntas. Fica salvo e é reaplicado em <b>cada página</b> com um clique em <b>❓ Perguntas</b> — você só troca de página e clica, sem redigitar.
+            </div>
+            <textarea value={qCmd} onChange={e => setQCmd(e.target.value)} rows={6} placeholder="Ex.: Transforme todo o conteúdo da página em perguntas para estudo ativo, sem deixar nada de fora, o máximo possível, apenas as perguntas (sem respostas), numeradas."
+              style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.85rem', padding: '10px 12px', borderRadius: 10, outline: 'none', fontFamily: 'inherit', lineHeight: 1.5 }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+              <button onMouseDown={e => { e.preventDefault(); setQCmd(QCMD_PADRAO) }} style={{ ...btn, width: 'auto', padding: '0 10px', fontSize: '.74rem' }}>↺ Padrão</button>
+              <span style={{ flex: 1 }} />
+              <button onMouseDown={e => { e.preventDefault(); salvarComandoPerguntas(qCmd); setQEdit(false) }} style={{ ...btn, width: 'auto', padding: '0 12px' }}>Salvar</button>
+              <button onMouseDown={e => { e.preventDefault(); salvarComandoPerguntas(qCmd); setQEdit(false); setTimeout(gerarPerguntasPagina, 0) }} disabled={!numPages} style={{ height: 32, padding: '0 14px', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '.84rem', cursor: 'pointer' }}>Salvar e gerar agora</button>
+            </div>
+          </div>
+        </>, document.body)}
         {/* régua (confinada à coluna do PDF) */}
         {ferramenta === 'regua' && <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y, height: 2, background: '#5b5bd6cc', pointerEvents: 'none', zIndex: 40 }} />}
         {/* máscara de leitura (faixa clara, resto escurecido) */}
@@ -1652,7 +1715,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       {/* POP-UP DE DECISÃO — mostra o texto capturado */}
       {popup && createPortal(<>
         <div onMouseDown={() => setPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 6500 }} />
-        <div style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,0.35)', width: 280 }}>
+        <div className="pr-pop" style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,0.35)', width: 280 }}>
           <div onMouseDown={arrastarPopup} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'move', marginBottom: 2, userSelect: 'none' }}>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>⠿</span>
             <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{acumLen > 0 ? 'Frase em composição' : 'Texto capturado'}</span>
@@ -1673,7 +1736,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       {/* REVISÃO DAS PALAVRAS-CHAVE (IA) — confirme antes de enviar ao editor */}
       {kw && createPortal(<>
         <div onMouseDown={() => setKw(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 8200 }} />
-        <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8201, width: 'min(440px,94vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.42)', padding: 16 }}>
+        <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8201, width: 'min(440px,94vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.42)', padding: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: '1.05rem' }}>✦</span><b style={{ color: 'var(--text-primary)' }}>Palavras-chave</b>
             <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); setKw(null) }} style={btn}>✕</button>
@@ -1843,7 +1906,7 @@ function PreviaImpressao({ html, titulo, onClose }: any) {
   }
   return createPortal(<>
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 8000 }} />
-    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8001, width: 'min(840px,94vw)', height: 'min(640px,90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
+    <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8001, width: 'min(840px,94vw)', height: 'min(640px,90vh)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', boxShadow: '0 24px 70px rgba(0,0,0,.4)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
         <b style={{ fontSize: '0.92rem', color: 'var(--text-primary)' }}>🖨️ Pré-visualização / Exportar</b>
         <span style={{ flex: 1 }} />
@@ -1880,7 +1943,7 @@ function ConfigIAModal({ store, onClose }: any) {
   }
   return createPortal(<>
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 8000 }} />
-    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8001, width: 'min(460px,94vw)', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)', padding: 18 }}>
+    <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 8001, width: 'min(460px,94vw)', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)', padding: 18 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={{ fontSize: '1.1rem' }}>✦</span><b style={{ color: 'var(--text-primary)' }}>Configurar IA</b>
         <span style={{ flex: 1 }} /><button onClick={onClose} style={btn}>✕</button>
@@ -1990,6 +2053,9 @@ function TimelineLeitura({ sess }: any) {
     return Object.entries(map).sort((a, b) => (a[0] < b[0] ? 1 : -1))
   }, [sess.sessoes])
   const totalMin = sess.sessoes.reduce((s: number, x: any) => s + (x.minutos || 0), 0)
+  const [abertos, setAbertos] = useState<Set<string>>(new Set())   // dias expandidos (padrão: todos fechados)
+  const toggleDia = (dia: string) => setAbertos(prev => { const n = new Set(prev); n.has(dia) ? n.delete(dia) : n.add(dia); return n })
+  const excluir = (s: any) => { if (confirm(`Excluir esta sessão de leitura?\n${s.arquivo || 'documento'} · ${s.minutos || 0} min`)) sess.removerSessao?.(s.id) }
   return (
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '18px 22px' }}>
       {!sess.uid && <div style={{ color: '#EA580C', fontSize: '.86rem' }}>Faça login para registrar sua leitura.</div>}
@@ -2012,24 +2078,43 @@ function TimelineLeitura({ sess }: any) {
           </div>
         </div>
       )}
-      {porDia.map(([dia, lista]) => (
-        <div key={dia} style={{ marginBottom: 18 }}>
-          <div style={{ position: 'sticky', top: 0, fontSize: '.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: '#5b5bd6', padding: '4px 0 8px', background: 'var(--card-bg)' }}>{fmtData(dia)}</div>
-          <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {(lista as any[]).map(s => (
-              <div key={s.id} style={{ position: 'relative', padding: '9px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)' }}>
-                <div style={{ position: 'absolute', left: -21, top: 14, width: 10, height: 10, borderRadius: '50%', background: '#5b5bd6', border: '2px solid var(--card-bg)' }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>📄 {s.arquivo || 'documento'}</span>
-                  <span style={{ flex: 1 }} />
-                  <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>⏱ {s.minutos || 0} min</span>
+      {porDia.map(([dia, lista]) => {
+        const arr = lista as any[]
+        const minDia = arr.reduce((s, x) => s + (x.minutos || 0), 0)
+        const aberto = abertos.has(dia)
+        return (
+          <div key={dia} style={{ marginBottom: 10, border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', background: 'var(--card-bg)' }}>
+            {/* cabeçalho do dia (clicável) — fechado por padrão */}
+            <button onClick={() => toggleDia(dia)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', border: 'none', background: aberto ? 'rgba(91,91,214,.07)' : 'var(--surface)', cursor: 'pointer', textAlign: 'left' }}>
+              <span style={{ color: '#5b5bd6', fontSize: '.8rem', transition: 'transform .15s', transform: aberto ? 'rotate(90deg)' : 'none' }}>▶</span>
+              <span style={{ fontWeight: 800, fontSize: '.82rem', color: 'var(--text-primary)' }}>{fmtData(dia)}</span>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>{arr.length} {arr.length === 1 ? 'sessão' : 'sessões'}</span>
+              <span style={{ fontSize: '.68rem', fontWeight: 700, color: '#16A34A' }}>⏱ {minDia} min</span>
+            </button>
+            {/* corpo (sessões) — só quando aberto */}
+            {aberto && (
+              <div style={{ padding: '12px 14px 14px', borderTop: '1px solid var(--border)' }}>
+                <div style={{ borderLeft: '2px solid var(--border)', paddingLeft: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {arr.map(s => (
+                    <div key={s.id} style={{ position: 'relative', padding: '9px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                      <div style={{ position: 'absolute', left: -21, top: 14, width: 10, height: 10, borderRadius: '50%', background: '#5b5bd6', border: '2px solid var(--card-bg)' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>📄 {s.arquivo || 'documento'}</span>
+                        <span style={{ flex: 1 }} />
+                        <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>⏱ {s.minutos || 0} min</span>
+                        <button onClick={() => excluir(s)} title="Excluir esta sessão" style={{ ...btn, width: 26, height: 24, color: '#DC2626' }}>🗑</button>
+                      </div>
+                      <div style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginTop: 3 }}>Leu páginas {s.pagInicio}–{s.pagFim} <span style={{ color: 'var(--text-muted)' }}>({Math.max(0, (s.pagFim || 0) - (s.pagInicio || 0) + 1)} pág.)</span></div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{ fontSize: '.78rem', color: 'var(--text-secondary)', marginTop: 3 }}>Leu páginas {s.pagInicio}–{s.pagFim} <span style={{ color: 'var(--text-muted)' }}>({Math.max(0, (s.pagFim || 0) - (s.pagInicio || 0) + 1)} pág.)</span></div>
               </div>
-            ))}
+            )}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -2113,7 +2198,7 @@ function DiarioLeitura({ onClose }: any) {
 
   return createPortal(<>
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9000 }} />
-    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9001, width: '94vw', height: '92vh', maxWidth: 1180, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
+    <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9001, width: '94vw', height: '92vh', maxWidth: 1180, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)' }}>
         <span style={{ display: 'inline-flex', color: '#5b5bd6' }}><Icon e="📖" size={22} /></span>
         <b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Diário de Leitura</b>
@@ -2246,7 +2331,7 @@ function DiarioLeitura({ onClose }: any) {
     {/* modal "o que foi estudado" */}
     {estudoDe && createPortal(<>
       <div onMouseDown={() => setEstudoDe(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9100 }} />
-      <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9101, width: 'min(560px,94vw)', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.45)', padding: 18 }}>
+      <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9101, width: 'min(560px,94vw)', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.45)', padding: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: '1.05rem' }}>📝</span>
           <b style={{ color: 'var(--text-primary)' }}>O que foi estudado</b>
@@ -2310,7 +2395,7 @@ function AguaRapida() {
 // painel flutuante posicionado abaixo do botão (ancora simples no canto sup. direito da área)
 function AguaPop({ cor, agua, meta, pct, L, add }: any) {
   return (
-    <div style={{ position: 'fixed', top: 96, right: 18, zIndex: 7801, width: 232, padding: 14, background: 'var(--card-bg)', border: `1px solid ${cor}44`, borderRadius: 14, boxShadow: '0 16px 44px rgba(0,0,0,.34)' }}>
+    <div className="pr-pop" style={{ position: 'fixed', top: 96, right: 18, zIndex: 7801, width: 232, padding: 14, background: 'var(--card-bg)', border: `1px solid ${cor}44`, borderRadius: 14, boxShadow: '0 16px 44px rgba(0,0,0,.34)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ display: 'inline-flex', color: cor }}><Icon e="💧" size={18} /></span>
         <div>
@@ -2386,7 +2471,7 @@ function FlashcardGerarModal({ trecho, fonte, store, onClose }: any) {
   const upd = (i: number, campo: 'frente' | 'verso', v: string) => setCards(cs => cs.map((c, j) => j === i ? { ...c, [campo]: v } : c))
   return createPortal(<>
     <div onMouseDown={() => onClose(0)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9200 }} />
-    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(560px,95vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', padding: 18 }}>
+    <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(560px,95vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', padding: 18 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
         <span style={{ fontSize: '1.15rem' }}>🃏</span><b style={{ color: 'var(--text-primary)' }}>Gerar flashcards</b>
         <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); onClose(0) }} style={btn}>✕</button>
@@ -2448,7 +2533,7 @@ function FlashcardRevisarModal({ store, onClose }: any) {
   const totalDeck = store.cards.filter((c: any) => tema === '__todos__' || c.tema === tema).length
   return createPortal(<>
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9200 }} />
-    <div style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(620px,95vw)', minHeight: 420, maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.5)', overflow: 'hidden' }}>
+    <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9201, width: 'min(620px,95vw)', minHeight: 420, maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.5)', overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(91,91,214,.12),transparent)', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '1.2rem' }}>🃏</span><b style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>Flashcards</b>
         <div style={{ display: 'flex', gap: 2, marginLeft: 4, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
@@ -2636,7 +2721,21 @@ export default function PDFReader() {
   const abrirPrevia = () => setPrevia(editorRef.current?.innerHTML || '')
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--card-bg)' }}>
+    <div className="pr-app" style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--card-bg)' }}>
+      <style>{`
+        .pr-app button, .pr-pop button { transition: filter .13s ease, transform .12s ease, box-shadow .13s ease; }
+        .pr-app button:not(:disabled):hover, .pr-pop button:not(:disabled):hover { filter: brightness(1.14); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.16); }
+        .pr-app button:not(:disabled):active, .pr-pop button:not(:disabled):active { transform: translateY(0) scale(.96); filter: brightness(1.03); }
+        .pr-app button:disabled, .pr-pop button:disabled { cursor: default; }
+        /* botão "Importar PDF" (é um label com input de arquivo) */
+        .pr-app label:has(> input[type="file"]) { transition: filter .13s ease, transform .12s ease, box-shadow .13s ease; }
+        .pr-app label:has(> input[type="file"]):hover { filter: brightness(1.12); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.16); }
+        /* modo pautado/quadriculado: texto (digitado ou colado) casa com as pautas (passo segue a fonte) */
+        .pr-ruled, .pr-ruled * { line-height: var(--pr-pitch, 28px) !important; }
+        .pr-ruled p, .pr-ruled div, .pr-ruled li, .pr-ruled h1, .pr-ruled h2, .pr-ruled h3, .pr-ruled ul, .pr-ruled ol, .pr-ruled blockquote { margin-top: 0 !important; margin-bottom: 0 !important; }
+        /* não força altura de linha dentro de embutidos (post-it, símbolos) */
+        .pr-ruled [contenteditable="false"], .pr-ruled [contenteditable="false"] * { line-height: normal !important; }
+      `}</style>
       <PastasSidebar open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} store={store} docId={docId} onOpenDoc={abrirDoc} onNewDoc={novoDoc}
         bookmarks={bookmarks} pdfNome={pdfAtual?.name} onGotoBookmark={irBookmark} onRemoveBookmark={removeBookmark} />
       {/* linha redimensionável: PDF | divisória | editor */}
