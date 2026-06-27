@@ -260,22 +260,30 @@ function promptDificuldade(blocos: { page: number; texto: string }[]) {
   const corpo = blocos.map(b => `### PÁGINA ${b.page}\n${(b.texto || '').slice(0, 1600)}`).join('\n\n')
   return [
     'Você avalia a DIFICULDADE de leitura/compreensão de trechos para um concurseiro de Direito (AGU/CEBRASPE).',
-    'Para cada página abaixo, classifique como "facil", "medio" ou "complexo" considerando densidade conceitual, tecnicidade, abstração e quantidade de exceções/detalhes.',
-    'Responda APENAS com JSON no formato {"<numero_da_pagina>":"facil|medio|complexo", ...} — sem markdown, sem texto extra.',
+    'Para cada página abaixo, classifique como "facil", "medio" ou "complexo" considerando densidade conceitual, tecnicidade, abstração e quantidade de exceções/detalhes,',
+    'e dê um MOTIVO curto (uma frase objetiva) explicando o porquê da classificação.',
+    'Responda APENAS com JSON no formato {"<numero_da_pagina>":{"nivel":"facil|medio|complexo","motivo":"<frase curta>"}, ...} — sem markdown, sem texto extra.',
     '', corpo,
   ].join('\n')
 }
-async function analisarDificuldadeIA(blocos: { page: number; texto: string }[]): Promise<Record<string, string>> {
+async function analisarDificuldadeIA(blocos: { page: number; texto: string }[]): Promise<Record<string, { nivel: string; motivo: string }>> {
   const raw = await callLLM(promptDificuldade(blocos))
   let t = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
   const m = t.match(/\{[\s\S]*\}/); if (m) t = m[0]
+  const norm = (v: string) => { v = (v || '').toLowerCase(); return /fac/.test(v) ? 'facil' : /comp|dif/.test(v) ? 'complexo' : 'medio' }
   try {
-    const obj = JSON.parse(t); const out: Record<string, string> = {}
-    Object.keys(obj).forEach(k => { const v = String(obj[k]).toLowerCase(); if (/fac/.test(v)) out[k] = 'facil'; else if (/comp|dif/.test(v)) out[k] = 'complexo'; else out[k] = 'medio' })
+    const obj = JSON.parse(t); const out: Record<string, { nivel: string; motivo: string }> = {}
+    Object.keys(obj).forEach(k => {
+      const v = obj[k]
+      if (v && typeof v === 'object') out[k] = { nivel: norm(v.nivel || v.dificuldade || ''), motivo: String(v.motivo || v.razao || '').trim() }
+      else out[k] = { nivel: norm(String(v)), motivo: '' }
+    })
     return out
   } catch { return {} }
 }
 const CORDIF: any = { facil: '#22c55e', medio: '#f59e0b', complexo: '#ef4444' }
+const CORDIF2: any = { facil: '#15803d', medio: '#b45309', complexo: '#b91c1c' }
+const ROTDIF: any = { facil: 'Fácil', medio: 'Médio', complexo: 'Complexo' }
 
 /* ═══════════════════════════════ MAPA MENTAL (IA) ═══════════════════════════════ */
 type NoMapa = { id: string; texto: string; tipo?: string; filhos: NoMapa[]; colapsado?: boolean }
@@ -1298,82 +1306,153 @@ function ReaderMode({ numPages, startPage, getPageText, nome, onClose }: any) {
 }
 
 /* ═══════════════ LINHA DO TEMPO DE LEITURA + DIFICULDADE ═══════════════ */
-function BarraLeitura({ numPages, curPage, fileKey, gotoPage, getPageText }: any) {
-  const keyL = 'nexus_pr_lidas_' + fileKey, keyD = 'nexus_pr_dific_' + fileKey
+function BarraLeitura({ numPages, curPage, fileKey, gotoPage, getPageText, onHeight }: any) {
+  const keyL = 'nexus_pr_lidas_' + fileKey, keyD = 'nexus_pr_dific_' + fileKey, keyM = 'nexus_pr_dificmot_' + fileKey
   const [lidas, setLidas] = useState<Set<number>>(new Set())
   const [dific, setDific] = useState<Record<string, string>>({})
+  const [motivos, setMotivos] = useState<Record<string, string>>({})
   const [painel, setPainel] = useState(false)
+  const [relatorio, setRelatorio] = useState(false)
   const [analise, setAnalise] = useState<{ pct: number } | null>(null)
   const [de, setDe] = useState(1)
   const [ate, setAte] = useState(1)
   useEffect(() => {
     try { setLidas(new Set(JSON.parse(localStorage.getItem(keyL) || '[]'))) } catch { setLidas(new Set()) }
     try { setDific(JSON.parse(localStorage.getItem(keyD) || '{}')) } catch { setDific({}) }
+    try { setMotivos(JSON.parse(localStorage.getItem(keyM) || '{}')) } catch { setMotivos({}) }
     setAte(Math.min(numPages || 1, 20))
   }, [fileKey])
-  // marca a página atual automaticamente
   useEffect(() => {
     if (!fileKey || !curPage) return
     setLidas(prev => { if (prev.has(curPage)) return prev; const n = new Set(prev); n.add(curPage); try { localStorage.setItem(keyL, JSON.stringify([...n])) } catch {} ; return n })
   }, [curPage, fileKey])
+  const temDific = Object.keys(dific).length > 0
+  useEffect(() => { onHeight?.(temDific ? 50 : 36) }, [temDific])
   const toggleLida = (p: number) => setLidas(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); try { localStorage.setItem(keyL, JSON.stringify([...n])) } catch {} ; return n })
   const resetar = () => { if (confirm('Resetar todo o progresso de leitura deste PDF?')) { setLidas(new Set()); try { localStorage.removeItem(keyL) } catch {} } }
   const pct = numPages ? Math.round((lidas.size / numPages) * 100) : 0
   const analisar = async () => {
     const ini = Math.max(1, Math.min(de, ate)), fim = Math.min(numPages, Math.max(de, ate))
     if (fim - ini + 1 > 50 && !confirm(`Vai analisar ${fim - ini + 1} páginas com a IA (consome cota). Continuar?`)) return
-    setAnalise({ pct: 0 }); const novo = { ...dific }; const BATCH = 8
+    setAnalise({ pct: 0 }); const novoD = { ...dific }, novoM = { ...motivos }; const BATCH = 8
     for (let s = ini; s <= fim; s += BATCH) {
       const blocos: any[] = []
       for (let p = s; p < s + BATCH && p <= fim; p++) { try { const t = await getPageText(p); if (t) blocos.push({ page: p, texto: t }) } catch {} }
-      if (blocos.length) { try { Object.assign(novo, await analisarDificuldadeIA(blocos)) } catch {} }
-      setDific({ ...novo }); try { localStorage.setItem(keyD, JSON.stringify(novo)) } catch {}
+      if (blocos.length) { try { const r = await analisarDificuldadeIA(blocos); Object.keys(r).forEach(k => { novoD[k] = r[k].nivel; if (r[k].motivo) novoM[k] = r[k].motivo }) } catch {} }
+      setDific({ ...novoD }); setMotivos({ ...novoM })
+      try { localStorage.setItem(keyD, JSON.stringify(novoD)); localStorage.setItem(keyM, JSON.stringify(novoM)) } catch {}
       setAnalise({ pct: Math.round((Math.min(s + BATCH - 1, fim) - ini + 1) / (fim - ini + 1) * 100) })
     }
     setAnalise(null)
   }
+  const grupos = useMemo(() => {
+    const g: any = { complexo: [], medio: [], facil: [] }
+    Object.keys(dific).forEach(k => { const n = dific[k]; if (g[n]) g[n].push(+k) })
+    Object.values(g).forEach((a: any) => a.sort((x: number, y: number) => x - y))
+    return g
+  }, [dific])
   if (!numPages) return null
-  const temDific = Object.keys(dific).length > 0
-  const cells = []
-  for (let p = 1; p <= numPages; p++) cells.push(p)
+  const cells: number[] = []; for (let p = 1; p <= numPages; p++) cells.push(p)
+  const posPct = (p: number) => numPages > 1 ? ((p - 0.5) / numPages) * 100 : 50
+  const marks = (() => { if (numPages <= 1) return [1]; const set = new Set([1, numPages]); [.25, .5, .75].forEach(f => set.add(Math.max(1, Math.round(numPages * f)))); return [...set].sort((a, b) => a - b) })()
+  const READ_GRAD = 'linear-gradient(180deg,#4ade80,#16a34a)'
+  const cellTitle = (p: number) => `Página ${p}${lidas.has(p) ? ' · lida' : ''}${dific[p] ? ' · ' + ROTDIF[dific[p]] : ''}${motivos[p] ? '\n' + motivos[p] : ''}\n(clique p/ ir · ⇧clique p/ marcar)`
+
   return (
-    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 35 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 8px', background: 'var(--card-bg)', borderBottom: '1px solid var(--border)' }}>
-        <button onClick={() => setPainel(p => !p)} title="Opções da linha do tempo" style={{ width: 22, height: 16, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '.7rem', color: 'var(--text-muted)' }}>≡</button>
-        {/* barra de progresso (lido x não lido) */}
-        <div style={{ flex: 1, display: 'flex', gap: 0, height: 11, borderRadius: 4, overflow: 'hidden', background: '#e5e7eb' }}>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 35, background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,.06)', padding: '4px 12px 3px' }}>
+      {/* cabeçalho minimalista */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+        <button onClick={() => setPainel(p => !p)} title="Opções da linha do tempo" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 16, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 6, background: painel ? '#5b5bd6' : 'transparent', color: painel ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontSize: '.62rem', fontWeight: 700 }}>≡ Leitura</button>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: '.64rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+          <span style={{ color: '#5b5bd6' }}>p. {curPage}</span>
+          <span style={{ opacity: .5 }}>/{numPages}</span>
+          <span style={{ margin: '0 5px', opacity: .35 }}>·</span>
+          <span style={{ color: '#16a34a' }}>{pct}% lido</span>
+        </span>
+        {temDific && <button onClick={() => setRelatorio(true)} title="Ver relatório de dificuldade da IA" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, height: 16, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.62rem', fontWeight: 700 }}>📋 Relatório</button>}
+      </div>
+      {/* trilha de progresso */}
+      <div style={{ position: 'relative', height: 12 }}>
+        <div style={{ position: 'absolute', inset: 0, borderRadius: 7, overflow: 'hidden', background: '#e6e8ec', boxShadow: 'inset 0 1px 2px rgba(0,0,0,.12)', display: 'flex' }}>
           {cells.map(p => (
-            <div key={p} onClick={() => gotoPage(p)} title={`Página ${p}${lidas.has(p) ? ' · lida' : ''}${dific[p] ? ' · ' + dific[p] : ''} — clique p/ ir, ⇧clique p/ marcar`}
-              onMouseDown={e => { if (e.shiftKey) { e.preventDefault(); toggleLida(p) } }}
-              style={{ flex: 1, minWidth: 0, cursor: 'pointer', background: p === curPage ? '#5b5bd6' : lidas.has(p) ? '#16a34a' : 'transparent', borderRight: numPages < 200 ? '1px solid rgba(255,255,255,.25)' : 'none' }} />
+            <div key={p} onClick={e => e.shiftKey ? toggleLida(p) : gotoPage(p)} title={cellTitle(p)}
+              style={{ flex: 1, minWidth: 0, cursor: 'pointer', background: lidas.has(p) ? READ_GRAD : 'transparent', transition: 'background .35s ease' }} />
           ))}
         </div>
-        <span style={{ fontSize: '.66rem', fontWeight: 700, color: '#16a34a', minWidth: 64, textAlign: 'right' }}>{pct}% · {lidas.size}/{numPages}</span>
+        {/* marcador de página atual */}
+        <div style={{ position: 'absolute', left: posPct(curPage) + '%', top: -3, bottom: -3, width: 2, marginLeft: -1, background: '#5b5bd6', borderRadius: 2, boxShadow: '0 0 6px rgba(91,91,214,.7)', transition: 'left .35s cubic-bezier(.4,0,.2,1)', pointerEvents: 'none' }}>
+          <span style={{ position: 'absolute', top: -4, left: '50%', transform: 'translateX(-50%)', width: 8, height: 8, borderRadius: '50%', background: '#5b5bd6', boxShadow: '0 0 0 3px rgba(91,91,214,.22)' }} />
+        </div>
       </div>
-      {/* faixa de dificuldade (se analisada) */}
+      {/* faixa de dificuldade */}
       {temDific && (
-        <div style={{ display: 'flex', height: 5, background: '#f3f4f6' }}>
-          {cells.map(p => <div key={p} title={dific[p] ? `Página ${p}: ${dific[p]}` : ''} style={{ flex: 1, background: dific[p] ? CORDIF[dific[p]] : 'transparent' }} />)}
+        <div style={{ position: 'relative', height: 7, marginTop: 3 }}>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: 5, overflow: 'hidden', background: '#eceef2', display: 'flex' }}>
+            {cells.map(p => (
+              <div key={p} onClick={() => gotoPage(p)} title={dific[p] ? `Página ${p} — ${ROTDIF[dific[p]]}${motivos[p] ? '\n' + motivos[p] : ''}` : `Página ${p} — (não analisada)`}
+                style={{ flex: 1, minWidth: 0, cursor: 'pointer', background: dific[p] ? `linear-gradient(180deg,${CORDIF[dific[p]]},${CORDIF2[dific[p]]})` : 'transparent' }} />
+            ))}
+          </div>
+          <div style={{ position: 'absolute', left: posPct(curPage) + '%', top: -2, bottom: -2, width: 2, marginLeft: -1, background: '#1f2430', borderRadius: 2, opacity: .55, transition: 'left .35s cubic-bezier(.4,0,.2,1)', pointerEvents: 'none' }} />
         </div>
       )}
+      {/* ticks de páginas (eixo) */}
+      <div style={{ position: 'relative', height: 11, marginTop: 1 }}>
+        {marks.map(p => (
+          <span key={p} style={{ position: 'absolute', left: (numPages > 1 ? ((p - 1) / (numPages - 1)) * 100 : 50) + '%', transform: p === 1 ? 'none' : p === numPages ? 'translateX(-100%)' : 'translateX(-50%)', fontSize: '.56rem', color: 'var(--text-muted)', fontWeight: 600, lineHeight: '11px' }}>{p}</span>
+        ))}
+      </div>
       {/* painel de opções */}
       {painel && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', fontSize: '.74rem', color: 'var(--text-secondary)' }}>
-          <button onClick={() => toggleLida(curPage)} style={{ ...btn, width: 'auto', padding: '0 9px', fontSize: '.72rem' }}>{lidas.has(curPage) ? '✓ Desmarcar atual' : 'Marcar atual como lida'}</button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '9px 4px 5px', marginTop: 3, borderTop: '1px solid var(--border)', fontSize: '.74rem', color: 'var(--text-secondary)' }}>
+          <button onClick={() => toggleLida(curPage)} style={{ ...btn, width: 'auto', padding: '0 9px', fontSize: '.72rem' }}>{lidas.has(curPage) ? '✓ Desmarcar atual' : '✓ Marcar atual como lida'}</button>
           <button onClick={resetar} style={{ ...btn, width: 'auto', padding: '0 9px', fontSize: '.72rem', color: '#dc2626' }}>↺ Resetar progresso</button>
           <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
           <span style={{ fontWeight: 700 }}>Dificuldade (IA):</span>
-          <input type="number" min={1} value={de} onChange={e => setDe(+e.target.value)} style={{ width: 56, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', background: 'var(--surface)', color: 'var(--text-primary)', outline: 'none' }} />
+          <span>pág.</span>
+          <input type="number" min={1} value={de} onChange={e => setDe(+e.target.value)} style={{ width: 54, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', background: 'var(--surface)', color: 'var(--text-primary)', outline: 'none' }} />
           <span>a</span>
-          <input type="number" min={1} value={ate} onChange={e => setAte(+e.target.value)} style={{ width: 56, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', background: 'var(--surface)', color: 'var(--text-primary)', outline: 'none' }} />
-          <button onClick={analisar} disabled={!!analise} style={{ height: 26, padding: '0 10px', borderRadius: 7, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer' }}>{analise ? `Analisando… ${analise.pct}%` : '🧠 Analisar dificuldade'}</button>
-          <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: '.66rem' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: CORDIF.facil }} />fácil</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: CORDIF.medio }} />médio</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: CORDIF.complexo }} />complexo</span>
+          <input type="number" min={1} value={ate} onChange={e => setAte(+e.target.value)} style={{ width: 54, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', background: 'var(--surface)', color: 'var(--text-primary)', outline: 'none' }} />
+          <button onClick={analisar} disabled={!!analise} style={{ height: 26, padding: '0 11px', borderRadius: 7, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '.72rem', cursor: analise ? 'default' : 'pointer', opacity: analise ? .8 : 1 }}>{analise ? `Analisando… ${analise.pct}%` : '🧠 Analisar dificuldade'}</button>
+          {temDific && <button onClick={() => setRelatorio(true)} style={{ ...btn, width: 'auto', padding: '0 9px', fontSize: '.72rem' }}>📋 Ver relatório</button>}
+          <span style={{ display: 'inline-flex', gap: 9, alignItems: 'center', fontSize: '.66rem', marginLeft: 'auto' }}>
+            {(['facil', 'medio', 'complexo'] as const).map(k => <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: CORDIF[k] }} />{ROTDIF[k]}</span>)}
           </span>
         </div>
       )}
+      {/* RELATÓRIO DE DIFICULDADE */}
+      {relatorio && createPortal(<>
+        <div onClick={() => setRelatorio(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9600 }} />
+        <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9601, width: 'min(620px,95vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '15px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(124,58,237,.12),transparent)' }}>
+            <b style={{ fontSize: '1rem', color: 'var(--text-primary)' }}>📋 Relatório de dificuldade</b>
+            <span style={{ flex: 1 }} />
+            {(['facil', 'medio', 'complexo'] as const).map(k => <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '.74rem', fontWeight: 700, color: CORDIF[k] }}><span style={{ width: 11, height: 11, borderRadius: 3, background: CORDIF[k] }} />{grupos[k].length}</span>)}
+            <button onClick={() => setRelatorio(false)} style={{ ...btn, marginLeft: 6 }}>✕</button>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+            {(['complexo', 'medio', 'facil'] as const).filter(k => grupos[k].length).map(k => (
+              <div key={k} style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, paddingBottom: 5, borderBottom: `2px solid ${CORDIF[k]}` }}>
+                  <span style={{ width: 12, height: 12, borderRadius: 3, background: CORDIF[k] }} />
+                  <b style={{ color: 'var(--text-primary)', fontSize: '.9rem' }}>{ROTDIF[k]}</b>
+                  <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>({grupos[k].length} página{grupos[k].length > 1 ? 's' : ''})</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {grupos[k].map((p: number) => (
+                    <div key={p} style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+                      <button onClick={() => { gotoPage(p); setRelatorio(false) }} title="Ir para a página" style={{ flexShrink: 0, minWidth: 38, height: 22, padding: '0 7px', borderRadius: 6, border: `1px solid ${CORDIF[k]}55`, background: `${CORDIF[k]}18`, color: 'var(--text-primary)', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer' }}>p.{p}</button>
+                      <span style={{ fontSize: '.8rem', color: 'var(--text-secondary)', lineHeight: 1.45, paddingTop: 2 }}>{motivos[p] || <span style={{ opacity: .5 }}>— sem justificativa registrada —</span>}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {!Object.keys(dific).length && <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 30 }}>Nenhuma página analisada ainda.</div>}
+          </div>
+        </div>
+      </>, document.body)}
     </div>
   )
 }
@@ -1547,6 +1626,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const [paginaImagem, setPaginaImagem] = useState(false)
   const [aiPop, setAiPop] = useState<{ open: boolean; carregando: boolean; titulo: string; texto: string; origem: string } | null>(null)  // resultado de "Não entendi"/Dicionário
   const [reader, setReader] = useState(false)   // Modo Reader (texto limpo reflowável)
+  const [barraH, setBarraH] = useState(36)   // altura dinâmica da linha do tempo
   const [ocrStatus, setOcrStatus] = useState<{ running: boolean; pct: number; page: number } | null>(null)
 
   // importa o PDF (apenas em memória — nunca persistido)
@@ -2213,14 +2293,14 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         )}
         {/* linha do tempo de leitura + dificuldade */}
         {numPages > 0 && !foco && !secondary && (
-          <BarraLeitura numPages={numPages} curPage={curPage} fileKey={nome || 'doc'} gotoPage={irParaPagina} getPageText={textoDaPagina} />
+          <BarraLeitura numPages={numPages} curPage={curPage} fileKey={nome || 'doc'} gotoPage={irParaPagina} getPageText={textoDaPagina} onHeight={setBarraH} />
         )}
         {/* Modo Reader (overlay com texto limpo) */}
         {reader && numPages > 0 && (
           <ReaderMode numPages={numPages} startPage={curPageRef.current} getPageText={textoDaPagina} nome={nome} onClose={() => setReader(false)} />
         )}
         <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll}
-          style={{ position: 'absolute', top: numPages && !foco && !secondary ? 18 : 0, bottom: 0, left: thumbsOpen && numPages ? 120 : 0, right: chat.open && numPages ? 332 : 0, overflow: 'auto', padding: foco ? '40px 8%' : 18, background: foco ? 'var(--card-bg)' : 'var(--bg-subtle, #1112)', transition: 'padding .25s', ['--pr-filter' as any]: tomFilter(tom) }}>
+          style={{ position: 'absolute', top: numPages && !foco && !secondary ? barraH : 0, bottom: 0, left: thumbsOpen && numPages ? 120 : 0, right: chat.open && numPages ? 332 : 0, overflow: 'auto', padding: foco ? '40px 8%' : 18, background: foco ? 'var(--card-bg)' : 'var(--bg-subtle, #1112)', transition: 'padding .25s', ['--pr-filter' as any]: tomFilter(tom) }}>
           {!numPages && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, color: 'var(--text-muted)', fontSize: '0.9rem', padding: 20 }}>
               <div>Importe um PDF para começar a leitura.</div>
