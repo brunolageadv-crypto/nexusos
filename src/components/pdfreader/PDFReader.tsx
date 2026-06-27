@@ -3073,8 +3073,12 @@ function MapaVisual({ mapa, ops, onConector }: any) {
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 30, y: 60 })
   const [selIds, setSelIds] = useState<Set<string>>(new Set())   // multi-seleção
-  const [drag, setDrag] = useState<any>(null)   // { id, ox, oy, sx, sy, dx, dy }
+  const [drag, setDrag] = useState<any>(null)   // { ids[], base{}, sx, sy, ddx, ddy }
+  const [marquee, setMarquee] = useState<any>(null)   // retângulo de seleção (coords relativas ao container)
+  const [ferramenta, setFerramenta] = useState<'sel' | 'pan'>('sel')
   const panRef = useRef<any>(null)
+  const marqRef = useRef<any>(null)
+  const boxRef = useRef<HTMLDivElement>(null)
   const COL_W = 215, BOX_W = 172
   const LINE_H = 16, PADY = 8, MINH = 38, GAP = 14
   const charsLinha = Math.max(14, Math.floor((BOX_W - 22) / 6.6))
@@ -3094,11 +3098,11 @@ function MapaVisual({ mapa, ops, onConector }: any) {
     layout(raiz, 0)
     return { pos, w: (maxDepth + 1) * COL_W + BOX_W, h: Math.max(cursorY, MINH) + 24 }
   }, [raiz])
-  // posição final = base + offset manual (com override durante o arraste)
+  // posição final = base + offset manual (arrasta todos os nós em drag.ids)
   const finalPos = (id: string) => {
     const p = base.pos[id]; if (!p) return null
-    const ox = (drag && drag.id === id) ? drag.dx : (p.node.dx || 0)
-    const oy = (drag && drag.id === id) ? drag.dy : (p.node.dy || 0)
+    let ox = p.node.dx || 0, oy = p.node.dy || 0
+    if (drag && drag.ids.includes(id)) { ox = (drag.base[id]?.dx || 0) + drag.ddx; oy = (drag.base[id]?.dy || 0) + drag.ddy }
     return { x: p.x + ox, y: p.y + oy, node: p.node, h: p.h }
   }
   const lista = Object.keys(base.pos).map(finalPos).filter(Boolean) as any[]
@@ -3109,17 +3113,45 @@ function MapaVisual({ mapa, ops, onConector }: any) {
     : conTipo === 'cotovelo' ? `M${e.x1},${e.y1} L${(e.x1 + e.x2) / 2},${e.y1} L${(e.x1 + e.x2) / 2},${e.y2} L${e.x2},${e.y2}`
       : `M${e.x1},${e.y1} C${e.x1 + 55},${e.y1} ${e.x2 - 55},${e.y2} ${e.x2},${e.y2}`
 
-  const onContainerDown = (e: any) => { if (e.target.closest('.pr-mapbox')) return; setSelIds(new Set()); panRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y } }
+  const relXY = (e: any) => { const r = boxRef.current!.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  const onContainerDown = (e: any) => {
+    if (e.target.closest('.pr-mapbox')) return
+    if (ferramenta === 'pan' || e.button === 1) { panRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y }; return }
+    // ferramenta de seleção: inicia retângulo
+    const { x, y } = relXY(e)
+    const add = e.shiftKey || e.ctrlKey || e.metaKey
+    if (!add) setSelIds(new Set())
+    marqRef.current = { x0: x, y0: y, add, prev: new Set(selIds) }
+    setMarquee({ x0: x, y0: y, x1: x, y1: y })
+  }
   const onMove = (e: any) => {
-    if (drag) { setDrag((d: any) => ({ ...d, dx: d.ox + (e.clientX - d.sx) / zoom, dy: d.oy + (e.clientY - d.sy) / zoom })); return }
+    if (drag) { setDrag((d: any) => ({ ...d, ddx: (e.clientX - d.sx) / zoom, ddy: (e.clientY - d.sy) / zoom })); return }
+    if (marqRef.current) { const { x, y } = relXY(e); setMarquee({ x0: marqRef.current.x0, y0: marqRef.current.y0, x1: x, y1: y }); return }
     if (panRef.current) setPan({ x: panRef.current.px + (e.clientX - panRef.current.sx), y: panRef.current.py + (e.clientY - panRef.current.sy) })
   }
-  const onUp = () => { if (drag) { ops.mover(drag.id, drag.dx, drag.dy); setDrag(null) } panRef.current = null }
+  const onUp = () => {
+    if (drag) { drag.ids.forEach((id: string) => ops.mover(id, (drag.base[id]?.dx || 0) + drag.ddx, (drag.base[id]?.dy || 0) + drag.ddy)); setDrag(null) }
+    if (marqRef.current && marquee) {
+      const L = Math.min(marquee.x0, marquee.x1), T = Math.min(marquee.y0, marquee.y1), R = Math.max(marquee.x0, marquee.x1), B = Math.max(marquee.y0, marquee.y1)
+      const hit = new Set<string>(marqRef.current.add ? marqRef.current.prev : [])
+      if (R - L > 3 || B - T > 3) lista.forEach(({ node, x, y, h }: any) => {
+        const sl = pan.x + x * zoom, st = pan.y + (y - h / 2) * zoom, sr = sl + BOX_W * zoom, sb = st + h * zoom
+        if (sl < R && sr > L && st < B && sb > T) hit.add(node.id)
+      })
+      setSelIds(hit); marqRef.current = null; setMarquee(null)
+    }
+    panRef.current = null
+  }
   const onBoxDown = (e: any, node: NoMapa) => {
     e.stopPropagation()
     const multi = e.ctrlKey || e.metaKey || e.shiftKey
-    setSelIds(prev => { const n = new Set(multi ? prev : []); n.has(node.id) ? (multi && n.delete(node.id)) : n.add(node.id); return n })
-    if (!(e.ctrlKey || e.metaKey || e.shiftKey)) setDrag({ id: node.id, ox: node.dx || 0, oy: node.dy || 0, sx: e.clientX, sy: e.clientY, dx: node.dx || 0, dy: node.dy || 0 })
+    if (multi) { setSelIds(prev => { const n = new Set(prev); n.has(node.id) ? n.delete(node.id) : n.add(node.id); return n }); return }
+    // arrasta o grupo se o nó já faz parte de uma seleção múltipla; senão seleciona só ele
+    const grupo = selIds.has(node.id) && selIds.size > 1
+    const ids = grupo ? [...selIds] : [node.id]
+    if (!grupo) setSelIds(new Set([node.id]))
+    const baseMap: any = {}; ids.forEach(id => { const nd = base.pos[id]?.node; baseMap[id] = { dx: nd?.dx || 0, dy: nd?.dy || 0 } })
+    setDrag({ ids, base: baseMap, sx: e.clientX, sy: e.clientY, ddx: 0, ddy: 0 })
   }
   // aplica estilo a TODOS os nós selecionados
   const aplicarTodos = (patch: any) => selIds.forEach(id => ops.estilo(id, patch))
@@ -3130,8 +3162,8 @@ function MapaVisual({ mapa, ops, onConector }: any) {
   const swatch = (cor: string, on: boolean, onClick: any) => <button key={cor} onClick={onClick} style={{ width: 18, height: 18, borderRadius: '50%', background: cor, border: on ? '2px solid var(--text-primary)' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
 
   return (
-    <div onMouseDown={onContainerDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-      style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: '#ffffff', backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '22px 22px', cursor: drag ? 'grabbing' : panRef.current ? 'grabbing' : 'grab' }}>
+    <div ref={boxRef} onMouseDown={onContainerDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+      style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: '#ffffff', backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '22px 22px', cursor: drag ? 'grabbing' : panRef.current ? 'grabbing' : ferramenta === 'pan' ? 'grab' : 'crosshair' }}>
       {/* barra de estilo (conectores + nó selecionado) — stopPropagation evita desselecionar/pan ao clicar */}
       <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: 8, left: 8, right: 56, zIndex: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 7, padding: '6px 10px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 14px rgba(0,0,0,.18)' }}>
         <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Conectores:</span>
@@ -3162,10 +3194,13 @@ function MapaVisual({ mapa, ops, onConector }: any) {
       </div>
       {/* zoom */}
       <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: 8, right: 10, zIndex: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <button onClick={() => setFerramenta(f => f === 'sel' ? 'pan' : 'sel')} title={ferramenta === 'sel' ? 'Ferramenta: Selecionar (arraste no fundo p/ selecionar vários) — clique p/ Mover' : 'Ferramenta: Mover (arraste o fundo p/ navegar) — clique p/ Selecionar'} style={{ ...ctrlBtn, background: '#7c3aed', color: '#fff', border: 'none' }}>{ferramenta === 'sel' ? '⬚' : '✋'}</button>
         <button onClick={() => setZoom(z => Math.min(2.2, +(z + 0.1).toFixed(2)))} title="Aproximar" style={ctrlBtn}>＋</button>
         <button onClick={() => setZoom(z => Math.max(0.3, +(z - 0.1).toFixed(2)))} title="Afastar" style={ctrlBtn}>−</button>
         <button onClick={() => { setZoom(1); setPan({ x: 30, y: 60 }) }} title="Reposicionar" style={ctrlBtn}>⟲</button>
       </div>
+      {/* retângulo de seleção */}
+      {marquee && <div style={{ position: 'absolute', zIndex: 8, left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0), background: 'rgba(124,58,237,.12)', border: '1.5px dashed #7c3aed', borderRadius: 4, pointerEvents: 'none' }} />}
       <div onWheel={e => { const d = e.deltaY < 0 ? 0.1 : -0.1; setZoom(z => Math.min(2.2, Math.max(0.3, +(z + d).toFixed(2)))) }} style={{ position: 'absolute', inset: 0 }}>
         <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
           <svg width={base.w + 400} height={base.h + 400} style={{ position: 'absolute', left: -200, top: -200, overflow: 'visible', pointerEvents: 'none' }}>
@@ -3201,7 +3236,7 @@ function MapaVisual({ mapa, ops, onConector }: any) {
           })}
         </div>
       </div>
-      <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: '.66rem', color: '#64748b' }}>Clique = selecionar · Ctrl/Shift+clique = vários · arraste um nó p/ mover · arraste o fundo / roda = navegar · duplo-clique renomeia</div>
+      <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: '.66rem', color: '#64748b' }}>Arraste no fundo p/ selecionar vários (⬚) · arraste um nó selecionado p/ mover o grupo · Ctrl/Shift+clique soma · ✋ alterna p/ navegar · duplo-clique renomeia</div>
     </div>
   )
 }
