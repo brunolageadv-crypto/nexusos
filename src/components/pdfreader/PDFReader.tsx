@@ -208,6 +208,20 @@ async function gerarPerguntasCustomIA(comando: string, texto: string, foco = '')
   return (await callLLM(promptPerguntasCustom(comando, texto, foco))).trim()
 }
 
+/* ─────────── APRIMORAR TEXTO (IA) — reescreve melhor, mantendo o sentido ─────────── */
+function promptAprimorar(texto: string) {
+  return [
+    'Você é um revisor e redator especialista em português formal e jurídico para concursos públicos brasileiros (AGU/CEBRASPE).',
+    'Aprimore o TEXTO abaixo: melhore a clareza, a coesão, a correção gramatical e a elegância da redação, mantendo FIELMENTE o sentido, os fatos e os termos técnicos.',
+    'Não invente conteúdo novo, não acrescente informações que não estejam no texto, não remova dados relevantes. Preserve a numeração de listas/perguntas se houver.',
+    'Responda APENAS com o texto aprimorado, sem comentários, sem markdown, sem aspas ao redor.',
+    'TEXTO:', '"""', (texto || '').slice(0, 12000), '"""',
+  ].join('\n')
+}
+async function aprimorarTextoIA(texto: string): Promise<string> {
+  return (await callLLM(promptAprimorar(texto))).trim()
+}
+
 /* ═══════════════════════════════ MAPA MENTAL (IA) ═══════════════════════════════ */
 type NoMapa = { id: string; texto: string; tipo?: string; filhos: NoMapa[]; colapsado?: boolean }
 function promptMapa(texto: string, leiSeca: boolean, foco = '') {
@@ -297,37 +311,48 @@ function wrapTexto(texto: string, maxChars: number): string[] {
   if (cur) linhas.push(cur)
   return (linhas.length ? linhas : ['']).slice(0, 12)
 }
-function mapaParaSVG(raiz: NoMapa): { svg: string; w: number; h: number } {
+function mapaParaSVG(raiz: NoMapa, conTipo = 'curva', conCor = '#94a3b8'): { svg: string; w: number; h: number } {
   const BOX_W = 210, FONT = 12.5, LINE_H = 16, PADX = 11, PADY = 8, COL_W = 250, GAP = 16, MINH = 34
   const charsLinha = Math.max(12, Math.floor((BOX_W - 2 * PADX) / (FONT * 0.54)))
   const info: any = {}
   const calc = (n: NoMapa) => { const lines = wrapTexto(n.texto, charsLinha); info[n.id] = { lines, h: Math.max(MINH, lines.length * LINE_H + 2 * PADY) }; (n.colapsado ? [] : n.filhos).forEach(calc) }
   calc(raiz)
-  const pos: any = {}; let cursorY = 0, maxDepth = 0
+  const pos: any = {}; let cursorY = 0
   const layout = (n: NoMapa, depth: number): number => {
-    maxDepth = Math.max(maxDepth, depth)
     const x = depth * COL_W; const vis = n.colapsado ? [] : n.filhos; const h = info[n.id].h
     let cy: number
     if (!vis.length) { cy = cursorY + h / 2; cursorY += h + GAP }
     else { const ys = vis.map(c => layout(c, depth + 1)); cy = (ys[0] + ys[ys.length - 1]) / 2 }
-    pos[n.id] = { x, cy, h, node: n }; return cy
+    pos[n.id] = { x: x + (n.dx || 0), cy: cy + (n.dy || 0), h, node: n }; return cy + (n.dy || 0)
   }
   layout(raiz, 0)
-  const W = (maxDepth + 1) * COL_W + BOX_W + 20, H = Math.max(cursorY, MINH) + 20
+  // limites (considera offsets manuais)
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  Object.values(pos).forEach(({ x, cy, h }: any) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x + BOX_W); minY = Math.min(minY, cy - h / 2); maxY = Math.max(maxY, cy + h / 2) })
+  const PAD = 20, ox = -minX + PAD, oy = -minY + PAD
+  const W = (maxX - minX) + 2 * PAD, H = (maxY - minY) + 2 * PAD
+  const dPath = (x1: number, y1: number, x2: number, y2: number) => conTipo === 'reta' ? `M${x1},${y1} L${x2},${y2}`
+    : conTipo === 'cotovelo' ? `M${x1},${y1} L${(x1 + x2) / 2},${y1} L${(x1 + x2) / 2},${y2} L${x2},${y2}`
+      : `M${x1},${y1} C${x1 + 60},${y1} ${x2 - 60},${y2} ${x2},${y2}`
   let edges = '', boxes = ''
-  Object.values(pos).forEach(({ node, x, cy }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = pos[c.id]; if (cp) edges += `<path d="M${x + BOX_W},${cy} C${x + BOX_W + 60},${cy} ${cp.x - 60},${cp.cy} ${cp.x},${cp.cy}" fill="none" stroke="#cbd5e1" stroke-width="1.6"/>` }) })
+  Object.values(pos).forEach(({ node, x, cy }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = pos[c.id]; if (cp) edges += `<path d="${dPath(x + BOX_W + ox, cy + oy, cp.x + ox, cp.cy + oy)}" fill="none" stroke="${conCor}" stroke-width="1.7"/>` }) })
   Object.values(pos).forEach(({ node, x, cy, h }: any) => {
-    const cor = CORTIPO[node.tipo || 'conceito'] || '#64748b'; const top = cy - h / 2
+    const cor = node.cor || CORTIPO[node.tipo || 'conceito'] || '#64748b'; const top = cy - h / 2 + oy; const left = x + ox
     const peso = node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400
-    const fill = node.tipo === 'topico' ? cor + '14' : '#ffffff'
-    const txt = info[node.id].lines.map((ln: string, i: number) => `<text x="${x + PADX + 3}" y="${top + PADY + FONT + i * LINE_H}" font-family="Calibri,Segoe UI,Arial,sans-serif" font-size="${FONT}" font-weight="${peso}" fill="#1a1a1a">${escapeHtml(ln)}</text>`).join('')
-    boxes += `<g><rect x="${x}" y="${top}" width="${BOX_W}" height="${h}" rx="9" fill="${fill}" stroke="${cor}" stroke-width="1.2"/><rect x="${x}" y="${top}" width="4" height="${h}" rx="2" fill="${cor}"/>${txt}</g>`
+    const fill = node.cor ? cor + '20' : (node.tipo === 'topico' ? cor + '14' : '#ffffff')
+    const txt = info[node.id].lines.map((ln: string, i: number) => `<text x="${left + PADX + 3}" y="${top + PADY + FONT + i * LINE_H}" font-family="Calibri,Segoe UI,Arial,sans-serif" font-size="${FONT}" font-weight="${peso}" fill="#1a1a1a">${escapeHtml(ln)}</text>`).join('')
+    if (node.formato === 'elipse') {
+      boxes += `<g><ellipse cx="${left + BOX_W / 2}" cy="${top + h / 2}" rx="${BOX_W / 2}" ry="${h / 2 + 3}" fill="${fill}" stroke="${cor}" stroke-width="1.4"/>${txt}</g>`
+    } else {
+      const rx = node.formato === 'ret' ? 2 : 9
+      boxes += `<g><rect x="${left}" y="${top}" width="${BOX_W}" height="${h}" rx="${rx}" fill="${fill}" stroke="${cor}" stroke-width="1.2"/><rect x="${left}" y="${top}" width="4" height="${h}" rx="2" fill="${cor}"/>${txt}</g>`
+    }
   })
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/>${edges}${boxes}</svg>`
   return { svg, w: W, h: H }
 }
 function mapaPaginasHTML(maps: any[], orient: 'landscape' | 'portrait'): string {
-  const pgs = maps.map(m => `<div class="pg"><div class="ttl">${escapeHtml(m.titulo || 'Mapa')}</div><div class="cv">${mapaParaSVG(m.raiz).svg}</div></div>`).join('')
+  const pgs = maps.map(m => `<div class="pg"><div class="ttl">${escapeHtml(m.titulo || 'Mapa')}</div><div class="cv">${mapaParaSVG(m.raiz, m.conectorTipo, m.conectorCor).svg}</div></div>`).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>Mapas Mentais</title><style>
     @page{ size:A4 ${orient}; margin:8mm } *{box-sizing:border-box} html,body{margin:0;padding:0}
     .pg{ page-break-after:always; width:100%; height:100vh; display:flex; flex-direction:column; align-items:center; padding:6px 6px 14px }
@@ -708,6 +733,7 @@ function RichEditor({ editorRef, onChange }: any) {
   const [baseFont, setBaseFont] = useState(15)   // tamanho-base da página (px) — comanda texto, altura de linha e passo da pauta
   const pitch = Math.max(16, Math.round(baseFont * 1.85))   // espaçamento da pauta acompanha a fonte
   const [autoQ, setAutoQ] = useState(false)                                          // feature 2
+  const [aprimora, setAprimora] = useState<{ open: boolean; carregando: boolean; sugestao: string; modo: 'all' | 'sel'; range: Range | null } | null>(null)  // aprimorar texto (IA)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)  // menu suspenso ancorado
   const openMenu = (id: string, e: React.MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu(m => m && m.id === id ? null : { id, x: r.left, y: r.bottom + 4 }) }
   const [tRows, setTRows] = useState(3)
@@ -789,6 +815,31 @@ function RichEditor({ editorRef, onChange }: any) {
 
   const run = (fn: () => void) => { fn(); onChange?.() }
 
+  // aprimorar texto com IA (sugere reescrita; só substitui após confirmação)
+  const aprimorarTexto = async () => {
+    const ed = editorRef.current; if (!ed) return
+    const sel = window.getSelection()
+    const temSel = !!(sel && sel.rangeCount && !sel.isCollapsed && ed.contains(sel.anchorNode) && ed.contains(sel.focusNode))
+    const texto = temSel ? sel!.toString() : (ed.innerText || '')
+    if (!texto.trim()) { alert('Não há texto para aprimorar.'); return }
+    const range = temSel ? sel!.getRangeAt(0).cloneRange() : null
+    setAprimora({ open: true, carregando: true, sugestao: '', modo: temSel ? 'sel' : 'all', range })
+    try { const s = await aprimorarTextoIA(texto); setAprimora(a => a && { ...a, carregando: false, sugestao: s }) }
+    catch (e: any) { setAprimora(null); alert('Falha ao aprimorar: ' + (e?.message || e)) }
+  }
+  const aplicarAprimoramento = () => {
+    const ed = editorRef.current; if (!ed || !aprimora) return
+    const texto = aprimora.sugestao
+    if (aprimora.modo === 'sel' && aprimora.range) {
+      const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(aprimora.range)
+      document.execCommand('insertText', false, texto)
+    } else {
+      ed.innerHTML = ''
+      texto.split('\n').forEach(linha => { const p = document.createElement('p'); p.textContent = linha || '\u00A0'; ed.appendChild(p) })
+    }
+    setAprimora(null); onChange?.()
+  }
+
   // renumera perguntas/itens numerados em sequência contínua (controle de cadeia de numeração)
   const renumerarPerguntas = () => {
     const ed = editorRef.current; if (!ed) return
@@ -857,9 +908,35 @@ function RichEditor({ editorRef, onChange }: any) {
         <IBtn title="Inserir nota adesiva (post-it) — arraste, redimensione, feche no ×"
           onClick={() => { const ed = editorRef.current; if (ed) run(() => insertPostit(ed)) }}>📌</IBtn>
         <Sep />
+        {/* aprimorar texto com IA */}
+        <button onClick={aprimorarTexto} title="Aprimorar o texto com IA (seleção, ou tudo) — pede confirmação antes de substituir"
+          style={{ height: 30, padding: '0 9px', borderRadius: 7, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>✨ Aprimorar</button>
+        <Sep />
         <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
         <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
       </div>
+      {/* modal: aprimoramento de texto (confirmação antes de substituir) */}
+      {aprimora?.open && createPortal(<>
+        <div onMouseDown={() => setAprimora(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9500 }} />
+        <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9501, width: 'min(640px,95vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+            <span style={{ fontSize: '1.1rem' }}>✨</span><b style={{ color: 'var(--text-primary)' }}>Texto aprimorado (IA)</b>
+            <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{aprimora.modo === 'sel' ? 'seleção' : 'documento inteiro'}</span>
+            <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); setAprimora(null) }} style={btn}>✕</button>
+          </div>
+          {aprimora.carregando ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)' }}>Aprimorando o texto com a IA…</div>
+          ) : (<>
+            <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', marginBottom: 8 }}>Revise (e ajuste se quiser) a sugestão abaixo. Ela só substitui o seu texto se você confirmar.</div>
+            <textarea value={aprimora.sugestao} onChange={e => setAprimora(a => a && { ...a, sugestao: e.target.value })} rows={12}
+              style={{ flex: 1, minHeight: 200, resize: 'vertical', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.6, outline: 'none', fontFamily: 'inherit', marginBottom: 12 }} />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onMouseDown={e => { e.preventDefault(); setAprimora(null) }} style={{ ...btn, width: 'auto', padding: '0 14px' }}>Cancelar</button>
+              <button onMouseDown={e => { e.preventDefault(); aplicarAprimoramento() }} style={{ height: 34, padding: '0 18px', borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '.86rem', cursor: 'pointer' }}>✓ Substituir meu texto</button>
+            </div>
+          </>)}
+        </div>
+      </>, document.body)}
 
       {/* ── PAINÉIS DOS MENUS ── */}
       <Painel id="estilo" width={150}>
@@ -1078,6 +1155,103 @@ function ChatDocumento({ chat, onEnviar, onClose, onLimpar, onInserir }: any) {
         <button onClick={enviar} disabled={chat.carregando} style={{ alignSelf: 'stretch', padding: '0 14px', borderRadius: 9, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>➤</button>
       </div>
     </div>
+  )
+}
+
+/* ═══════════════════════════════ TIMER / POMODORO / CRONÔMETRO ═══════════════════════════════ */
+const TIMER_KEY = 'nexus_pr_timer'
+const TIMER_DEFAULT = {
+  presets: [
+    { id: 'pomo', nome: 'Pomodoro 25/5', tipo: 'pomodoro', foco: 25, pausa: 5, ciclos: 4 },
+    { id: 'foco50', nome: 'Foco 50 min', tipo: 'timer', min: 50, seg: 0 },
+    { id: 'crono', nome: 'Cronômetro', tipo: 'crono' },
+  ] as any[], ativo: 'pomo', som: true,
+}
+const fmtT = (s: number) => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60; const p = (n: number) => String(n).padStart(2, '0'); return h > 0 ? `${p(h)}:${p(m)}:${p(ss)}` : `${p(m)}:${p(ss)}` }
+function beepTimer() { try { const AC = (window as any).AudioContext || (window as any).webkitAudioContext; const ac = new AC(); const o = ac.createOscillator(); const g = ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value = 880; g.gain.value = 0.07; o.start(); setTimeout(() => { o.stop(); ac.close() }, 360) } catch {} }
+
+function TimerWidget() {
+  const [cfg, setCfg] = useState<any>(() => { try { const s = JSON.parse(localStorage.getItem(TIMER_KEY) || ''); if (s?.presets?.length) return s } catch {} return TIMER_DEFAULT })
+  useEffect(() => { try { localStorage.setItem(TIMER_KEY, JSON.stringify(cfg)) } catch {} }, [cfg])
+  const preset = cfg.presets.find((p: any) => p.id === cfg.ativo) || cfg.presets[0]
+  const initSec = (p: any) => !p ? 0 : p.tipo === 'crono' ? 0 : p.tipo === 'timer' ? ((p.min || 0) * 60 + (p.seg || 0)) : (p.foco || 25) * 60
+  const [run, setRun] = useState<any>(() => ({ running: false, sec: initSec(preset), fase: 'foco', ciclo: 1, fim: false }))
+  const [open, setOpen] = useState(false)
+  // troca de preset ou edição reinicia o relógio
+  useEffect(() => { setRun({ running: false, sec: initSec(preset), fase: 'foco', ciclo: 1, fim: false }) }, [cfg.ativo, preset?.tipo, preset?.min, preset?.seg, preset?.foco, preset?.pausa, preset?.ciclos])
+  // tique de 1s
+  useEffect(() => {
+    if (!run.running) return
+    const t = setInterval(() => setRun((r: any) => {
+      if (!r.running) return r
+      if (preset.tipo === 'crono') return { ...r, sec: r.sec + 1 }
+      const ns = r.sec - 1
+      if (ns > 0) return { ...r, sec: ns }
+      if (cfg.som) beepTimer()
+      if (preset.tipo === 'timer') return { ...r, sec: 0, running: false, fim: true }
+      // pomodoro: avança de fase
+      if (r.fase === 'foco') return { ...r, fase: 'pausa', sec: (preset.pausa || 5) * 60, fim: false }
+      const novo = r.ciclo + 1
+      if (novo > (preset.ciclos || 4)) return { ...r, sec: 0, running: false, fim: true, fase: 'foco', ciclo: 1 }
+      return { ...r, fase: 'foco', sec: (preset.foco || 25) * 60, ciclo: novo, fim: false }
+    }), 1000)
+    return () => clearInterval(t)
+  }, [run.running, preset, cfg.som])
+
+  const toggle = () => setRun((r: any) => ({ ...r, running: !r.running, fim: false }))
+  const zerar = () => setRun({ running: false, sec: initSec(preset), fase: 'foco', ciclo: 1, fim: false })
+  const upd = (id: string, patch: any) => setCfg((c: any) => ({ ...c, presets: c.presets.map((p: any) => p.id === id ? { ...p, ...patch } : p) }))
+  const addPreset = () => { const id = 't' + Date.now(); setCfg((c: any) => ({ ...c, presets: [...c.presets, { id, nome: 'Novo timer', tipo: 'timer', min: 10, seg: 0 }], ativo: id })) }
+  const delPreset = (id: string) => setCfg((c: any) => { const ps = c.presets.filter((p: any) => p.id !== id); return { ...c, presets: ps.length ? ps : TIMER_DEFAULT.presets, ativo: ps[0]?.id || 'pomo' } })
+
+  const numIn: any = { width: 52, border: '1px solid var(--border)', borderRadius: 6, padding: '4px 6px', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '.8rem', outline: 'none' }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+      <button onClick={toggle} disabled={!preset} title={run.running ? 'Pausar' : 'Iniciar'} style={{ ...btn, width: 26 }}>{run.running ? '⏸' : '▶'}</button>
+      <button onClick={() => setOpen(o => !o)} title="Configurar timer / pomodoro" className={run.fim ? 'pr-blink' : ''}
+        style={{ height: 30, padding: '0 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: run.fim ? '#dc2626' : 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.84rem', cursor: 'pointer', minWidth: 54, letterSpacing: '.5px' }}>{fmtT(run.sec)}</button>
+      {preset?.tipo === 'pomodoro' && <span style={{ fontSize: '.58rem', fontWeight: 800, color: run.fase === 'foco' ? '#16a34a' : '#ea580c', whiteSpace: 'nowrap' }}>{run.fase === 'foco' ? 'FOCO' : 'PAUSA'} {run.ciclo}/{preset.ciclos}</span>}
+      {open && createPortal(<>
+        <div onMouseDown={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9600 }} />
+        <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: 70, transform: 'translateX(-50%)', zIndex: 9601, width: 'min(380px,94vw)', maxHeight: '80vh', overflowY: 'auto', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,.4)', padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: '1rem' }}>⏱</span><b style={{ color: 'var(--text-primary)' }}>Timers</b><span style={{ flex: 1 }} />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '.7rem', color: 'var(--text-muted)', cursor: 'pointer' }}><input type="checkbox" checked={cfg.som} onChange={e => setCfg((c: any) => ({ ...c, som: e.target.checked }))} style={{ accentColor: '#7c3aed' }} />som</label>
+            <button onMouseDown={e => { e.preventDefault(); setOpen(false) }} style={btn}>✕</button>
+          </div>
+          {cfg.presets.map((p: any) => (
+            <div key={p.id} style={{ border: `1px solid ${cfg.ativo === p.id ? '#7c3aed' : 'var(--border)'}`, borderRadius: 10, padding: 9, marginBottom: 8, background: cfg.ativo === p.id ? 'rgba(124,58,237,.06)' : 'var(--surface)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <input type="radio" checked={cfg.ativo === p.id} onChange={() => setCfg((c: any) => ({ ...c, ativo: p.id }))} style={{ accentColor: '#7c3aed' }} />
+                <input value={p.nome} onChange={e => upd(p.id, { nome: e.target.value })} style={{ flex: 1, border: 'none', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '.84rem', outline: 'none' }} />
+                <select value={p.tipo} onChange={e => upd(p.id, { tipo: e.target.value })} style={{ ...numIn, width: 'auto', cursor: 'pointer' }}>
+                  <option value="pomodoro">Pomodoro</option><option value="timer">Timer</option><option value="crono">Cronômetro</option>
+                </select>
+                <button onClick={() => delPreset(p.id)} title="Excluir" style={{ ...btn, width: 24, color: '#dc2626' }}>🗑</button>
+              </div>
+              {cfg.ativo === p.id && p.tipo === 'timer' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '.74rem', color: 'var(--text-muted)' }}>
+                  <input type="number" min={0} value={p.min || 0} onChange={e => upd(p.id, { min: Math.max(0, +e.target.value) })} style={numIn} /> min
+                  <input type="number" min={0} max={59} value={p.seg || 0} onChange={e => upd(p.id, { seg: Math.min(59, Math.max(0, +e.target.value)) })} style={numIn} /> seg
+                </div>
+              )}
+              {cfg.ativo === p.id && p.tipo === 'pomodoro' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: '.74rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                  <input type="number" min={1} value={p.foco || 25} onChange={e => upd(p.id, { foco: Math.max(1, +e.target.value) })} style={numIn} /> foco
+                  <input type="number" min={1} value={p.pausa || 5} onChange={e => upd(p.id, { pausa: Math.max(1, +e.target.value) })} style={numIn} /> pausa
+                  <input type="number" min={1} value={p.ciclos || 4} onChange={e => upd(p.id, { ciclos: Math.max(1, +e.target.value) })} style={numIn} /> ciclos
+                </div>
+              )}
+            </div>
+          ))}
+          <button onClick={addPreset} style={{ ...btn, width: '100%', marginBottom: 10 }}>＋ Novo timer</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={toggle} style={{ flex: 1, height: 34, borderRadius: 8, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>{run.running ? '⏸ Pausar' : '▶ Iniciar'}</button>
+            <button onClick={zerar} style={{ ...btn, width: 'auto', padding: '0 14px', height: 34 }}>⟲ Zerar</button>
+          </div>
+        </div>
+      </>, document.body)}
+    </span>
   )
 }
 
@@ -1755,6 +1929,10 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>de {numPages || 0}</span>
           </div>
         </div>
+
+        {/* timer / pomodoro / cronômetro (sempre visível na toolbar) */}
+        <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
+        <TimerWidget />
 
         {/* alternador de visualização (sempre acessível, inclusive em tela cheia do PDF) */}
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
@@ -2871,60 +3049,107 @@ function NoMapaView({ no, depth, editId, setEditId, ops }: any) {
   )
 }
 
-/* visualização clássica: caixas + conectores, com pan/zoom (layout esquerda→direita) */
-function MapaVisual({ raiz, ops }: any) {
+/* visualização clássica editável: caixas + conectores, pan/zoom, arrastar nós, estilizar */
+const PALETA_MAPA = ['#7c3aed', '#5b5bd6', '#0891b2', '#16a34a', '#ea580c', '#dc2626', '#db2777', '#0d9488', '#ca8a04', '#475569']
+function MapaVisual({ mapa, ops, onConector }: any) {
+  const raiz: NoMapa = mapa.raiz
+  const conTipo = mapa.conectorTipo || 'curva'
+  const conCor = mapa.conectorCor || '#94a3b8'
   const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 30, y: 16 })
-  const dragRef = useRef<any>(null)
+  const [pan, setPan] = useState({ x: 30, y: 60 })
+  const [selId, setSelId] = useState<string | null>(null)
+  const [drag, setDrag] = useState<any>(null)   // { id, ox, oy, sx, sy, dx, dy }
+  const panRef = useRef<any>(null)
   const COL_W = 215, BOX_W = 172, ROW_H = 58
-  const { lista, edges, w, h } = useMemo(() => {
-    const pos: any = {}; let cursorY = 0; let maxDepth = 0
-    const layout = (node: NoMapa, depth: number): number => {
+  const base = useMemo(() => {
+    const pos: any = {}; let cursorY = 0, maxDepth = 0
+    const layout = (n: NoMapa, depth: number): number => {
       maxDepth = Math.max(maxDepth, depth)
-      const x = depth * COL_W
-      const vis = node.colapsado ? [] : node.filhos
+      const x = depth * COL_W; const vis = n.colapsado ? [] : n.filhos
       let y: number
       if (!vis.length) { y = cursorY + ROW_H / 2; cursorY += ROW_H }
       else { const ys = vis.map(c => layout(c, depth + 1)); y = (ys[0] + ys[ys.length - 1]) / 2 }
-      pos[node.id] = { x, y, node }; return y
+      pos[n.id] = { x, y, node: n }; return y
     }
     layout(raiz, 0)
-    const lista = Object.values(pos) as any[]
-    const edges: any[] = []
-    lista.forEach(({ node, x, y }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = pos[c.id]; if (cp) edges.push({ x1: x + BOX_W, y1: y, x2: cp.x, y2: cp.y, key: node.id + '>' + c.id }) }) })
-    return { lista, edges, w: (maxDepth + 1) * COL_W + BOX_W, h: Math.max(cursorY, ROW_H) + 24 }
+    return { pos, w: (maxDepth + 1) * COL_W + BOX_W, h: Math.max(cursorY, ROW_H) + 24 }
   }, [raiz])
-  const onDown = (e: any) => { if (e.target.closest('.pr-mapbox')) return; dragRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y } }
-  const onMove = (e: any) => { if (!dragRef.current) return; setPan({ x: dragRef.current.px + (e.clientX - dragRef.current.sx), y: dragRef.current.py + (e.clientY - dragRef.current.sy) }) }
-  const onUp = () => { dragRef.current = null }
+  // posição final = base + offset manual (com override durante o arraste)
+  const finalPos = (id: string) => {
+    const p = base.pos[id]; if (!p) return null
+    const ox = (drag && drag.id === id) ? drag.dx : (p.node.dx || 0)
+    const oy = (drag && drag.id === id) ? drag.dy : (p.node.dy || 0)
+    return { x: p.x + ox, y: p.y + oy, node: p.node }
+  }
+  const lista = Object.keys(base.pos).map(finalPos).filter(Boolean) as any[]
+  const edges: any[] = []
+  lista.forEach(({ node, x, y }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = finalPos(c.id); if (cp) edges.push({ x1: x + BOX_W, y1: y, x2: cp.x, y2: cp.y, key: node.id + '>' + c.id }) }) })
+  const pathD = (e: any) => conTipo === 'reta' ? `M${e.x1},${e.y1} L${e.x2},${e.y2}`
+    : conTipo === 'cotovelo' ? `M${e.x1},${e.y1} L${(e.x1 + e.x2) / 2},${e.y1} L${(e.x1 + e.x2) / 2},${e.y2} L${e.x2},${e.y2}`
+      : `M${e.x1},${e.y1} C${e.x1 + 55},${e.y1} ${e.x2 - 55},${e.y2} ${e.x2},${e.y2}`
+
+  const onContainerDown = (e: any) => { if (e.target.closest('.pr-mapbox')) return; setSelId(null); panRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y } }
+  const onMove = (e: any) => {
+    if (drag) { setDrag((d: any) => ({ ...d, dx: d.ox + (e.clientX - d.sx) / zoom, dy: d.oy + (e.clientY - d.sy) / zoom })); return }
+    if (panRef.current) setPan({ x: panRef.current.px + (e.clientX - panRef.current.sx), y: panRef.current.py + (e.clientY - panRef.current.sy) })
+  }
+  const onUp = () => { if (drag) { ops.mover(drag.id, drag.dx, drag.dy); setDrag(null) } panRef.current = null }
+  const onBoxDown = (e: any, node: NoMapa) => { e.stopPropagation(); setSelId(node.id); setDrag({ id: node.id, ox: node.dx || 0, oy: node.dy || 0, sx: e.clientX, sy: e.clientY, dx: node.dx || 0, dy: node.dy || 0 }) }
+
   const ctrlBtn: any = { width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem' }
+  const sel = selId ? base.pos[selId]?.node : null
+  const swatch = (cor: string, on: boolean, onClick: any) => <button key={cor} onClick={onClick} style={{ width: 18, height: 18, borderRadius: '50%', background: cor, border: on ? '2px solid var(--text-primary)' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
+
   return (
-    <div onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-      onWheel={e => { const d = e.deltaY < 0 ? 0.1 : -0.1; setZoom(z => Math.min(2.2, Math.max(0.3, +(z + d).toFixed(2)))) }}
-      style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-subtle, #1112)', cursor: dragRef.current ? 'grabbing' : 'grab' }}>
-      <div style={{ position: 'absolute', top: 10, right: 12, zIndex: 5, display: 'flex', gap: 6 }}>
+    <div onMouseDown={onContainerDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+      style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-subtle, #1112)', cursor: drag ? 'grabbing' : panRef.current ? 'grabbing' : 'grab' }}>
+      {/* barra de estilo (conectores + nó selecionado) */}
+      <div style={{ position: 'absolute', top: 8, left: 8, right: 56, zIndex: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 14px rgba(0,0,0,.18)' }}>
+        <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Conectores:</span>
+        {([['curva', '⌒'], ['reta', '╱'], ['cotovelo', '⌐']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => onConector({ conectorTipo: k })} title={k} style={{ width: 26, height: 24, borderRadius: 6, border: 'none', background: conTipo === k ? '#7c3aed' : 'var(--surface)', color: conTipo === k ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700 }}>{l}</button>
+        ))}
+        <span style={{ display: 'flex', gap: 3 }}>{['#94a3b8', '#7c3aed', '#16a34a', '#dc2626', '#0891b2'].map(c => swatch(c, conCor === c, () => onConector({ conectorCor: c })))}</span>
+        {sel && <>
+          <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
+          <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Caixa:</span>
+          <span style={{ display: 'flex', gap: 3 }}>{PALETA_MAPA.slice(0, 8).map(c => swatch(c, sel.cor === c, () => ops.estilo(sel.id, { cor: c })))}</span>
+          <button onClick={() => ops.estilo(sel.id, { cor: null })} title="Cor padrão (por tipo)" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 6px', fontSize: '.66rem', fontWeight: 700 }}>auto</button>
+          {([['arred', '▭'], ['ret', '⬛'], ['elipse', '⬭']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => ops.estilo(sel.id, { formato: k })} title={k} style={{ width: 24, height: 22, borderRadius: 6, border: 'none', background: (sel.formato || 'arred') === k ? '#7c3aed' : 'var(--surface)', color: (sel.formato || 'arred') === k ? '#fff' : 'var(--text-secondary)', cursor: 'pointer' }}>{l}</button>
+          ))}
+        </>}
+      </div>
+      {/* zoom */}
+      <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
         <button onClick={() => setZoom(z => Math.min(2.2, +(z + 0.1).toFixed(2)))} title="Aproximar" style={ctrlBtn}>＋</button>
-        <span style={{ alignSelf: 'center', fontSize: '.7rem', color: 'var(--text-muted)', minWidth: 34, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
         <button onClick={() => setZoom(z => Math.max(0.3, +(z - 0.1).toFixed(2)))} title="Afastar" style={ctrlBtn}>−</button>
-        <button onClick={() => { setZoom(1); setPan({ x: 30, y: 16 }) }} title="Reposicionar" style={ctrlBtn}>⟲</button>
+        <button onClick={() => { setZoom(1); setPan({ x: 30, y: 60 }) }} title="Reposicionar" style={ctrlBtn}>⟲</button>
       </div>
-      <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
-        <svg width={w} height={h} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' }}>
-          {edges.map((e: any) => <path key={e.key} d={`M${e.x1},${e.y1} C${e.x1 + 55},${e.y1} ${e.x2 - 55},${e.y2} ${e.x2},${e.y2}`} fill="none" stroke="var(--border)" strokeWidth={1.7} />)}
-        </svg>
-        {lista.map(({ node, x, y }: any) => {
-          const cor = CORTIPO[node.tipo || 'conceito'] || '#64748b'
-          const temFilhos = node.filhos.length > 0
-          return (
-            <div key={node.id} className="pr-mapbox" onDoubleClick={() => { const t = prompt('Renomear nó:', node.texto); if (t != null) ops.edit(node.id, t) }}
-              style={{ position: 'absolute', left: x, top: y - 23, width: BOX_W, minHeight: 38, boxSizing: 'border-box', padding: '7px 10px', borderRadius: 10, background: 'var(--card-bg)', border: `1px solid ${cor}55`, borderLeft: `4px solid ${cor}`, boxShadow: '0 2px 10px rgba(0,0,0,.14)', fontSize: '.78rem', color: 'var(--text-primary)', fontWeight: node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
-              <span style={{ flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.25 }} title={node.texto}>{node.texto}</span>
-              {temFilhos && <button onClick={e => { e.stopPropagation(); ops.toggle(node.id) }} title={node.colapsado ? 'Expandir' : 'Recolher'} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 9, border: 'none', background: cor, color: '#fff', fontWeight: 800, fontSize: '.74rem', cursor: 'pointer', lineHeight: 1 }}>{node.colapsado ? '+' : '−'}</button>}
-            </div>
-          )
-        })}
+      <div onWheel={e => { const d = e.deltaY < 0 ? 0.1 : -0.1; setZoom(z => Math.min(2.2, Math.max(0.3, +(z + d).toFixed(2)))) }} style={{ position: 'absolute', inset: 0 }}>
+        <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
+          <svg width={base.w + 400} height={base.h + 400} style={{ position: 'absolute', left: -200, top: -200, overflow: 'visible', pointerEvents: 'none' }}>
+            <g transform="translate(200,200)">
+              {edges.map((e: any) => <path key={e.key} d={pathD(e)} fill="none" stroke={conCor} strokeWidth={1.8} />)}
+            </g>
+          </svg>
+          {lista.map(({ node, x, y }: any) => {
+            const cor = node.cor || CORTIPO[node.tipo || 'conceito'] || '#64748b'
+            const temFilhos = node.filhos.length > 0
+            const fmt = node.formato || 'arred'
+            const radius = fmt === 'elipse' ? '50% / 60%' : fmt === 'ret' ? '2px' : '10px'
+            const ativo = selId === node.id
+            return (
+              <div key={node.id} className="pr-mapbox" onMouseDown={e => onBoxDown(e, node)} onDoubleClick={() => { const t = prompt('Renomear nó:', node.texto); if (t != null) ops.edit(node.id, t) }}
+                style={{ position: 'absolute', left: x, top: y - 23, width: BOX_W, minHeight: 38, boxSizing: 'border-box', padding: fmt === 'elipse' ? '10px 14px' : '7px 10px', borderRadius: radius, background: node.cor ? cor + '18' : 'var(--card-bg)', border: `${ativo ? 2 : 1}px solid ${cor}${ativo ? '' : '88'}`, borderLeft: fmt === 'elipse' ? `${ativo ? 2 : 1}px solid ${cor}` : `4px solid ${cor}`, boxShadow: ativo ? `0 0 0 3px ${cor}33, 0 3px 12px rgba(0,0,0,.2)` : '0 2px 10px rgba(0,0,0,.14)', fontSize: '.78rem', color: 'var(--text-primary)', fontWeight: node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, cursor: drag && drag.id === node.id ? 'grabbing' : 'grab', userSelect: 'none' }}>
+                <span style={{ flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.25, textAlign: fmt === 'elipse' ? 'center' : 'left' }} title={node.texto}>{node.texto}</span>
+                {temFilhos && <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); ops.toggle(node.id) }} title={node.colapsado ? 'Expandir' : 'Recolher'} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 9, border: 'none', background: cor, color: '#fff', fontWeight: 800, fontSize: '.74rem', cursor: 'pointer', lineHeight: 1 }}>{node.colapsado ? '+' : '−'}</button>}
+              </div>
+            )
+          })}
+        </div>
       </div>
-      <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: '.66rem', color: 'var(--text-muted)' }}>Arraste o fundo para mover · roda do mouse / ＋ − para zoom · duplo-clique no nó para renomear</div>
+      <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: '.66rem', color: 'var(--text-muted)' }}>Arraste um nó para reposicionar · clique para selecionar e estilizar · arraste o fundo para mover · roda = zoom · duplo-clique renomeia</div>
     </div>
   )
 }
@@ -2933,6 +3158,7 @@ function MapaVisual({ raiz, ops }: any) {
 function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
   const [pastaSel, setPastaSel] = useState<string | null>(null)   // null = "Todos"
   const [pastasAbertas, setPastasAbertas] = useState<Set<string>>(new Set())   // sanfona: subpastas só aparecem ao abrir a principal
+  const [buscaMapa, setBuscaMapa] = useState('')   // pesquisa de mapas pelo nome
   const [mapaAtual, setMapaAtual] = useState<any>(null)           // { id, titulo, pastaId, raiz, fonte } (em edição)
   const [editId, setEditId] = useState<string | null>(null)
   const [vista, setVista] = useState<'lista' | 'mapa'>('lista')   // visualização: lista hierárquica ou mapa clássico
@@ -2948,7 +3174,12 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
   const [dirty, setDirty] = useState(false)
 
   const filhosPasta = (pid: string | null) => store.pastas.filter((p: any) => (p.parentId ?? null) === pid)
-  const mapasNaPasta = useMemo(() => store.mapas.filter((m: any) => pastaSel === null ? true : (m.pastaId ?? null) === pastaSel).sort((a: any, b: any) => (b.atualizadoEm || 0) - (a.atualizadoEm || 0)), [store.mapas, pastaSel])
+  const mapasNaPasta = useMemo(() => {
+    const q = buscaMapa.trim().toLowerCase()
+    return store.mapas
+      .filter((m: any) => q ? (m.titulo || '').toLowerCase().includes(q) : (pastaSel === null ? true : (m.pastaId ?? null) === pastaSel))
+      .sort((a: any, b: any) => (b.atualizadoEm || 0) - (a.atualizadoEm || 0))
+  }, [store.mapas, pastaSel, buscaMapa])
 
   // operações na árvore em edição
   const apply = (fn: (r: NoMapa) => NoMapa) => { setMapaAtual((m: any) => m && { ...m, raiz: fn(m.raiz) }); setDirty(true) }
@@ -2960,7 +3191,10 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
     move: (id: string, d: -1 | 1) => apply(r => mapaMover(r, id, d)),
     indent: (id: string) => apply(r => mapaIndent(r, id)),
     outdent: (id: string) => apply(r => mapaOutdent(r, id)),
+    estilo: (id: string, patch: any) => apply(r => mapaUpd(r, id, n => ({ ...n, ...patch }))),
+    mover: (id: string, dx: number, dy: number) => apply(r => mapaUpd(r, id, n => ({ ...n, dx, dy }))),
   }
+  const setConector = (patch: any) => { setMapaAtual((m: any) => m && { ...m, ...patch }); setDirty(true) }
 
   const abrirMapa = (m: any) => { setMapaAtual({ id: m.id, titulo: m.titulo, pastaId: m.pastaId ?? null, raiz: m.raiz, fonte: m.fonte || '' }); setDirty(false) }
   const salvar = async () => { if (!mapaAtual) return; await store.salvarMapa({ ...mapaAtual, pastaId: mapaAtual.pastaId ?? pastaSel ?? null, criadoEm: mapaAtual.criadoEm || Date.now() }); setDirty(false) }
@@ -2979,7 +3213,7 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
     const sel = mapasSelecionados(); if (!sel.length) return
     setExpBusy(true)
     for (const m of sel) {
-      const { svg, w, h } = mapaParaSVG(m.raiz)
+      const { svg, w, h } = mapaParaSVG(m.raiz, m.conectorTipo, m.conectorCor)
       const blob = await svgParaPNG(svg, w, h, 3)
       if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (m.titulo || 'mapa').replace(/[^\w\-]+/g, '_') + '.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); await new Promise(r => setTimeout(r, 300)) }
     }
@@ -3047,7 +3281,12 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
             <button onClick={() => { const n = prompt('Nome da pasta (ex.: Direito Administrativo):'); if (n?.trim()) store.salvarPasta({ id: newId(), nome: n.trim(), cor: '#7c3aed', parentId: null, criadoEm: Date.now() }) }} style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '.72rem' }}>＋ Pasta</button>
           </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 8px 10px' }}>
-            <div onClick={() => setPastaSel(null)} style={{ padding: '5px 8px', borderRadius: 7, cursor: 'pointer', fontSize: '.82rem', fontWeight: pastaSel === null ? 700 : 500, color: 'var(--text-primary)', background: pastaSel === null ? 'var(--surface)' : 'transparent', marginBottom: 4 }}>📚 Todos os mapas ({store.mapas.length})</div>
+            <div style={{ position: 'relative', marginBottom: 6 }}>
+              <input value={buscaMapa} onChange={e => { setBuscaMapa(e.target.value); if (e.target.value) setPastaSel(null) }} placeholder="🔍 Pesquisar mapas…"
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 26px 6px 10px', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: '0.8rem', outline: 'none' }} />
+              {buscaMapa && <button onClick={() => setBuscaMapa('')} style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', width: 20, height: 20, border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 800 }}>✕</button>}
+            </div>
+            {!buscaMapa && <div onClick={() => setPastaSel(null)} style={{ padding: '5px 8px', borderRadius: 7, cursor: 'pointer', fontSize: '.82rem', fontWeight: pastaSel === null ? 700 : 500, color: 'var(--text-primary)', background: pastaSel === null ? 'var(--surface)' : 'transparent', marginBottom: 4 }}>📚 Todos os mapas ({store.mapas.length})</div>}
             <PastaTree pid={null} depth={0} />
             {store.pastas.length === 0 && <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', padding: '6px 8px' }}>Crie pastas por disciplina e aninhe subtópicos. Cada pasta tem cor própria (🎨).</div>}
           </div>
@@ -3079,7 +3318,7 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
                   <div style={{ marginTop: 12, fontSize: '.68rem', color: 'var(--text-muted)' }}>Duplo-clique no texto para renomear · use ↑↓ para reordenar, → para aninhar, ← para subir nível · ＋ adiciona filho.</div>
                 </div>
               ) : (
-                <MapaVisual raiz={mapaAtual.raiz} ops={ops} />
+                <MapaVisual mapa={mapaAtual} ops={ops} onConector={setConector} />
               )}
             </>
           ) : gerar ? (
@@ -3114,7 +3353,7 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
             // ─── LISTA DE MAPAS DA PASTA ───
             <>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
-                <b style={{ fontSize: '.92rem', color: 'var(--text-primary)' }}>{pastaSel === null ? 'Todos os mapas' : (store.pastas.find((p: any) => p.id === pastaSel)?.nome || 'Pasta')}</b>
+                <b style={{ fontSize: '.92rem', color: 'var(--text-primary)' }}>{buscaMapa ? `Resultados para "${buscaMapa}"` : pastaSel === null ? 'Todos os mapas' : (store.pastas.find((p: any) => p.id === pastaSel)?.nome || 'Pasta')}</b>
                 <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>({mapasNaPasta.length})</span>
                 <span style={{ flex: 1 }} />
                 {mapasNaPasta.length > 0 && <button onClick={abrirExport} title="Exportar mapas como PDF/PNG (um por página, visual)" style={{ ...btn, width: 'auto', padding: '0 12px' }}>⬇ Exportar visual</button>}
@@ -3325,6 +3564,9 @@ export default function PDFReader() {
         .pr-ruled p, .pr-ruled div, .pr-ruled li, .pr-ruled h1, .pr-ruled h2, .pr-ruled h3, .pr-ruled ul, .pr-ruled ol, .pr-ruled blockquote { margin-top: 0 !important; margin-bottom: 0 !important; }
         /* não força altura de linha dentro de embutidos (post-it, símbolos) */
         .pr-ruled [contenteditable="false"], .pr-ruled [contenteditable="false"] * { line-height: normal !important; }
+        /* timer: piscar em vermelho ao terminar */
+        @keyframes pr-blink { 0%, 100% { opacity: 1 } 50% { opacity: .2 } }
+        .pr-blink { animation: pr-blink .7s steps(1,end) infinite; color: #dc2626 !important; border-color: #dc2626 !important; }
       `}</style>
       <PastasSidebar open={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} store={store} docId={docId} onOpenDoc={abrirDoc} onNewDoc={novoDoc}
         bookmarks={bookmarks} pdfNome={pdfAtual?.name} onGotoBookmark={irBookmark} onRemoveBookmark={removeBookmark} />
@@ -3395,13 +3637,13 @@ export default function PDFReader() {
           </div>
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
           <button onClick={() => setComparar(c => !c)} title="Comparar dois PDFs lado a lado" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, background: comparar ? '#5b5bd6' : 'var(--surface)', color: comparar ? '#fff' : 'var(--text-secondary)', border: comparar ? 'none' : '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⇆</button>
-          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <IconMapa size={16} />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#7c3aed', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
+          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, background: '#5a6a3a', color: '#fff', border: 'none' }}>
+            <IconMapa size={16} color="#fff" />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#3f4d28', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
           </button>
           <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             🃏{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}
           </button>
-          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📖" size={16} /></button>
+          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#5a6a3a', color: '#fff', border: 'none' }}><Icon e="📖" size={16} /></button>
           <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⚙" size={16} /></button>
           <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
           <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', background: '#5b5bd6', color: '#fff', border: 'none', fontSize: '0.78rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon e="🖨️" size={14} /> Exportar</button>
