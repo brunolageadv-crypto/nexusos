@@ -311,7 +311,7 @@ function wrapTexto(texto: string, maxChars: number): string[] {
   if (cur) linhas.push(cur)
   return (linhas.length ? linhas : ['']).slice(0, 12)
 }
-function mapaParaSVG(raiz: NoMapa, conTipo = 'curva', conCor = '#94a3b8'): { svg: string; w: number; h: number } {
+function mapaParaSVG(raiz: NoMapa, conTipo = 'curva', conCor = '#94a3b8', conTraco = 'solida'): { svg: string; w: number; h: number } {
   const BOX_W = 210, FONT = 12.5, LINE_H = 16, PADX = 11, PADY = 8, COL_W = 250, GAP = 16, MINH = 34
   const charsLinha = Math.max(12, Math.floor((BOX_W - 2 * PADX) / (FONT * 0.54)))
   const info: any = {}
@@ -334,25 +334,27 @@ function mapaParaSVG(raiz: NoMapa, conTipo = 'curva', conCor = '#94a3b8'): { svg
   const dPath = (x1: number, y1: number, x2: number, y2: number) => conTipo === 'reta' ? `M${x1},${y1} L${x2},${y2}`
     : conTipo === 'cotovelo' ? `M${x1},${y1} L${(x1 + x2) / 2},${y1} L${(x1 + x2) / 2},${y2} L${x2},${y2}`
       : `M${x1},${y1} C${x1 + 60},${y1} ${x2 - 60},${y2} ${x2},${y2}`
+  const dash = conTraco === 'tracejada' ? ' stroke-dasharray="9 5"' : conTraco === 'pontilhada' ? ' stroke-dasharray="2 5"' : ''
   let edges = '', boxes = ''
-  Object.values(pos).forEach(({ node, x, cy }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = pos[c.id]; if (cp) edges += `<path d="${dPath(x + BOX_W + ox, cy + oy, cp.x + ox, cp.cy + oy)}" fill="none" stroke="${conCor}" stroke-width="1.7"/>` }) })
+  Object.values(pos).forEach(({ node, x, cy }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = pos[c.id]; if (cp) edges += `<path d="${dPath(x + BOX_W + ox, cy + oy, cp.x + ox, cp.cy + oy)}" fill="none" stroke="${conCor}" stroke-width="1.7"${dash}/>` }) })
   Object.values(pos).forEach(({ node, x, cy, h }: any) => {
     const cor = node.cor || CORTIPO[node.tipo || 'conceito'] || '#64748b'; const top = cy - h / 2 + oy; const left = x + ox
     const peso = node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400
-    const fill = node.cor ? cor + '20' : (node.tipo === 'topico' ? cor + '14' : '#ffffff')
-    const txt = info[node.id].lines.map((ln: string, i: number) => `<text x="${left + PADX + 3}" y="${top + PADY + FONT + i * LINE_H}" font-family="Calibri,Segoe UI,Arial,sans-serif" font-size="${FONT}" font-weight="${peso}" fill="#1a1a1a">${escapeHtml(ln)}</text>`).join('')
-    if (node.formato === 'elipse') {
-      boxes += `<g><ellipse cx="${left + BOX_W / 2}" cy="${top + h / 2}" rx="${BOX_W / 2}" ry="${h / 2 + 3}" fill="${fill}" stroke="${cor}" stroke-width="1.4"/>${txt}</g>`
-    } else {
-      const rx = node.formato === 'ret' ? 2 : 9
-      boxes += `<g><rect x="${left}" y="${top}" width="${BOX_W}" height="${h}" rx="${rx}" fill="${fill}" stroke="${cor}" stroke-width="1.2"/><rect x="${left}" y="${top}" width="4" height="${h}" rx="2" fill="${cor}"/>${txt}</g>`
-    }
+    const fmt = node.formato || 'arred'
+    const semCaixa = fmt === 'nenhum', soLinha = fmt === 'linha'
+    const fill = semCaixa || soLinha ? 'none' : (node.cor ? cor + '20' : (node.tipo === 'topico' ? cor + '14' : '#ffffff'))
+    const txtFill = semCaixa || soLinha ? cor : '#1a1a1a'
+    const txt = info[node.id].lines.map((ln: string, i: number) => `<text x="${left + PADX + 3}" y="${top + PADY + FONT + i * LINE_H}" font-family="Calibri,Segoe UI,Arial,sans-serif" font-size="${FONT}" font-weight="${peso}" fill="${txtFill}">${escapeHtml(ln)}</text>`).join('')
+    if (semCaixa) { boxes += `<g>${txt}</g>` }
+    else if (soLinha) { boxes += `<g>${txt}<line x1="${left}" y1="${top + h}" x2="${left + BOX_W}" y2="${top + h}" stroke="${cor}" stroke-width="2"/></g>` }
+    else if (fmt === 'elipse') { boxes += `<g><ellipse cx="${left + BOX_W / 2}" cy="${top + h / 2}" rx="${BOX_W / 2}" ry="${h / 2 + 3}" fill="${fill}" stroke="${cor}" stroke-width="1.4"/>${txt}</g>` }
+    else { const rx = fmt === 'ret' ? 2 : 9; boxes += `<g><rect x="${left}" y="${top}" width="${BOX_W}" height="${h}" rx="${rx}" fill="${fill}" stroke="${cor}" stroke-width="1.2"/><rect x="${left}" y="${top}" width="4" height="${h}" rx="2" fill="${cor}"/>${txt}</g>` }
   })
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/>${edges}${boxes}</svg>`
   return { svg, w: W, h: H }
 }
 function mapaPaginasHTML(maps: any[], orient: 'landscape' | 'portrait'): string {
-  const pgs = maps.map(m => `<div class="pg"><div class="ttl">${escapeHtml(m.titulo || 'Mapa')}</div><div class="cv">${mapaParaSVG(m.raiz, m.conectorTipo, m.conectorCor).svg}</div></div>`).join('')
+  const pgs = maps.map(m => `<div class="pg"><div class="ttl">${escapeHtml(m.titulo || 'Mapa')}</div><div class="cv">${mapaParaSVG(m.raiz, m.conectorTipo, m.conectorCor, m.conectorTraco).svg}</div></div>`).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>Mapas Mentais</title><style>
     @page{ size:A4 ${orient}; margin:8mm } *{box-sizing:border-box} html,body{margin:0;padding:0}
     .pg{ page-break-after:always; width:100%; height:100vh; display:flex; flex-direction:column; align-items:center; padding:6px 6px 14px }
@@ -3018,8 +3020,16 @@ function mapaOutdent(raiz: NoMapa, id: string): NoMapa {  // sobe um nível (vir
 const CORTIPO: any = { topico: '#7c3aed', subtopico: '#5b5bd6', conceito: '#0891b2', detalhe: '#64748b' }
 /* aplica uma cor a um nó e todos os descendentes (o "grupo") */
 function mapaSetCorSubarvore(no: NoMapa, cor: string): NoMapa { return { ...no, cor, filhos: no.filhos.map(f => mapaSetCorSubarvore(f, cor)) } }
-/* dá a cada ramo de 1º nível uma cor diferente (facilita o estudo) */
-function colorizarMapa(raiz: NoMapa): NoMapa { return { ...raiz, filhos: raiz.filhos.map((f, i) => mapaSetCorSubarvore(f, PALETA_MAPA[i % PALETA_MAPA.length])) } }
+/* dá a cada ramo (núcleo) uma cor diferente — desce por nós de filho único até o 1º ponto de ramificação,
+   e cada ramo (e todos os seus descendentes) recebe a mesma cor (facilita o estudo) */
+function colorizarMapa(raiz: NoMapa): NoMapa {
+  const rec = (node: NoMapa): NoMapa => {
+    if (node.filhos.length === 1) return { ...node, cor: undefined, filhos: [rec(node.filhos[0])] }
+    if (node.filhos.length > 1) return { ...node, cor: undefined, filhos: node.filhos.map((f, i) => mapaSetCorSubarvore(f, PALETA_MAPA[i % PALETA_MAPA.length])) }
+    return { ...node, cor: undefined }
+  }
+  return rec(raiz)
+}
 
 function NoMapaView({ no, depth, editId, setEditId, ops }: any) {
   const temFilhos = no.filhos.length > 0
@@ -3059,12 +3069,13 @@ function MapaVisual({ mapa, ops, onConector }: any) {
   const raiz: NoMapa = mapa.raiz
   const conTipo = mapa.conectorTipo || 'curva'
   const conCor = mapa.conectorCor || '#94a3b8'
+  const conTraco = mapa.conectorTraco || 'solida'
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 30, y: 60 })
-  const [selId, setSelId] = useState<string | null>(null)
+  const [selIds, setSelIds] = useState<Set<string>>(new Set())   // multi-seleção
   const [drag, setDrag] = useState<any>(null)   // { id, ox, oy, sx, sy, dx, dy }
   const panRef = useRef<any>(null)
-  const COL_W = 215, BOX_W = 172, ROW_H = 58
+  const COL_W = 215, BOX_W = 172
   const LINE_H = 16, PADY = 8, MINH = 38, GAP = 14
   const charsLinha = Math.max(14, Math.floor((BOX_W - 22) / 6.6))
   const base = useMemo(() => {
@@ -3093,25 +3104,34 @@ function MapaVisual({ mapa, ops, onConector }: any) {
   const lista = Object.keys(base.pos).map(finalPos).filter(Boolean) as any[]
   const edges: any[] = []
   lista.forEach(({ node, x, y }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = finalPos(c.id); if (cp) edges.push({ x1: x + BOX_W, y1: y, x2: cp.x, y2: cp.y, key: node.id + '>' + c.id }) }) })
+  const dashArr = conTraco === 'tracejada' ? '9 5' : conTraco === 'pontilhada' ? '2 5' : undefined
   const pathD = (e: any) => conTipo === 'reta' ? `M${e.x1},${e.y1} L${e.x2},${e.y2}`
     : conTipo === 'cotovelo' ? `M${e.x1},${e.y1} L${(e.x1 + e.x2) / 2},${e.y1} L${(e.x1 + e.x2) / 2},${e.y2} L${e.x2},${e.y2}`
       : `M${e.x1},${e.y1} C${e.x1 + 55},${e.y1} ${e.x2 - 55},${e.y2} ${e.x2},${e.y2}`
 
-  const onContainerDown = (e: any) => { if (e.target.closest('.pr-mapbox')) return; setSelId(null); panRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y } }
+  const onContainerDown = (e: any) => { if (e.target.closest('.pr-mapbox')) return; setSelIds(new Set()); panRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y } }
   const onMove = (e: any) => {
     if (drag) { setDrag((d: any) => ({ ...d, dx: d.ox + (e.clientX - d.sx) / zoom, dy: d.oy + (e.clientY - d.sy) / zoom })); return }
     if (panRef.current) setPan({ x: panRef.current.px + (e.clientX - panRef.current.sx), y: panRef.current.py + (e.clientY - panRef.current.sy) })
   }
   const onUp = () => { if (drag) { ops.mover(drag.id, drag.dx, drag.dy); setDrag(null) } panRef.current = null }
-  const onBoxDown = (e: any, node: NoMapa) => { e.stopPropagation(); setSelId(node.id); setDrag({ id: node.id, ox: node.dx || 0, oy: node.dy || 0, sx: e.clientX, sy: e.clientY, dx: node.dx || 0, dy: node.dy || 0 }) }
+  const onBoxDown = (e: any, node: NoMapa) => {
+    e.stopPropagation()
+    const multi = e.ctrlKey || e.metaKey || e.shiftKey
+    setSelIds(prev => { const n = new Set(multi ? prev : []); n.has(node.id) ? (multi && n.delete(node.id)) : n.add(node.id); return n })
+    if (!(e.ctrlKey || e.metaKey || e.shiftKey)) setDrag({ id: node.id, ox: node.dx || 0, oy: node.dy || 0, sx: e.clientX, sy: e.clientY, dx: node.dx || 0, dy: node.dy || 0 })
+  }
+  // aplica estilo a TODOS os nós selecionados
+  const aplicarTodos = (patch: any) => selIds.forEach(id => ops.estilo(id, patch))
 
   const ctrlBtn: any = { width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem' }
-  const sel = selId ? base.pos[selId]?.node : null
+  const selArr = [...selIds].map(id => base.pos[id]?.node).filter(Boolean) as NoMapa[]
+  const sel = selArr[0] || null
   const swatch = (cor: string, on: boolean, onClick: any) => <button key={cor} onClick={onClick} style={{ width: 18, height: 18, borderRadius: '50%', background: cor, border: on ? '2px solid var(--text-primary)' : '2px solid transparent', cursor: 'pointer', flexShrink: 0 }} />
 
   return (
     <div onMouseDown={onContainerDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
-      style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-subtle, #1112)', cursor: drag ? 'grabbing' : panRef.current ? 'grabbing' : 'grab' }}>
+      style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: '#ffffff', backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '22px 22px', cursor: drag ? 'grabbing' : panRef.current ? 'grabbing' : 'grab' }}>
       {/* barra de estilo (conectores + nó selecionado) — stopPropagation evita desselecionar/pan ao clicar */}
       <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: 8, left: 8, right: 56, zIndex: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 7, padding: '6px 10px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 14px rgba(0,0,0,.18)' }}>
         <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Conectores:</span>
@@ -3122,19 +3142,22 @@ function MapaVisual({ mapa, ops, onConector }: any) {
           {['#94a3b8', '#7c3aed', '#16a34a', '#dc2626', '#0891b2'].map(c => swatch(c, conCor === c, () => onConector({ conectorCor: c })))}
           <input type="color" value={conCor} onChange={e => onConector({ conectorCor: e.target.value })} title="Cor personalizada do conector" style={{ width: 20, height: 20, padding: 0, border: '1px solid var(--border)', borderRadius: '50%', background: 'none', cursor: 'pointer' }} />
         </span>
-        <button onClick={ops.recolorir} title="Colorir cada grupo com uma cor diferente" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 8px', fontSize: '.66rem', fontWeight: 700 }}>🎨 Cores por grupo</button>
+        {([['solida', '──'], ['tracejada', '╌╌'], ['pontilhada', '··']] as const).map(([k, l]) => (
+          <button key={k} onClick={() => onConector({ conectorTraco: k })} title={`Traço ${k}`} style={{ width: 28, height: 24, borderRadius: 6, border: 'none', background: conTraco === k ? '#7c3aed' : 'var(--surface)', color: conTraco === k ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700, fontSize: '.7rem' }}>{l}</button>
+        ))}
+        <button onClick={ops.recolorir} title="Colorir cada grupo com uma cor diferente" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 8px', fontSize: '.66rem', fontWeight: 700 }}>🎨 Grupos</button>
         {sel && <>
           <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
-          <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Caixa:</span>
+          <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Caixa{selArr.length > 1 ? ` (${selArr.length})` : ''}:</span>
           <span style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-            {PALETA_MAPA.slice(0, 8).map(c => swatch(c, sel.cor === c, () => ops.estilo(sel.id, { cor: c })))}
-            <input type="color" value={sel.cor || '#7c3aed'} onChange={e => ops.estilo(sel.id, { cor: e.target.value })} title="Cor personalizada da caixa" style={{ width: 20, height: 20, padding: 0, border: '1px solid var(--border)', borderRadius: '50%', background: 'none', cursor: 'pointer' }} />
+            {PALETA_MAPA.slice(0, 8).map(c => swatch(c, selArr.length === 1 && sel.cor === c, () => aplicarTodos({ cor: c })))}
+            <input type="color" value={sel.cor || '#7c3aed'} onChange={e => aplicarTodos({ cor: e.target.value })} title="Cor personalizada da caixa" style={{ width: 20, height: 20, padding: 0, border: '1px solid var(--border)', borderRadius: '50%', background: 'none', cursor: 'pointer' }} />
           </span>
-          <button onClick={() => ops.estilo(sel.id, { cor: null })} title="Cor padrão (por tipo)" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 6px', fontSize: '.66rem', fontWeight: 700 }}>auto</button>
-          {([['arred', '▭'], ['ret', '⬛'], ['elipse', '⬭']] as const).map(([k, l]) => (
-            <button key={k} onClick={() => ops.estilo(sel.id, { formato: k })} title={k} style={{ width: 24, height: 22, borderRadius: 6, border: 'none', background: (sel.formato || 'arred') === k ? '#7c3aed' : 'var(--surface)', color: (sel.formato || 'arred') === k ? '#fff' : 'var(--text-secondary)', cursor: 'pointer' }}>{l}</button>
+          <button onClick={() => aplicarTodos({ cor: null })} title="Cor padrão (por tipo)" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 6px', fontSize: '.66rem', fontWeight: 700 }}>auto</button>
+          {([['arred', '▭', 'Arredondada'], ['ret', '⬛', 'Retângulo'], ['elipse', '⬭', 'Elipse'], ['linha', '▁', 'Só linha embaixo'], ['nenhum', '✕', 'Sem caixa']] as const).map(([k, l, t]) => (
+            <button key={k} onClick={() => aplicarTodos({ formato: k })} title={t} style={{ width: 24, height: 22, borderRadius: 6, border: 'none', background: (selArr.length === 1 ? (sel.formato || 'arred') : '') === k ? '#7c3aed' : 'var(--surface)', color: (selArr.length === 1 ? (sel.formato || 'arred') : '') === k ? '#fff' : 'var(--text-secondary)', cursor: 'pointer' }}>{l}</button>
           ))}
-          <button onClick={() => ops.corGrupo(sel.id)} title="Aplicar a cor desta caixa a todos os descendentes (o grupo)" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 6px', fontSize: '.64rem', fontWeight: 700 }}>↧ grupo</button>
+          <button onClick={() => selIds.forEach(id => ops.corGrupo(id))} title="Aplicar a cor desta caixa a todos os descendentes (o grupo)" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 6px', fontSize: '.64rem', fontWeight: 700 }}>↧ grupo</button>
         </>}
       </div>
       {/* zoom */}
@@ -3147,18 +3170,30 @@ function MapaVisual({ mapa, ops, onConector }: any) {
         <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
           <svg width={base.w + 400} height={base.h + 400} style={{ position: 'absolute', left: -200, top: -200, overflow: 'visible', pointerEvents: 'none' }}>
             <g transform="translate(200,200)">
-              {edges.map((e: any) => <path key={e.key} d={pathD(e)} fill="none" stroke={conCor} strokeWidth={1.8} />)}
+              {edges.map((e: any) => <path key={e.key} d={pathD(e)} fill="none" stroke={conCor} strokeWidth={1.8} strokeDasharray={dashArr} />)}
             </g>
           </svg>
           {lista.map(({ node, x, y, h }: any) => {
             const cor = node.cor || CORTIPO[node.tipo || 'conceito'] || '#64748b'
             const temFilhos = node.filhos.length > 0
             const fmt = node.formato || 'arred'
+            const ativo = selIds.has(node.id)
+            const semCaixa = fmt === 'nenhum', soLinha = fmt === 'linha'
             const radius = fmt === 'elipse' ? '50% / 60%' : fmt === 'ret' ? '2px' : '10px'
-            const ativo = selId === node.id
+            const fundo = semCaixa || soLinha ? 'transparent' : (node.cor ? cor + '20' : '#ffffff')
+            const borda = semCaixa ? 'none' : soLinha ? 'none' : `${ativo ? 2 : 1}px solid ${cor}${ativo ? '' : 'aa'}`
             return (
               <div key={node.id} className="pr-mapbox" onMouseDown={e => onBoxDown(e, node)} onDoubleClick={() => { const t = prompt('Renomear nó:', node.texto); if (t != null) ops.edit(node.id, t) }}
-                style={{ position: 'absolute', left: x, top: y - h / 2, width: BOX_W, height: h, boxSizing: 'border-box', padding: fmt === 'elipse' ? '6px 14px' : '6px 10px', borderRadius: radius, background: node.cor ? cor + '18' : 'var(--card-bg)', border: `${ativo ? 2 : 1}px solid ${cor}${ativo ? '' : '88'}`, borderLeft: fmt === 'elipse' ? `${ativo ? 2 : 1}px solid ${cor}` : `4px solid ${cor}`, boxShadow: ativo ? `0 0 0 3px ${cor}33, 0 3px 12px rgba(0,0,0,.2)` : '0 2px 10px rgba(0,0,0,.14)', fontSize: '.78rem', color: 'var(--text-primary)', fontWeight: node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, cursor: drag && drag.id === node.id ? 'grabbing' : 'grab', userSelect: 'none', overflow: 'hidden' }}>
+                style={{
+                  position: 'absolute', left: x, top: y - h / 2, width: BOX_W, height: h, boxSizing: 'border-box',
+                  padding: fmt === 'elipse' ? '6px 14px' : '6px 10px', borderRadius: radius,
+                  background: fundo, border: borda,
+                  borderLeft: semCaixa ? 'none' : soLinha ? 'none' : (fmt === 'elipse' ? `${ativo ? 2 : 1}px solid ${cor}` : `4px solid ${cor}`),
+                  borderBottom: soLinha ? `2px solid ${cor}` : undefined,
+                  boxShadow: ativo ? `0 0 0 3px ${cor}44, 0 3px 12px rgba(0,0,0,.2)` : (semCaixa || soLinha ? 'none' : '0 2px 10px rgba(0,0,0,.12)'),
+                  fontSize: '.78rem', color: semCaixa || soLinha ? cor : '#1a1a1a', fontWeight: node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 500,
+                  display: 'flex', alignItems: 'center', gap: 6, cursor: drag && drag.id === node.id ? 'grabbing' : 'grab', userSelect: 'none', overflow: 'hidden',
+                }}>
                 <span style={{ flex: 1, overflow: 'hidden', lineHeight: `${LINE_H}px`, textAlign: fmt === 'elipse' ? 'center' : 'left' }} title={node.texto}>{node.texto}</span>
                 {temFilhos && <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); ops.toggle(node.id) }} title={node.colapsado ? 'Expandir' : 'Recolher'} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 9, border: 'none', background: cor, color: '#fff', fontWeight: 800, fontSize: '.74rem', cursor: 'pointer', lineHeight: 1 }}>{node.colapsado ? '+' : '−'}</button>}
               </div>
@@ -3166,7 +3201,7 @@ function MapaVisual({ mapa, ops, onConector }: any) {
           })}
         </div>
       </div>
-      <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: '.66rem', color: 'var(--text-muted)' }}>Arraste um nó para reposicionar · clique para selecionar e estilizar · arraste o fundo para mover · roda = zoom · duplo-clique renomeia</div>
+      <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: '.66rem', color: '#64748b' }}>Clique = selecionar · Ctrl/Shift+clique = vários · arraste um nó p/ mover · arraste o fundo / roda = navegar · duplo-clique renomeia</div>
     </div>
   )
 }
@@ -3176,6 +3211,12 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
   const [pastaSel, setPastaSel] = useState<string | null>(null)   // null = "Todos"
   const [pastasAbertas, setPastasAbertas] = useState<Set<string>>(new Set())   // sanfona: subpastas só aparecem ao abrir a principal
   const [buscaMapa, setBuscaMapa] = useState('')   // pesquisa de mapas pelo nome
+  const [winPos, setWinPos] = useState<{ x: number; y: number } | null>(null)   // arrastar janela
+  const [full, setFull] = useState(false)   // tela cheia
+  const winDrag = useRef<any>(null)
+  const onWinDown = (e: any) => { if (full) return; if (e.target.closest('button,input,select,textarea')) return; const r = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect(); winDrag.current = { sx: e.clientX, sy: e.clientY, ox: winPos?.x ?? r.left, oy: winPos?.y ?? r.top }; setWinPos({ x: winDrag.current.ox, y: winDrag.current.oy }) }
+  const onWinMove = (e: any) => { if (!winDrag.current) return; setWinPos({ x: winDrag.current.ox + (e.clientX - winDrag.current.sx), y: winDrag.current.oy + (e.clientY - winDrag.current.sy) }) }
+  const onWinUp = () => { winDrag.current = null }
   const [mapaAtual, setMapaAtual] = useState<any>(null)           // { id, titulo, pastaId, raiz, fonte } (em edição)
   const [editId, setEditId] = useState<string | null>(null)
   const [vista, setVista] = useState<'lista' | 'mapa'>('lista')   // visualização: lista hierárquica ou mapa clássico
@@ -3215,7 +3256,14 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
   }
   const setConector = (patch: any) => { setMapaAtual((m: any) => m && { ...m, ...patch }); setDirty(true) }
 
-  const abrirMapa = (m: any) => { setMapaAtual({ id: m.id, titulo: m.titulo, pastaId: m.pastaId ?? null, raiz: m.raiz, fonte: m.fonte || '' }); setDirty(false) }
+  const abrirMapa = (m: any) => {
+    let raiz = m.raiz
+    const semCor = (() => { let achou = false; if (raiz) mapaWalk(raiz, n => { if (n.cor) achou = true }); return !achou })()
+    const jaColorido = !semCor
+    if (raiz && semCor) raiz = colorizarMapa(raiz)
+    setMapaAtual({ id: m.id, titulo: m.titulo, pastaId: m.pastaId ?? null, raiz, fonte: m.fonte || '', conectorTipo: m.conectorTipo, conectorCor: m.conectorCor, conectorTraco: m.conectorTraco })
+    setDirty(!jaColorido)
+  }
   const salvar = async () => { if (!mapaAtual) return; await store.salvarMapa({ ...mapaAtual, pastaId: mapaAtual.pastaId ?? pastaSel ?? null, criadoEm: mapaAtual.criadoEm || Date.now() }); setDirty(false) }
   const exportarPDF = (m: any) => { const w = window.open('', '_blank'); if (!w) return; w.document.write(mapaParaHTML(m.raiz, m.titulo || 'Mapa Mental')); w.document.close(); w.focus(); setTimeout(() => w.print(), 350) }
   // exportação visual (vários mapas, 1 por página)
@@ -3232,7 +3280,7 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
     const sel = mapasSelecionados(); if (!sel.length) return
     setExpBusy(true)
     for (const m of sel) {
-      const { svg, w, h } = mapaParaSVG(m.raiz, m.conectorTipo, m.conectorCor)
+      const { svg, w, h } = mapaParaSVG(m.raiz, m.conectorTipo, m.conectorCor, m.conectorTraco)
       const blob = await svgParaPNG(svg, w, h, 3)
       if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (m.titulo || 'mapa').replace(/[^\w\-]+/g, '_') + '.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); await new Promise(r => setTimeout(r, 300)) }
     }
@@ -3283,14 +3331,20 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
 
   return createPortal(<>
     <div onMouseDown={() => { if (!dirty || confirm('Há alterações não salvas. Fechar mesmo assim?')) onClose() }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 9300 }} />
-    <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9301, width: '94vw', height: '92vh', maxWidth: 1200, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
-      {/* header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(124,58,237,.14),transparent)' }}>
+    <div className="pr-pop" onMouseMove={onWinMove} onMouseUp={onWinUp} onMouseLeave={onWinUp}
+      style={full
+        ? { position: 'fixed', inset: 0, zIndex: 9301, width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', overflow: 'hidden' }
+        : winPos
+          ? { position: 'fixed', left: winPos.x, top: winPos.y, zIndex: 9301, width: '94vw', height: '92vh', maxWidth: 1200, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }
+          : { position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9301, width: '94vw', height: '92vh', maxWidth: 1200, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
+      {/* header (arraste para mover) */}
+      <div onMouseDown={onWinDown} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(124,58,237,.14),transparent)', cursor: full ? 'default' : 'move', userSelect: 'none' }}>
         <span style={{ display: 'inline-flex', color: '#7c3aed' }}><IconMapa size={22} /></span><b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Mapas Mentais</b>
         <span style={{ fontSize: '.72rem', color: '#7c3aed', fontWeight: 700, background: 'rgba(124,58,237,.12)', padding: '2px 8px', borderRadius: 10 }}>{insumos?.length || 0} destaque(s) coletado(s)</span>
         {(insumos?.length || 0) > 0 && <button onClick={onLimparInsumos} style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '.7rem' }}>limpar</button>}
         <span style={{ flex: 1 }} />
         {!store.uid && <span style={{ fontSize: '.72rem', color: '#EA580C' }}>Faça login para salvar</span>}
+        <button onClick={() => { setFull(f => !f); if (!full) setWinPos(null) }} title={full ? 'Restaurar janela' : 'Tela cheia'} style={btn}>{full ? '🗗' : '🗖'}</button>
         <button onClick={() => { if (!dirty || confirm('Há alterações não salvas. Fechar mesmo assim?')) onClose() }} style={btn}>✕</button>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -3389,7 +3443,7 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
                         <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <div onClick={() => abrirMapa(m)} style={{ cursor: 'pointer', flex: 1 }}>
                             <div style={{ fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)', display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ color: '#7c3aed', display: 'inline-flex' }}><IconMapa size={15} /></span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.titulo}</span></div>
-                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 4 }}>{m.raiz?.filhos?.length || 0} tópico(s){m.fonte ? ` · ${m.fonte}` : ''}</div>
+                            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 4, overflowWrap: 'anywhere', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{m.raiz?.filhos?.length || 0} tópico(s){m.fonte ? ` · ${m.fonte}` : ''}</div>
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={() => abrirMapa(m)} style={{ ...btn, flex: 1, width: 'auto', fontSize: '.76rem' }}>Abrir</button>
