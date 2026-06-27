@@ -112,7 +112,7 @@ async function geminiViaWorker(cfg: any, prompt: string): Promise<string> {
   return d?.candidates?.[0]?.content?.parts?.[0]?.text || ''
 }
 
-async function callLLM(prompt: string): Promise<string> {
+async function callLLMOnce(prompt: string): Promise<string> {
   const cfg = (() => { try { return JSON.parse(localStorage.getItem('nexus_ai_cfg') || '{}') } catch { return {} } })()
   if (cfg.kind === 'gemini') {
     if (!cfg.url || !cfg.key) throw new Error('IA não configurada (defina nexus_ai_cfg: url, key, model).')
@@ -135,6 +135,23 @@ async function callLLM(prompt: string): Promise<string> {
   if (!cfg.url || !cfg.key) throw new Error('IA não configurada (defina nexus_ai_cfg: url, key, model).')
   const r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.key}` }, body: JSON.stringify({ model: cfg.model || 'gpt-4o-mini', temperature: 0.4, messages: [{ role: 'user', content: prompt }] }) })
   const d = await r.json(); return d?.choices?.[0]?.message?.content || ''
+}
+/* erros transitórios da IA (cota/instabilidade) → vale tentar de novo */
+const erroTransitorio = (msg: string) => /(429|500|502|503|504|timeout|network|failed to fetch|temporar|overload|unavailable|exhaust|quota|rate.?limit|resource_exhausted)/i.test(msg || '')
+const espera = (ms: number) => new Promise(res => setTimeout(res, ms))
+async function callLLM(prompt: string, tentativas = 3): Promise<string> {
+  let ultimo: any
+  for (let i = 0; i < tentativas; i++) {
+    try { return await callLLMOnce(prompt) }
+    catch (e: any) {
+      ultimo = e
+      if (i < tentativas - 1 && erroTransitorio(e?.message || '')) { await espera(900 * (i + 1)); continue }
+      break
+    }
+  }
+  const m = ultimo?.message || 'erro desconhecido'
+  if (erroTransitorio(m)) throw new Error('A IA está temporariamente indisponível ou a cota diária foi atingida. Tente novamente em alguns minutos.')
+  throw ultimo
 }
 async function gerarPerguntasIA(termo: string, contexto: string): Promise<string[]> {
   const raw = await callLLM(promptPerguntas(termo, contexto))
@@ -267,6 +284,20 @@ function mapaParaHTML(raiz: NoMapa, titulo: string): string {
   </style></head><body><h1>🗺 ${escapeHtml(titulo)}</h1><ul>${raiz.filhos.map(li).join('')}</ul></body></html>`
 }
 function escapeHtml(s: string) { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[c]) }
+
+/* ícone minimalista de "conexões" (nós ligados) — substitui o 🗺 */
+function IconMapa({ size = 16, color = 'currentColor' }: any) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+      <path d="M6.5 6.5 L13.5 11 M6.5 17.5 L13.5 13 M16 12 L6.8 6.6 M16 12 L6.8 17.4" opacity="0.55" />
+      <circle cx="5" cy="6" r="2.1" fill={color} stroke="none" />
+      <circle cx="5" cy="18" r="2.1" fill={color} stroke="none" />
+      <circle cx="17" cy="12" r="2.6" fill={color} stroke="none" />
+      <circle cx="20.5" cy="5.5" r="1.4" fill={color} stroke="none" opacity="0.7" />
+      <path d="M18.6 10.4 L20.2 6.8" opacity="0.45" />
+    </svg>
+  )
+}
 
 /* ─────────── CHAT COM O DOCUMENTO (feature 1) — pergunta livre usando o texto como contexto ─────────── */
 function promptChat(contexto: string, historico: { role: 'user' | 'assistant'; text: string }[], pergunta: string) {
@@ -1806,7 +1837,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             <button onMouseDown={e => { e.preventDefault(); resumirSelecao() }} style={{ ...popBtn, flex: 1, textAlign: 'center' }}>🧠 Resumir (IA)</button>
             <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onGerarFlashcard?.(t, nomeRef.current) }} style={{ ...popBtn, flex: 1, textAlign: 'center' }}>🃏 Flashcard (IA)</button>
           </div>
-          <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onColetarMapa?.(t, curPageRef.current) }} style={{ ...popBtn, background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 700 }}>🗺 Coletar p/ mapa mental</button>
+          <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onColetarMapa?.(t, curPageRef.current) }} style={{ ...popBtn, background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><IconMapa size={14} color="#fff" /> Coletar p/ mapa mental</button>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
         </div>
       </>, document.body)}
@@ -2774,11 +2805,71 @@ function NoMapaView({ no, depth, editId, setEditId, ops }: any) {
   )
 }
 
+/* visualização clássica: caixas + conectores, com pan/zoom (layout esquerda→direita) */
+function MapaVisual({ raiz, ops }: any) {
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 30, y: 16 })
+  const dragRef = useRef<any>(null)
+  const COL_W = 215, BOX_W = 172, ROW_H = 58
+  const { lista, edges, w, h } = useMemo(() => {
+    const pos: any = {}; let cursorY = 0; let maxDepth = 0
+    const layout = (node: NoMapa, depth: number): number => {
+      maxDepth = Math.max(maxDepth, depth)
+      const x = depth * COL_W
+      const vis = node.colapsado ? [] : node.filhos
+      let y: number
+      if (!vis.length) { y = cursorY + ROW_H / 2; cursorY += ROW_H }
+      else { const ys = vis.map(c => layout(c, depth + 1)); y = (ys[0] + ys[ys.length - 1]) / 2 }
+      pos[node.id] = { x, y, node }; return y
+    }
+    layout(raiz, 0)
+    const lista = Object.values(pos) as any[]
+    const edges: any[] = []
+    lista.forEach(({ node, x, y }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = pos[c.id]; if (cp) edges.push({ x1: x + BOX_W, y1: y, x2: cp.x, y2: cp.y, key: node.id + '>' + c.id }) }) })
+    return { lista, edges, w: (maxDepth + 1) * COL_W + BOX_W, h: Math.max(cursorY, ROW_H) + 24 }
+  }, [raiz])
+  const onDown = (e: any) => { if (e.target.closest('.pr-mapbox')) return; dragRef.current = { sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y } }
+  const onMove = (e: any) => { if (!dragRef.current) return; setPan({ x: dragRef.current.px + (e.clientX - dragRef.current.sx), y: dragRef.current.py + (e.clientY - dragRef.current.sy) }) }
+  const onUp = () => { dragRef.current = null }
+  const ctrlBtn: any = { width: 30, height: 30, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem' }
+  return (
+    <div onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
+      onWheel={e => { const d = e.deltaY < 0 ? 0.1 : -0.1; setZoom(z => Math.min(2.2, Math.max(0.3, +(z + d).toFixed(2)))) }}
+      style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-subtle, #1112)', cursor: dragRef.current ? 'grabbing' : 'grab' }}>
+      <div style={{ position: 'absolute', top: 10, right: 12, zIndex: 5, display: 'flex', gap: 6 }}>
+        <button onClick={() => setZoom(z => Math.min(2.2, +(z + 0.1).toFixed(2)))} title="Aproximar" style={ctrlBtn}>＋</button>
+        <span style={{ alignSelf: 'center', fontSize: '.7rem', color: 'var(--text-muted)', minWidth: 34, textAlign: 'center' }}>{Math.round(zoom * 100)}%</span>
+        <button onClick={() => setZoom(z => Math.max(0.3, +(z - 0.1).toFixed(2)))} title="Afastar" style={ctrlBtn}>−</button>
+        <button onClick={() => { setZoom(1); setPan({ x: 30, y: 16 }) }} title="Reposicionar" style={ctrlBtn}>⟲</button>
+      </div>
+      <div style={{ position: 'absolute', left: 0, top: 0, transformOrigin: '0 0', transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
+        <svg width={w} height={h} style={{ position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' }}>
+          {edges.map((e: any) => <path key={e.key} d={`M${e.x1},${e.y1} C${e.x1 + 55},${e.y1} ${e.x2 - 55},${e.y2} ${e.x2},${e.y2}`} fill="none" stroke="var(--border)" strokeWidth={1.7} />)}
+        </svg>
+        {lista.map(({ node, x, y }: any) => {
+          const cor = CORTIPO[node.tipo || 'conceito'] || '#64748b'
+          const temFilhos = node.filhos.length > 0
+          return (
+            <div key={node.id} className="pr-mapbox" onDoubleClick={() => { const t = prompt('Renomear nó:', node.texto); if (t != null) ops.edit(node.id, t) }}
+              style={{ position: 'absolute', left: x, top: y - 23, width: BOX_W, minHeight: 38, boxSizing: 'border-box', padding: '7px 10px', borderRadius: 10, background: 'var(--card-bg)', border: `1px solid ${cor}55`, borderLeft: `4px solid ${cor}`, boxShadow: '0 2px 10px rgba(0,0,0,.14)', fontSize: '.78rem', color: 'var(--text-primary)', fontWeight: node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}>
+              <span style={{ flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.25 }} title={node.texto}>{node.texto}</span>
+              {temFilhos && <button onClick={e => { e.stopPropagation(); ops.toggle(node.id) }} title={node.colapsado ? 'Expandir' : 'Recolher'} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 9, border: 'none', background: cor, color: '#fff', fontWeight: 800, fontSize: '.74rem', cursor: 'pointer', lineHeight: 1 }}>{node.colapsado ? '+' : '−'}</button>}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ position: 'absolute', bottom: 8, left: 12, fontSize: '.66rem', color: 'var(--text-muted)' }}>Arraste o fundo para mover · roda do mouse / ＋ − para zoom · duplo-clique no nó para renomear</div>
+    </div>
+  )
+}
+
 /* HUB grande: pastas coloridas + lista de mapas + geração + editor + exportação */
 function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
   const [pastaSel, setPastaSel] = useState<string | null>(null)   // null = "Todos"
+  const [pastasAbertas, setPastasAbertas] = useState<Set<string>>(new Set())   // sanfona: subpastas só aparecem ao abrir a principal
   const [mapaAtual, setMapaAtual] = useState<any>(null)           // { id, titulo, pastaId, raiz, fonte } (em edição)
   const [editId, setEditId] = useState<string | null>(null)
+  const [vista, setVista] = useState<'lista' | 'mapa'>('lista')   // visualização: lista hierárquica ou mapa clássico
   const [gerar, setGerar] = useState(false)
   const [fonte, setFonte] = useState<'insumos' | 'pagina' | 'intervalo'>('insumos')
   const [leiSeca, setLeiSeca] = useState(false)
@@ -2824,20 +2915,26 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
 
   // árvore de pastas (recursiva, coloridas)
   const PastaTree = ({ pid, depth }: any) => (<>
-    {filhosPasta(pid).map((p: any) => (
-      <div key={p.id}>
-        <div className="pr-mappasta" onClick={() => setPastaSel(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', paddingLeft: 6 + depth * 14, borderRadius: 7, cursor: 'pointer', background: pastaSel === p.id ? (p.cor || '#7c3aed') + '22' : 'transparent', borderLeft: `3px solid ${p.cor || '#7c3aed'}` }}>
-          <span style={{ flex: 1, fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: pastaSel === p.id ? 700 : 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.nome}</span>
-          <span className="pr-mappasta-acts" style={{ display: 'flex', gap: 1 }}>
-            <button onClick={e => { e.stopPropagation(); const n = prompt('Subpasta dentro de "' + p.nome + '":'); if (n?.trim()) store.salvarPasta({ id: newId(), nome: n.trim(), cor: p.cor || '#7c3aed', parentId: p.id, criadoEm: Date.now() }) }} title="Subpasta" style={miniBtn}>＋</button>
-            <button onClick={e => { e.stopPropagation(); const cores = ['#7c3aed', '#5b5bd6', '#0891b2', '#16a34a', '#ea580c', '#dc2626', '#db2777', '#64748b']; const atual = cores.indexOf(p.cor); store.salvarPasta({ ...p, cor: cores[(atual + 1) % cores.length] }) }} title="Mudar cor" style={miniBtn}>🎨</button>
-            <button onClick={e => { e.stopPropagation(); const n = prompt('Renomear pasta:', p.nome); if (n?.trim()) store.salvarPasta({ ...p, nome: n.trim() }) }} title="Renomear" style={miniBtn}>✎</button>
-            <button onClick={e => { e.stopPropagation(); if (confirm('Excluir a pasta "' + p.nome + '"? Os mapas dentro dela NÃO são apagados (ficam em "Todos").')) { store.removerPasta(p.id); if (pastaSel === p.id) setPastaSel(null) } }} title="Excluir pasta" style={{ ...miniBtn, color: '#DC2626' }}>🗑</button>
-          </span>
+    {filhosPasta(pid).map((p: any) => {
+      const temSub = filhosPasta(p.id).length > 0
+      const aberta = pastasAbertas.has(p.id)
+      const abrir = () => { setPastaSel(p.id); if (temSub) setPastasAbertas(prev => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n }) }
+      return (
+        <div key={p.id}>
+          <div className="pr-mappasta" onClick={abrir} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 6px', paddingLeft: 6 + depth * 14, borderRadius: 7, cursor: 'pointer', background: pastaSel === p.id ? (p.cor || '#7c3aed') + '22' : 'transparent', borderLeft: `3px solid ${p.cor || '#7c3aed'}` }}>
+            <span style={{ width: 14, flexShrink: 0, textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 800, transition: 'transform .15s', transform: aberta ? 'rotate(90deg)' : 'none', visibility: temSub ? 'visible' : 'hidden' }}>▶</span>
+            <span style={{ flex: 1, fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: pastaSel === p.id ? 700 : 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{temSub ? (aberta ? '📂' : '📁') : '📁'} {p.nome}</span>
+            <span className="pr-mappasta-acts" style={{ display: 'flex', gap: 1 }}>
+              <button onClick={e => { e.stopPropagation(); const n = prompt('Subpasta dentro de "' + p.nome + '":'); if (n?.trim()) { store.salvarPasta({ id: newId(), nome: n.trim(), cor: p.cor || '#7c3aed', parentId: p.id, criadoEm: Date.now() }); setPastasAbertas(prev => new Set(prev).add(p.id)) } }} title="Nova subpasta" style={miniBtn}>＋</button>
+              <button onClick={e => { e.stopPropagation(); const cores = ['#7c3aed', '#5b5bd6', '#0891b2', '#16a34a', '#ea580c', '#dc2626', '#db2777', '#64748b']; const atual = cores.indexOf(p.cor); store.salvarPasta({ ...p, cor: cores[(atual + 1) % cores.length] }) }} title="Mudar cor" style={miniBtn}>🎨</button>
+              <button onClick={e => { e.stopPropagation(); const n = prompt('Renomear pasta:', p.nome); if (n?.trim()) store.salvarPasta({ ...p, nome: n.trim() }) }} title="Renomear" style={miniBtn}>✎</button>
+              <button onClick={e => { e.stopPropagation(); if (confirm('Excluir a pasta "' + p.nome + '"? Os mapas dentro dela NÃO são apagados (ficam em "Todos").')) { store.removerPasta(p.id); if (pastaSel === p.id) setPastaSel(null) } }} title="Excluir pasta" style={{ ...miniBtn, color: '#DC2626' }}>🗑</button>
+            </span>
+          </div>
+          {temSub && aberta && <PastaTree pid={p.id} depth={depth + 1} />}
         </div>
-        <PastaTree pid={p.id} depth={depth + 1} />
-      </div>
-    ))}
+      )
+    })}
   </>)
 
   return createPortal(<>
@@ -2845,7 +2942,7 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
     <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9301, width: '94vw', height: '92vh', maxWidth: 1200, display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', boxShadow: '0 30px 90px rgba(0,0,0,.5)' }}>
       {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(135deg,rgba(124,58,237,.14),transparent)' }}>
-        <span style={{ fontSize: '1.3rem' }}>🗺</span><b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Mapas Mentais</b>
+        <span style={{ display: 'inline-flex', color: '#7c3aed' }}><IconMapa size={22} /></span><b style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>Mapas Mentais</b>
         <span style={{ fontSize: '.72rem', color: '#7c3aed', fontWeight: 700, background: 'rgba(124,58,237,.12)', padding: '2px 8px', borderRadius: 10 }}>{insumos?.length || 0} destaque(s) coletado(s)</span>
         {(insumos?.length || 0) > 0 && <button onClick={onLimparInsumos} style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '.7rem' }}>limpar</button>}
         <span style={{ flex: 1 }} />
@@ -2878,13 +2975,22 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
                   <option value="">(sem pasta)</option>
                   {store.pastas.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
                 </select>
+                <div style={{ display: 'flex', gap: 2, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
+                  {([['lista', '☰ Lista'], ['mapa', '🗺 Mapa']] as const).map(([k, l]) => (
+                    <button key={k} onClick={() => setVista(k)} style={{ ...btn, width: 'auto', padding: '0 10px', fontSize: '.74rem', background: vista === k ? '#7c3aed' : 'transparent', color: vista === k ? '#fff' : 'var(--text-secondary)', border: 'none' }}>{l}</button>
+                  ))}
+                </div>
                 <button onClick={() => exportarPDF(mapaAtual)} title="Exportar em PDF (lista hierárquica)" style={{ ...btn, width: 'auto', padding: '0 10px' }}>⬇ PDF</button>
                 <button onClick={salvar} disabled={!store.uid} style={{ height: 32, padding: '0 16px', borderRadius: 8, border: 'none', background: dirty ? '#7c3aed' : '#16a34a', color: '#fff', fontWeight: 700, fontSize: '.84rem', cursor: 'pointer' }}>{dirty ? '💾 Salvar' : '✓ Salvo'}</button>
               </div>
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
-                <NoMapaView no={mapaAtual.raiz} depth={0} editId={editId} setEditId={setEditId} ops={ops} />
-                <div style={{ marginTop: 12, fontSize: '.68rem', color: 'var(--text-muted)' }}>Duplo-clique no texto para renomear · use ↑↓ para reordenar, → para aninhar, ← para subir nível · ＋ adiciona filho.</div>
-              </div>
+              {vista === 'lista' ? (
+                <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
+                  <NoMapaView no={mapaAtual.raiz} depth={0} editId={editId} setEditId={setEditId} ops={ops} />
+                  <div style={{ marginTop: 12, fontSize: '.68rem', color: 'var(--text-muted)' }}>Duplo-clique no texto para renomear · use ↑↓ para reordenar, → para aninhar, ← para subir nível · ＋ adiciona filho.</div>
+                </div>
+              ) : (
+                <MapaVisual raiz={mapaAtual.raiz} ops={ops} />
+              )}
             </>
           ) : gerar ? (
             // ─── PAINEL DE GERAÇÃO ───
@@ -2926,13 +3032,13 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
                 {!store.uid ? <div style={{ color: '#EA580C', fontSize: '.86rem', textAlign: 'center', padding: 30 }}>Faça login para criar e salvar mapas.</div>
                   : mapasNaPasta.length === 0 ? <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '.88rem', lineHeight: 1.6, padding: '40px 0' }}>
-                      <div style={{ fontSize: '2rem', marginBottom: 8 }}>🗺</div>Nenhum mapa aqui ainda.<br /><span style={{ fontSize: '.78rem' }}>Colete destaques no PDF (🗺) e clique em <b>Novo mapa</b>.</span>
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8, color: '#7c3aed' }}><IconMapa size={34} /></div>Nenhum mapa aqui ainda.<br /><span style={{ fontSize: '.78rem' }}>Colete destaques no PDF e clique em <b>Novo mapa</b>.</span>
                     </div>
                   : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))', gap: 12 }}>
                       {mapasNaPasta.map((m: any) => (
                         <div key={m.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <div onClick={() => abrirMapa(m)} style={{ cursor: 'pointer', flex: 1 }}>
-                            <div style={{ fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)', display: 'flex', gap: 6 }}><span>🗺</span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.titulo}</span></div>
+                            <div style={{ fontWeight: 700, fontSize: '.88rem', color: 'var(--text-primary)', display: 'flex', gap: 6, alignItems: 'center' }}><span style={{ color: '#7c3aed', display: 'inline-flex' }}><IconMapa size={15} /></span><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.titulo}</span></div>
                             <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginTop: 4 }}>{m.raiz?.filhos?.length || 0} tópico(s){m.fonte ? ` · ${m.fonte}` : ''}</div>
                           </div>
                           <div style={{ display: 'flex', gap: 6 }}>
@@ -3165,8 +3271,8 @@ export default function PDFReader() {
           </div>
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
           <button onClick={() => setComparar(c => !c)} title="Comparar dois PDFs lado a lado" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, background: comparar ? '#5b5bd6' : 'var(--surface)', color: comparar ? '#fff' : 'var(--text-secondary)', border: comparar ? 'none' : '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⇆</button>
-          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            🗺{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#7c3aed', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
+          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <IconMapa size={16} />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#7c3aed', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
           </button>
           <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             🃏{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}
