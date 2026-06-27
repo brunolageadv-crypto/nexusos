@@ -285,6 +285,72 @@ function mapaParaHTML(raiz: NoMapa, titulo: string): string {
 }
 function escapeHtml(s: string) { return (s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' } as any)[c]) }
 
+/* ─── EXPORTAÇÃO VISUAL DO MAPA (SVG vetorial → PDF/PNG) ─── */
+function wrapTexto(texto: string, maxChars: number): string[] {
+  const palavras = (texto || '').split(/\s+/); const linhas: string[] = []; let cur = ''
+  for (let p of palavras) {
+    while (p.length > maxChars) { if (cur) { linhas.push(cur); cur = '' } linhas.push(p.slice(0, maxChars)); p = p.slice(maxChars) }
+    if (!cur) cur = p
+    else if ((cur + ' ' + p).length <= maxChars) cur += ' ' + p
+    else { linhas.push(cur); cur = p }
+  }
+  if (cur) linhas.push(cur)
+  return (linhas.length ? linhas : ['']).slice(0, 12)
+}
+function mapaParaSVG(raiz: NoMapa): { svg: string; w: number; h: number } {
+  const BOX_W = 210, FONT = 12.5, LINE_H = 16, PADX = 11, PADY = 8, COL_W = 250, GAP = 16, MINH = 34
+  const charsLinha = Math.max(12, Math.floor((BOX_W - 2 * PADX) / (FONT * 0.54)))
+  const info: any = {}
+  const calc = (n: NoMapa) => { const lines = wrapTexto(n.texto, charsLinha); info[n.id] = { lines, h: Math.max(MINH, lines.length * LINE_H + 2 * PADY) }; (n.colapsado ? [] : n.filhos).forEach(calc) }
+  calc(raiz)
+  const pos: any = {}; let cursorY = 0, maxDepth = 0
+  const layout = (n: NoMapa, depth: number): number => {
+    maxDepth = Math.max(maxDepth, depth)
+    const x = depth * COL_W; const vis = n.colapsado ? [] : n.filhos; const h = info[n.id].h
+    let cy: number
+    if (!vis.length) { cy = cursorY + h / 2; cursorY += h + GAP }
+    else { const ys = vis.map(c => layout(c, depth + 1)); cy = (ys[0] + ys[ys.length - 1]) / 2 }
+    pos[n.id] = { x, cy, h, node: n }; return cy
+  }
+  layout(raiz, 0)
+  const W = (maxDepth + 1) * COL_W + BOX_W + 20, H = Math.max(cursorY, MINH) + 20
+  let edges = '', boxes = ''
+  Object.values(pos).forEach(({ node, x, cy }: any) => { if (node.colapsado) return; node.filhos.forEach((c: NoMapa) => { const cp = pos[c.id]; if (cp) edges += `<path d="M${x + BOX_W},${cy} C${x + BOX_W + 60},${cy} ${cp.x - 60},${cp.cy} ${cp.x},${cp.cy}" fill="none" stroke="#cbd5e1" stroke-width="1.6"/>` }) })
+  Object.values(pos).forEach(({ node, x, cy, h }: any) => {
+    const cor = CORTIPO[node.tipo || 'conceito'] || '#64748b'; const top = cy - h / 2
+    const peso = node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400
+    const fill = node.tipo === 'topico' ? cor + '14' : '#ffffff'
+    const txt = info[node.id].lines.map((ln: string, i: number) => `<text x="${x + PADX + 3}" y="${top + PADY + FONT + i * LINE_H}" font-family="Calibri,Segoe UI,Arial,sans-serif" font-size="${FONT}" font-weight="${peso}" fill="#1a1a1a">${escapeHtml(ln)}</text>`).join('')
+    boxes += `<g><rect x="${x}" y="${top}" width="${BOX_W}" height="${h}" rx="9" fill="${fill}" stroke="${cor}" stroke-width="1.2"/><rect x="${x}" y="${top}" width="4" height="${h}" rx="2" fill="${cor}"/>${txt}</g>`
+  })
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="#ffffff"/>${edges}${boxes}</svg>`
+  return { svg, w: W, h: H }
+}
+function mapaPaginasHTML(maps: any[], orient: 'landscape' | 'portrait'): string {
+  const pgs = maps.map(m => `<div class="pg"><div class="ttl">${escapeHtml(m.titulo || 'Mapa')}</div><div class="cv">${mapaParaSVG(m.raiz).svg}</div></div>`).join('')
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Mapas Mentais</title><style>
+    @page{ size:A4 ${orient}; margin:8mm } *{box-sizing:border-box} html,body{margin:0;padding:0}
+    .pg{ page-break-after:always; width:100%; height:100vh; display:flex; flex-direction:column; align-items:center; padding:6px 6px 14px }
+    .pg:last-child{ page-break-after:auto }
+    .ttl{ font-family:Calibri,Segoe UI,Arial,sans-serif; font-weight:800; font-size:15pt; color:#5b21b6; margin-bottom:8px; text-align:center }
+    .cv{ flex:1; min-height:0; width:100%; display:flex; align-items:center; justify-content:center }
+    .cv svg{ max-width:100%; max-height:100%; width:auto; height:auto }
+  </style></head><body>${pgs}</body></html>`
+}
+async function svgParaPNG(svg: string, w: number, h: number, escala = 3): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }))
+    const img = new Image()
+    img.onload = () => {
+      const c = document.createElement('canvas'); c.width = Math.round(w * escala); c.height = Math.round(h * escala)
+      const ctx = c.getContext('2d')!; ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); ctx.setTransform(escala, 0, 0, escala, 0, 0); ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(url); c.toBlob(b => resolve(b), 'image/png')
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null) }
+    img.src = url
+  })
+}
+
 /* ícone minimalista de "conexões" (nós ligados) — substitui o 🗺 */
 function IconMapa({ size = 16, color = 'currentColor' }: any) {
   return (
@@ -2870,6 +2936,10 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
   const [mapaAtual, setMapaAtual] = useState<any>(null)           // { id, titulo, pastaId, raiz, fonte } (em edição)
   const [editId, setEditId] = useState<string | null>(null)
   const [vista, setVista] = useState<'lista' | 'mapa'>('lista')   // visualização: lista hierárquica ou mapa clássico
+  const [expOpen, setExpOpen] = useState(false)                   // painel de exportação visual (múltiplos mapas)
+  const [expSel, setExpSel] = useState<Set<string>>(new Set())
+  const [expOrient, setExpOrient] = useState<'landscape' | 'portrait'>('landscape')
+  const [expBusy, setExpBusy] = useState(false)
   const [gerar, setGerar] = useState(false)
   const [fonte, setFonte] = useState<'insumos' | 'pagina' | 'intervalo'>('insumos')
   const [leiSeca, setLeiSeca] = useState(false)
@@ -2895,6 +2965,26 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
   const abrirMapa = (m: any) => { setMapaAtual({ id: m.id, titulo: m.titulo, pastaId: m.pastaId ?? null, raiz: m.raiz, fonte: m.fonte || '' }); setDirty(false) }
   const salvar = async () => { if (!mapaAtual) return; await store.salvarMapa({ ...mapaAtual, pastaId: mapaAtual.pastaId ?? pastaSel ?? null, criadoEm: mapaAtual.criadoEm || Date.now() }); setDirty(false) }
   const exportarPDF = (m: any) => { const w = window.open('', '_blank'); if (!w) return; w.document.write(mapaParaHTML(m.raiz, m.titulo || 'Mapa Mental')); w.document.close(); w.focus(); setTimeout(() => w.print(), 350) }
+  // exportação visual (vários mapas, 1 por página)
+  const abrirExport = () => { setExpSel(new Set(mapasNaPasta.map((m: any) => m.id))); setExpOpen(true) }
+  const toggleExp = (id: string) => setExpSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const mapasSelecionados = () => mapasNaPasta.filter((m: any) => expSel.has(m.id) && m.raiz)
+  const exportarPDFVisual = () => {
+    const sel = mapasSelecionados(); if (!sel.length) return
+    const w = window.open('', '_blank'); if (!w) { alert('Permita pop-ups para exportar.'); return }
+    w.document.write(mapaPaginasHTML(sel, expOrient)); w.document.close(); w.focus(); setTimeout(() => w.print(), 400)
+    setExpOpen(false)
+  }
+  const exportarPNGs = async () => {
+    const sel = mapasSelecionados(); if (!sel.length) return
+    setExpBusy(true)
+    for (const m of sel) {
+      const { svg, w, h } = mapaParaSVG(m.raiz)
+      const blob = await svgParaPNG(svg, w, h, 3)
+      if (blob) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (m.titulo || 'mapa').replace(/[^\w\-]+/g, '_') + '.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); await new Promise(r => setTimeout(r, 300)) }
+    }
+    setExpBusy(false); setExpOpen(false)
+  }
 
   const executarGeracao = async () => {
     setCarregando(true)
@@ -3027,6 +3117,7 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
                 <b style={{ fontSize: '.92rem', color: 'var(--text-primary)' }}>{pastaSel === null ? 'Todos os mapas' : (store.pastas.find((p: any) => p.id === pastaSel)?.nome || 'Pasta')}</b>
                 <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>({mapasNaPasta.length})</span>
                 <span style={{ flex: 1 }} />
+                {mapasNaPasta.length > 0 && <button onClick={abrirExport} title="Exportar mapas como PDF/PNG (um por página, visual)" style={{ ...btn, width: 'auto', padding: '0 12px' }}>⬇ Exportar visual</button>}
                 <button onClick={() => setGerar(true)} style={{ height: 34, padding: '0 14px', borderRadius: 9, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '.84rem', cursor: 'pointer' }}>✦ Novo mapa (gerar)</button>
               </div>
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
@@ -3055,6 +3146,39 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
         </div>
       </div>
     </div>
+    {/* sub-modal: exportar vários mapas (visual) */}
+    {expOpen && (<>
+      <div onMouseDown={() => !expBusy && setExpOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9400 }} />
+      <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9401, width: 'min(520px,94vw)', maxHeight: '86vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', padding: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+          <span style={{ fontSize: '1.05rem' }}>⬇</span><b style={{ color: 'var(--text-primary)' }}>Exportar mapas (visual)</b>
+          <span style={{ flex: 1 }} /><button onClick={() => !expBusy && setExpOpen(false)} style={btn}>✕</button>
+        </div>
+        <div style={{ fontSize: '.74rem', color: 'var(--text-muted)', marginBottom: 12 }}>Cada mapa marcado vira <b>uma página</b>. O PDF é vetorial (zoom sem perder qualidade); o PNG sai em alta resolução.</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: '.74rem', fontWeight: 700, color: 'var(--text-muted)' }}>Orientação:</span>
+          {([['landscape', 'Paisagem'], ['portrait', 'Retrato']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setExpOrient(k)} style={{ ...btn, width: 'auto', padding: '0 10px', fontSize: '.76rem', background: expOrient === k ? '#7c3aed' : 'var(--surface)', color: expOrient === k ? '#fff' : 'var(--text-secondary)', border: expOrient === k ? 'none' : '1px solid var(--border)' }}>{l}</button>
+          ))}
+          <span style={{ flex: 1 }} />
+          <button onClick={() => setExpSel(expSel.size === mapasNaPasta.length ? new Set() : new Set(mapasNaPasta.map((m: any) => m.id)))} style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '.72rem' }}>{expSel.size === mapasNaPasta.length ? 'Limpar' : 'Todos'}</button>
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {mapasNaPasta.map((m: any) => (
+            <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '7px 10px', borderRadius: 9, border: '1px solid var(--border)', background: expSel.has(m.id) ? 'rgba(124,58,237,.08)' : 'var(--surface)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={expSel.has(m.id)} onChange={() => toggleExp(m.id)} style={{ width: 16, height: 16, accentColor: '#7c3aed' }} />
+              <span style={{ flex: 1, fontSize: '.84rem', color: 'var(--text-primary)', fontWeight: 600 }}>{m.titulo}</span>
+              <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>{m.raiz?.filhos?.length || 0} tópico(s)</span>
+            </label>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ flex: 1, fontSize: '.72rem', color: 'var(--text-muted)' }}>{expSel.size} mapa(s) selecionado(s)</span>
+          <button onClick={exportarPDFVisual} disabled={!expSel.size || expBusy} style={{ height: 34, padding: '0 14px', borderRadius: 9, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '.82rem', cursor: 'pointer', opacity: (!expSel.size || expBusy) ? .5 : 1 }}>⬇ PDF ({expSel.size})</button>
+          <button onClick={exportarPNGs} disabled={!expSel.size || expBusy} style={{ ...btn, width: 'auto', padding: '0 14px', height: 34 }}>{expBusy ? 'Gerando…' : `⬇ PNG (${expSel.size})`}</button>
+        </div>
+      </div>
+    </>)}
   </>, document.body)
 }
 
