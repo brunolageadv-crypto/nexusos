@@ -3016,6 +3016,10 @@ function mapaOutdent(raiz: NoMapa, id: string): NoMapa {  // sobe um nível (vir
   return resultado
 }
 const CORTIPO: any = { topico: '#7c3aed', subtopico: '#5b5bd6', conceito: '#0891b2', detalhe: '#64748b' }
+/* aplica uma cor a um nó e todos os descendentes (o "grupo") */
+function mapaSetCorSubarvore(no: NoMapa, cor: string): NoMapa { return { ...no, cor, filhos: no.filhos.map(f => mapaSetCorSubarvore(f, cor)) } }
+/* dá a cada ramo de 1º nível uma cor diferente (facilita o estudo) */
+function colorizarMapa(raiz: NoMapa): NoMapa { return { ...raiz, filhos: raiz.filhos.map((f, i) => mapaSetCorSubarvore(f, PALETA_MAPA[i % PALETA_MAPA.length])) } }
 
 function NoMapaView({ no, depth, editId, setEditId, ops }: any) {
   const temFilhos = no.filhos.length > 0
@@ -3061,25 +3065,30 @@ function MapaVisual({ mapa, ops, onConector }: any) {
   const [drag, setDrag] = useState<any>(null)   // { id, ox, oy, sx, sy, dx, dy }
   const panRef = useRef<any>(null)
   const COL_W = 215, BOX_W = 172, ROW_H = 58
+  const LINE_H = 16, PADY = 8, MINH = 38, GAP = 14
+  const charsLinha = Math.max(14, Math.floor((BOX_W - 22) / 6.6))
   const base = useMemo(() => {
+    const info: any = {}
+    const calc = (n: NoMapa) => { const lines = wrapTexto(n.texto, charsLinha); info[n.id] = { lines, h: Math.max(MINH, lines.length * LINE_H + 2 * PADY) }; (n.colapsado ? [] : n.filhos).forEach(calc) }
+    calc(raiz)
     const pos: any = {}; let cursorY = 0, maxDepth = 0
     const layout = (n: NoMapa, depth: number): number => {
       maxDepth = Math.max(maxDepth, depth)
-      const x = depth * COL_W; const vis = n.colapsado ? [] : n.filhos
+      const x = depth * COL_W; const vis = n.colapsado ? [] : n.filhos; const h = info[n.id].h
       let y: number
-      if (!vis.length) { y = cursorY + ROW_H / 2; cursorY += ROW_H }
+      if (!vis.length) { y = cursorY + h / 2; cursorY += h + GAP }
       else { const ys = vis.map(c => layout(c, depth + 1)); y = (ys[0] + ys[ys.length - 1]) / 2 }
-      pos[n.id] = { x, y, node: n }; return y
+      pos[n.id] = { x, y, node: n, h: info[n.id].h }; return y
     }
     layout(raiz, 0)
-    return { pos, w: (maxDepth + 1) * COL_W + BOX_W, h: Math.max(cursorY, ROW_H) + 24 }
+    return { pos, w: (maxDepth + 1) * COL_W + BOX_W, h: Math.max(cursorY, MINH) + 24 }
   }, [raiz])
   // posição final = base + offset manual (com override durante o arraste)
   const finalPos = (id: string) => {
     const p = base.pos[id]; if (!p) return null
     const ox = (drag && drag.id === id) ? drag.dx : (p.node.dx || 0)
     const oy = (drag && drag.id === id) ? drag.dy : (p.node.dy || 0)
-    return { x: p.x + ox, y: p.y + oy, node: p.node }
+    return { x: p.x + ox, y: p.y + oy, node: p.node, h: p.h }
   }
   const lista = Object.keys(base.pos).map(finalPos).filter(Boolean) as any[]
   const edges: any[] = []
@@ -3103,25 +3112,33 @@ function MapaVisual({ mapa, ops, onConector }: any) {
   return (
     <div onMouseDown={onContainerDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}
       style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-subtle, #1112)', cursor: drag ? 'grabbing' : panRef.current ? 'grabbing' : 'grab' }}>
-      {/* barra de estilo (conectores + nó selecionado) */}
-      <div style={{ position: 'absolute', top: 8, left: 8, right: 56, zIndex: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 14px rgba(0,0,0,.18)' }}>
+      {/* barra de estilo (conectores + nó selecionado) — stopPropagation evita desselecionar/pan ao clicar */}
+      <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: 8, left: 8, right: 56, zIndex: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 7, padding: '6px 10px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 4px 14px rgba(0,0,0,.18)' }}>
         <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Conectores:</span>
         {([['curva', '⌒'], ['reta', '╱'], ['cotovelo', '⌐']] as const).map(([k, l]) => (
           <button key={k} onClick={() => onConector({ conectorTipo: k })} title={k} style={{ width: 26, height: 24, borderRadius: 6, border: 'none', background: conTipo === k ? '#7c3aed' : 'var(--surface)', color: conTipo === k ? '#fff' : 'var(--text-secondary)', cursor: 'pointer', fontWeight: 700 }}>{l}</button>
         ))}
-        <span style={{ display: 'flex', gap: 3 }}>{['#94a3b8', '#7c3aed', '#16a34a', '#dc2626', '#0891b2'].map(c => swatch(c, conCor === c, () => onConector({ conectorCor: c })))}</span>
+        <span style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+          {['#94a3b8', '#7c3aed', '#16a34a', '#dc2626', '#0891b2'].map(c => swatch(c, conCor === c, () => onConector({ conectorCor: c })))}
+          <input type="color" value={conCor} onChange={e => onConector({ conectorCor: e.target.value })} title="Cor personalizada do conector" style={{ width: 20, height: 20, padding: 0, border: '1px solid var(--border)', borderRadius: '50%', background: 'none', cursor: 'pointer' }} />
+        </span>
+        <button onClick={ops.recolorir} title="Colorir cada grupo com uma cor diferente" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 8px', fontSize: '.66rem', fontWeight: 700 }}>🎨 Cores por grupo</button>
         {sel && <>
           <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
           <span style={{ fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)' }}>Caixa:</span>
-          <span style={{ display: 'flex', gap: 3 }}>{PALETA_MAPA.slice(0, 8).map(c => swatch(c, sel.cor === c, () => ops.estilo(sel.id, { cor: c })))}</span>
+          <span style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+            {PALETA_MAPA.slice(0, 8).map(c => swatch(c, sel.cor === c, () => ops.estilo(sel.id, { cor: c })))}
+            <input type="color" value={sel.cor || '#7c3aed'} onChange={e => ops.estilo(sel.id, { cor: e.target.value })} title="Cor personalizada da caixa" style={{ width: 20, height: 20, padding: 0, border: '1px solid var(--border)', borderRadius: '50%', background: 'none', cursor: 'pointer' }} />
+          </span>
           <button onClick={() => ops.estilo(sel.id, { cor: null })} title="Cor padrão (por tipo)" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 6px', fontSize: '.66rem', fontWeight: 700 }}>auto</button>
           {([['arred', '▭'], ['ret', '⬛'], ['elipse', '⬭']] as const).map(([k, l]) => (
             <button key={k} onClick={() => ops.estilo(sel.id, { formato: k })} title={k} style={{ width: 24, height: 22, borderRadius: 6, border: 'none', background: (sel.formato || 'arred') === k ? '#7c3aed' : 'var(--surface)', color: (sel.formato || 'arred') === k ? '#fff' : 'var(--text-secondary)', cursor: 'pointer' }}>{l}</button>
           ))}
+          <button onClick={() => ops.corGrupo(sel.id)} title="Aplicar a cor desta caixa a todos os descendentes (o grupo)" style={{ ...ctrlBtn, width: 'auto', height: 22, padding: '0 6px', fontSize: '.64rem', fontWeight: 700 }}>↧ grupo</button>
         </>}
       </div>
       {/* zoom */}
-      <div style={{ position: 'absolute', top: 8, right: 10, zIndex: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div onMouseDown={e => e.stopPropagation()} style={{ position: 'absolute', top: 8, right: 10, zIndex: 7, display: 'flex', flexDirection: 'column', gap: 5 }}>
         <button onClick={() => setZoom(z => Math.min(2.2, +(z + 0.1).toFixed(2)))} title="Aproximar" style={ctrlBtn}>＋</button>
         <button onClick={() => setZoom(z => Math.max(0.3, +(z - 0.1).toFixed(2)))} title="Afastar" style={ctrlBtn}>−</button>
         <button onClick={() => { setZoom(1); setPan({ x: 30, y: 60 }) }} title="Reposicionar" style={ctrlBtn}>⟲</button>
@@ -3133,7 +3150,7 @@ function MapaVisual({ mapa, ops, onConector }: any) {
               {edges.map((e: any) => <path key={e.key} d={pathD(e)} fill="none" stroke={conCor} strokeWidth={1.8} />)}
             </g>
           </svg>
-          {lista.map(({ node, x, y }: any) => {
+          {lista.map(({ node, x, y, h }: any) => {
             const cor = node.cor || CORTIPO[node.tipo || 'conceito'] || '#64748b'
             const temFilhos = node.filhos.length > 0
             const fmt = node.formato || 'arred'
@@ -3141,8 +3158,8 @@ function MapaVisual({ mapa, ops, onConector }: any) {
             const ativo = selId === node.id
             return (
               <div key={node.id} className="pr-mapbox" onMouseDown={e => onBoxDown(e, node)} onDoubleClick={() => { const t = prompt('Renomear nó:', node.texto); if (t != null) ops.edit(node.id, t) }}
-                style={{ position: 'absolute', left: x, top: y - 23, width: BOX_W, minHeight: 38, boxSizing: 'border-box', padding: fmt === 'elipse' ? '10px 14px' : '7px 10px', borderRadius: radius, background: node.cor ? cor + '18' : 'var(--card-bg)', border: `${ativo ? 2 : 1}px solid ${cor}${ativo ? '' : '88'}`, borderLeft: fmt === 'elipse' ? `${ativo ? 2 : 1}px solid ${cor}` : `4px solid ${cor}`, boxShadow: ativo ? `0 0 0 3px ${cor}33, 0 3px 12px rgba(0,0,0,.2)` : '0 2px 10px rgba(0,0,0,.14)', fontSize: '.78rem', color: 'var(--text-primary)', fontWeight: node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, cursor: drag && drag.id === node.id ? 'grabbing' : 'grab', userSelect: 'none' }}>
-                <span style={{ flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.25, textAlign: fmt === 'elipse' ? 'center' : 'left' }} title={node.texto}>{node.texto}</span>
+                style={{ position: 'absolute', left: x, top: y - h / 2, width: BOX_W, height: h, boxSizing: 'border-box', padding: fmt === 'elipse' ? '6px 14px' : '6px 10px', borderRadius: radius, background: node.cor ? cor + '18' : 'var(--card-bg)', border: `${ativo ? 2 : 1}px solid ${cor}${ativo ? '' : '88'}`, borderLeft: fmt === 'elipse' ? `${ativo ? 2 : 1}px solid ${cor}` : `4px solid ${cor}`, boxShadow: ativo ? `0 0 0 3px ${cor}33, 0 3px 12px rgba(0,0,0,.2)` : '0 2px 10px rgba(0,0,0,.14)', fontSize: '.78rem', color: 'var(--text-primary)', fontWeight: node.tipo === 'topico' ? 700 : node.tipo === 'subtopico' ? 600 : 400, display: 'flex', alignItems: 'center', gap: 6, cursor: drag && drag.id === node.id ? 'grabbing' : 'grab', userSelect: 'none', overflow: 'hidden' }}>
+                <span style={{ flex: 1, overflow: 'hidden', lineHeight: `${LINE_H}px`, textAlign: fmt === 'elipse' ? 'center' : 'left' }} title={node.texto}>{node.texto}</span>
                 {temFilhos && <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); ops.toggle(node.id) }} title={node.colapsado ? 'Expandir' : 'Recolher'} style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 9, border: 'none', background: cor, color: '#fff', fontWeight: 800, fontSize: '.74rem', cursor: 'pointer', lineHeight: 1 }}>{node.colapsado ? '+' : '−'}</button>}
               </div>
             )
@@ -3193,6 +3210,8 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
     outdent: (id: string) => apply(r => mapaOutdent(r, id)),
     estilo: (id: string, patch: any) => apply(r => mapaUpd(r, id, n => ({ ...n, ...patch }))),
     mover: (id: string, dx: number, dy: number) => apply(r => mapaUpd(r, id, n => ({ ...n, dx, dy }))),
+    recolorir: () => apply(r => colorizarMapa(r)),
+    corGrupo: (id: string) => apply(r => mapaUpd(r, id, n => mapaSetCorSubarvore(n, n.cor || CORTIPO[n.tipo || 'conceito'] || '#64748b'))),
   }
   const setConector = (patch: any) => { setMapaAtual((m: any) => m && { ...m, ...patch }); setDirty(true) }
 
@@ -3231,7 +3250,8 @@ function MapaMentalHub({ store, insumos, onLimparInsumos, api, onClose }: any) {
       if (!texto || !texto.trim()) { alert(fonte === 'insumos' ? 'Nenhum destaque coletado. Selecione trechos no PDF e use "🗺 Coletar p/ mapa mental".' : 'Não há texto extraível nessas páginas (rode o OCR se for digitalizado).'); setCarregando(false); return }
       const raiz = await gerarMapaIA(texto, leiSeca, nome)
       if (!raiz) { alert('A IA não retornou um mapa válido. Tente novamente ou ajuste a seleção.'); setCarregando(false); return }
-      setMapaAtual({ id: newId(), titulo: raiz.texto || 'Novo mapa', pastaId: pastaSel ?? null, raiz, fonte: nome, criadoEm: Date.now() })
+      const raizCor = colorizarMapa(raiz)
+      setMapaAtual({ id: newId(), titulo: raizCor.texto || 'Novo mapa', pastaId: pastaSel ?? null, raiz: raizCor, fonte: nome, criadoEm: Date.now() })
       setDirty(true); setGerar(false)
     } catch (e: any) { alert('Falha ao gerar o mapa: ' + (e?.message || e)) }
     setCarregando(false)
@@ -3637,13 +3657,13 @@ export default function PDFReader() {
           </div>
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
           <button onClick={() => setComparar(c => !c)} title="Comparar dois PDFs lado a lado" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, background: comparar ? '#5b5bd6' : 'var(--surface)', color: comparar ? '#fff' : 'var(--text-secondary)', border: comparar ? 'none' : '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⇆</button>
-          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, background: '#5a6a3a', color: '#fff', border: 'none' }}>
-            <IconMapa size={16} color="#fff" />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#3f4d28', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
+          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, background: '#2d2d35', color: '#fff', border: 'none' }}>
+            <IconMapa size={16} color="#fff" />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#15151a', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
           </button>
           <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             🃏{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}
           </button>
-          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#5a6a3a', color: '#fff', border: 'none' }}><Icon e="📖" size={16} /></button>
+          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#2d2d35', color: '#fff', border: 'none' }}><Icon e="📖" size={16} /></button>
           <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⚙" size={16} /></button>
           <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
           <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', background: '#5b5bd6', color: '#fff', border: 'none', fontSize: '0.78rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon e="🖨️" size={14} /> Exportar</button>
