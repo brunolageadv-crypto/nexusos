@@ -222,6 +222,61 @@ async function aprimorarTextoIA(texto: string): Promise<string> {
   return (await callLLM(promptAprimorar(texto))).trim()
 }
 
+/* ─────────── "NÃO ENTENDI" (explicação detalhada, didática) ─────────── */
+function promptExplicar(trecho: string, contexto = '') {
+  return [
+    'Você é um professor paciente e didático, especialista em Direito e concursos públicos brasileiros.',
+    contexto ? `Documento: ${contexto}.` : '',
+    'Explique o TRECHO abaixo de forma MUITO didática, como se explicasse para um leigo inteligente (quase uma criança esperta):',
+    '• Comece com a ideia central em uma frase simples.',
+    '• Detalhe os conceitos, termos técnicos e o "porquê" de cada coisa, em linguagem clara.',
+    '• Dê um exemplo concreto (analogia do dia a dia) que ajude a fixar.',
+    '• Se houver pegadinhas ou pontos que confundem, alerte.',
+    'Use parágrafos curtos. Não invente fatos fora do trecho. Responda em português.',
+    'TRECHO:', '"""', (trecho || '').slice(0, 6000), '"""',
+  ].filter(Boolean).join('\n')
+}
+async function explicarTrechoIA(trecho: string, contexto = ''): Promise<string> { return (await callLLM(promptExplicar(trecho, contexto))).trim() }
+
+/* ─────────── DICIONÁRIO CONTEXTUAL ─────────── */
+function promptDicionario(termo: string, contexto = '') {
+  return [
+    'Você é um dicionário e tesauro do português, com atenção ao vocabulário jurídico brasileiro.',
+    `Para o termo/expressão: "${(termo || '').slice(0, 300)}"`,
+    contexto ? `(considerando o contexto: "${contexto.slice(0, 400)}")` : '',
+    'Responda em português, de forma compacta, exatamente neste formato (sem markdown):',
+    'DEFINIÇÃO: <1-2 frases, sentido no contexto>',
+    'CLASSE: <classe gramatical, se aplicável>',
+    'SINÔNIMOS: <lista separada por vírgula, ou "—">',
+    'ANTÔNIMOS: <lista, ou "—">',
+    'SENTIDO JURÍDICO: <se houver acepção técnica/jurídica relevante, senão "—">',
+    'EXEMPLO: <uma frase de uso>',
+  ].filter(Boolean).join('\n')
+}
+async function dicionarioIA(termo: string, contexto = ''): Promise<string> { return (await callLLM(promptDicionario(termo, contexto))).trim() }
+
+/* ─────────── INDICADOR DE DIFICULDADE (relatório por página) ─────────── */
+function promptDificuldade(blocos: { page: number; texto: string }[]) {
+  const corpo = blocos.map(b => `### PÁGINA ${b.page}\n${(b.texto || '').slice(0, 1600)}`).join('\n\n')
+  return [
+    'Você avalia a DIFICULDADE de leitura/compreensão de trechos para um concurseiro de Direito (AGU/CEBRASPE).',
+    'Para cada página abaixo, classifique como "facil", "medio" ou "complexo" considerando densidade conceitual, tecnicidade, abstração e quantidade de exceções/detalhes.',
+    'Responda APENAS com JSON no formato {"<numero_da_pagina>":"facil|medio|complexo", ...} — sem markdown, sem texto extra.',
+    '', corpo,
+  ].join('\n')
+}
+async function analisarDificuldadeIA(blocos: { page: number; texto: string }[]): Promise<Record<string, string>> {
+  const raw = await callLLM(promptDificuldade(blocos))
+  let t = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  const m = t.match(/\{[\s\S]*\}/); if (m) t = m[0]
+  try {
+    const obj = JSON.parse(t); const out: Record<string, string> = {}
+    Object.keys(obj).forEach(k => { const v = String(obj[k]).toLowerCase(); if (/fac/.test(v)) out[k] = 'facil'; else if (/comp|dif/.test(v)) out[k] = 'complexo'; else out[k] = 'medio' })
+    return out
+  } catch { return {} }
+}
+const CORDIF: any = { facil: '#22c55e', medio: '#f59e0b', complexo: '#ef4444' }
+
 /* ═══════════════════════════════ MAPA MENTAL (IA) ═══════════════════════════════ */
 type NoMapa = { id: string; texto: string; tipo?: string; filhos: NoMapa[]; colapsado?: boolean }
 function promptMapa(texto: string, leiSeca: boolean, foco = '') {
@@ -1160,6 +1215,169 @@ function ChatDocumento({ chat, onEnviar, onClose, onLimpar, onInserir }: any) {
   )
 }
 
+/* ═══════════════ MODO READER (texto limpo, reflowável — efeito "Kindle") ═══════════════ */
+function reflowParagrafos(texto: string): string[] {
+  const sentencas = (texto || '').replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+(?:["')\]]+)?|\S.*$/g) || [texto]
+  const paras: string[] = []; let cur = ''
+  for (const s of sentencas) { cur += (cur ? ' ' : '') + s.trim(); if (cur.length > 320) { paras.push(cur); cur = '' } }
+  if (cur.trim()) paras.push(cur.trim())
+  return paras
+}
+function limparReader(paginas: { page: number; texto: string }[]) {
+  if (!paginas.length) return []
+  const cont: Record<string, number> = {}
+  paginas.forEach(({ texto }) => { const ls = (texto || '').split('\n').map(s => s.trim()).filter(Boolean); [...ls.slice(0, 2), ...ls.slice(-2)].forEach(l => { if (l.length < 70) cont[l] = (cont[l] || 0) + 1 }) })
+  const limiar = Math.max(2, Math.floor(paginas.length * 0.4))
+  const boiler = new Set(Object.keys(cont).filter(l => cont[l] >= limiar))
+  return paginas.map(({ page, texto }) => {
+    let ls = (texto || '').split('\n').map(s => s.trim())
+    ls = ls.filter(l => l && !boiler.has(l) && !/^\d{1,4}$/.test(l) && !/^\d+\s*\/\s*\d+$/.test(l) && !/^p[áa]g(ina)?\.?\s*\d+/i.test(l) && l.length > 2)
+    const merged: string[] = []
+    for (let i = 0; i < ls.length; i++) { let l = ls[i]; while (/[A-Za-zÀ-ÿ]-$/.test(l) && i + 1 < ls.length) { l = l.slice(0, -1) + ls[i + 1]; i++ } merged.push(l) }
+    return { page, paragrafos: reflowParagrafos(merged.join(' ')) }
+  })
+}
+function ReaderMode({ numPages, startPage, getPageText, nome, onClose }: any) {
+  const [paginas, setPaginas] = useState<any[]>([])
+  const [carregando, setCarregando] = useState(false)
+  const [fonte, setFonte] = useState(19)
+  const [largura, setLargura] = useState(680)
+  const [lh, setLh] = useState(1.75)
+  const [tema, setTema] = useState<'claro' | 'sepia' | 'escuro'>('sepia')
+  const prox = useRef(startPage)
+  const scRef = useRef<HTMLDivElement>(null)
+  const carregar = async (n: number) => {
+    if (carregando) return; setCarregando(true)
+    const novas: any[] = []
+    for (let i = 0; i < n; i++) { const p = prox.current; if (p > numPages) break; try { const t = await getPageText(p); novas.push({ page: p, texto: t || '' }) } catch { novas.push({ page: p, texto: '' }) } prox.current = p + 1 }
+    setPaginas(prev => [...prev, ...novas]); setCarregando(false)
+  }
+  useEffect(() => { prox.current = startPage; setPaginas([]); setTimeout(() => carregar(2), 0) }, [startPage])
+  const limpo = useMemo(() => limparReader(paginas), [paginas])
+  const TEMAS: any = { claro: { bg: '#ffffff', fg: '#1f2430' }, sepia: { bg: '#f4ecd8', fg: '#4a3f2c' }, escuro: { bg: '#191a1f', fg: '#cdd0d6' } }
+  const T = TEMAS[tema]
+  const restam = numPages - (prox.current - 1)
+  const ctrl: any = { width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(128,128,128,.3)', background: 'transparent', color: T.fg, cursor: 'pointer', fontWeight: 800, fontSize: '.9rem' }
+  const onScroll = () => { const el = scRef.current; if (!el || carregando) return; if (el.scrollTop + el.clientHeight > el.scrollHeight - 600 && restam > 0) carregar(2) }
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: T.bg, display: 'flex', flexDirection: 'column' }}>
+      {/* barra de controles */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderBottom: `1px solid ${tema === 'escuro' ? '#2a2c33' : 'rgba(0,0,0,.08)'}`, color: T.fg, flexWrap: 'wrap' }}>
+        <b style={{ fontSize: '.9rem' }}>📖 Modo Reader</b>
+        <span style={{ fontSize: '.72rem', opacity: .7, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+        <span style={{ flex: 1 }} />
+        <button onClick={() => setFonte(f => Math.max(13, f - 1))} style={ctrl} title="Fonte menor">A−</button>
+        <span style={{ fontSize: '.72rem', minWidth: 26, textAlign: 'center' }}>{fonte}</span>
+        <button onClick={() => setFonte(f => Math.min(30, f + 1))} style={ctrl} title="Fonte maior">A+</button>
+        <button onClick={() => setLh(v => Math.max(1.3, +(v - 0.1).toFixed(2)))} style={ctrl} title="Menos espaçamento">↕−</button>
+        <button onClick={() => setLh(v => Math.min(2.4, +(v + 0.1).toFixed(2)))} style={ctrl} title="Mais espaçamento">↕+</button>
+        <button onClick={() => setLargura(w => Math.max(480, w - 60))} style={ctrl} title="Coluna mais estreita">⇤</button>
+        <button onClick={() => setLargura(w => Math.min(960, w + 60))} style={ctrl} title="Coluna mais larga">⇥</button>
+        {(['claro', 'sepia', 'escuro'] as const).map(t => (
+          <button key={t} onClick={() => setTema(t)} title={t} style={{ width: 22, height: 22, borderRadius: '50%', border: tema === t ? '2px solid #5b5bd6' : '2px solid transparent', background: TEMAS[t].bg, cursor: 'pointer' }} />
+        ))}
+        <button onClick={onClose} style={{ ...ctrl, width: 'auto', padding: '0 10px' }} title="Sair do modo Reader">✕ Sair</button>
+      </div>
+      {/* conteúdo */}
+      <div ref={scRef} onScroll={onScroll} style={{ flex: 1, overflowY: 'auto', padding: '32px 20px 80px' }}>
+        <div style={{ maxWidth: largura, margin: '0 auto', color: T.fg, fontFamily: 'Georgia, "Times New Roman", serif', fontSize: fonte, lineHeight: lh }}>
+          <div style={{ fontSize: '.72rem', textTransform: 'uppercase', letterSpacing: '.08em', opacity: .55, marginBottom: 24, fontFamily: 'system-ui,sans-serif' }}>{nome}</div>
+          {limpo.map((pg: any) => (
+            <div key={pg.page} style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: '.64rem', opacity: .35, fontFamily: 'system-ui,sans-serif', margin: '18px 0 6px' }}>— p. {pg.page} —</div>
+              {pg.paragrafos.map((p: string, i: number) => <p key={i} style={{ margin: '0 0 1em', textAlign: 'justify', textIndent: '1.4em' }}>{p}</p>)}
+            </div>
+          ))}
+          {carregando && <div style={{ textAlign: 'center', opacity: .6, padding: 20, fontFamily: 'system-ui,sans-serif', fontSize: '.8rem' }}>Carregando texto…</div>}
+          {!carregando && restam > 0 && <button onClick={() => carregar(3)} style={{ display: 'block', margin: '20px auto', padding: '10px 18px', borderRadius: 10, border: '1px solid rgba(128,128,128,.3)', background: 'transparent', color: T.fg, cursor: 'pointer', fontFamily: 'system-ui,sans-serif', fontSize: '.82rem' }}>▼ Carregar mais ({restam} páginas restantes)</button>}
+          {!carregando && restam <= 0 && paginas.length > 0 && <div style={{ textAlign: 'center', opacity: .4, padding: 24, fontFamily: 'system-ui,sans-serif', fontSize: '.78rem' }}>✦ Fim do documento</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════ LINHA DO TEMPO DE LEITURA + DIFICULDADE ═══════════════ */
+function BarraLeitura({ numPages, curPage, fileKey, gotoPage, getPageText }: any) {
+  const keyL = 'nexus_pr_lidas_' + fileKey, keyD = 'nexus_pr_dific_' + fileKey
+  const [lidas, setLidas] = useState<Set<number>>(new Set())
+  const [dific, setDific] = useState<Record<string, string>>({})
+  const [painel, setPainel] = useState(false)
+  const [analise, setAnalise] = useState<{ pct: number } | null>(null)
+  const [de, setDe] = useState(1)
+  const [ate, setAte] = useState(1)
+  useEffect(() => {
+    try { setLidas(new Set(JSON.parse(localStorage.getItem(keyL) || '[]'))) } catch { setLidas(new Set()) }
+    try { setDific(JSON.parse(localStorage.getItem(keyD) || '{}')) } catch { setDific({}) }
+    setAte(Math.min(numPages || 1, 20))
+  }, [fileKey])
+  // marca a página atual automaticamente
+  useEffect(() => {
+    if (!fileKey || !curPage) return
+    setLidas(prev => { if (prev.has(curPage)) return prev; const n = new Set(prev); n.add(curPage); try { localStorage.setItem(keyL, JSON.stringify([...n])) } catch {} ; return n })
+  }, [curPage, fileKey])
+  const toggleLida = (p: number) => setLidas(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); try { localStorage.setItem(keyL, JSON.stringify([...n])) } catch {} ; return n })
+  const resetar = () => { if (confirm('Resetar todo o progresso de leitura deste PDF?')) { setLidas(new Set()); try { localStorage.removeItem(keyL) } catch {} } }
+  const pct = numPages ? Math.round((lidas.size / numPages) * 100) : 0
+  const analisar = async () => {
+    const ini = Math.max(1, Math.min(de, ate)), fim = Math.min(numPages, Math.max(de, ate))
+    if (fim - ini + 1 > 50 && !confirm(`Vai analisar ${fim - ini + 1} páginas com a IA (consome cota). Continuar?`)) return
+    setAnalise({ pct: 0 }); const novo = { ...dific }; const BATCH = 8
+    for (let s = ini; s <= fim; s += BATCH) {
+      const blocos: any[] = []
+      for (let p = s; p < s + BATCH && p <= fim; p++) { try { const t = await getPageText(p); if (t) blocos.push({ page: p, texto: t }) } catch {} }
+      if (blocos.length) { try { Object.assign(novo, await analisarDificuldadeIA(blocos)) } catch {} }
+      setDific({ ...novo }); try { localStorage.setItem(keyD, JSON.stringify(novo)) } catch {}
+      setAnalise({ pct: Math.round((Math.min(s + BATCH - 1, fim) - ini + 1) / (fim - ini + 1) * 100) })
+    }
+    setAnalise(null)
+  }
+  if (!numPages) return null
+  const temDific = Object.keys(dific).length > 0
+  const cells = []
+  for (let p = 1; p <= numPages; p++) cells.push(p)
+  return (
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 35 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 8px', background: 'var(--card-bg)', borderBottom: '1px solid var(--border)' }}>
+        <button onClick={() => setPainel(p => !p)} title="Opções da linha do tempo" style={{ width: 22, height: 16, border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '.7rem', color: 'var(--text-muted)' }}>≡</button>
+        {/* barra de progresso (lido x não lido) */}
+        <div style={{ flex: 1, display: 'flex', gap: 0, height: 11, borderRadius: 4, overflow: 'hidden', background: '#e5e7eb' }}>
+          {cells.map(p => (
+            <div key={p} onClick={() => gotoPage(p)} title={`Página ${p}${lidas.has(p) ? ' · lida' : ''}${dific[p] ? ' · ' + dific[p] : ''} — clique p/ ir, ⇧clique p/ marcar`}
+              onMouseDown={e => { if (e.shiftKey) { e.preventDefault(); toggleLida(p) } }}
+              style={{ flex: 1, minWidth: 0, cursor: 'pointer', background: p === curPage ? '#5b5bd6' : lidas.has(p) ? '#16a34a' : 'transparent', borderRight: numPages < 200 ? '1px solid rgba(255,255,255,.25)' : 'none' }} />
+          ))}
+        </div>
+        <span style={{ fontSize: '.66rem', fontWeight: 700, color: '#16a34a', minWidth: 64, textAlign: 'right' }}>{pct}% · {lidas.size}/{numPages}</span>
+      </div>
+      {/* faixa de dificuldade (se analisada) */}
+      {temDific && (
+        <div style={{ display: 'flex', height: 5, background: '#f3f4f6' }}>
+          {cells.map(p => <div key={p} title={dific[p] ? `Página ${p}: ${dific[p]}` : ''} style={{ flex: 1, background: dific[p] ? CORDIF[dific[p]] : 'transparent' }} />)}
+        </div>
+      )}
+      {/* painel de opções */}
+      {painel && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', fontSize: '.74rem', color: 'var(--text-secondary)' }}>
+          <button onClick={() => toggleLida(curPage)} style={{ ...btn, width: 'auto', padding: '0 9px', fontSize: '.72rem' }}>{lidas.has(curPage) ? '✓ Desmarcar atual' : 'Marcar atual como lida'}</button>
+          <button onClick={resetar} style={{ ...btn, width: 'auto', padding: '0 9px', fontSize: '.72rem', color: '#dc2626' }}>↺ Resetar progresso</button>
+          <span style={{ width: 1, height: 18, background: 'var(--border)' }} />
+          <span style={{ fontWeight: 700 }}>Dificuldade (IA):</span>
+          <input type="number" min={1} value={de} onChange={e => setDe(+e.target.value)} style={{ width: 56, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', background: 'var(--surface)', color: 'var(--text-primary)', outline: 'none' }} />
+          <span>a</span>
+          <input type="number" min={1} value={ate} onChange={e => setAte(+e.target.value)} style={{ width: 56, border: '1px solid var(--border)', borderRadius: 6, padding: '3px 6px', background: 'var(--surface)', color: 'var(--text-primary)', outline: 'none' }} />
+          <button onClick={analisar} disabled={!!analise} style={{ height: 26, padding: '0 10px', borderRadius: 7, border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '.72rem', cursor: 'pointer' }}>{analise ? `Analisando… ${analise.pct}%` : '🧠 Analisar dificuldade'}</button>
+          <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: '.66rem' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: CORDIF.facil }} />fácil</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: CORDIF.medio }} />médio</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 9, height: 9, borderRadius: 2, background: CORDIF.complexo }} />complexo</span>
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ═══════════════════════════════ TIMER / POMODORO / CRONÔMETRO ═══════════════════════════════ */
 const TIMER_KEY = 'nexus_pr_timer'
 const TIMER_DEFAULT = {
@@ -1327,6 +1545,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const semTextoRef = useRef<Record<number, boolean>>({})
   const curPageRef = useRef(1); curPageRef.current = curPage
   const [paginaImagem, setPaginaImagem] = useState(false)
+  const [aiPop, setAiPop] = useState<{ open: boolean; carregando: boolean; titulo: string; texto: string; origem: string } | null>(null)  // resultado de "Não entendi"/Dicionário
+  const [reader, setReader] = useState(false)   // Modo Reader (texto limpo reflowável)
   const [ocrStatus, setOcrStatus] = useState<{ running: boolean; pct: number; page: number } | null>(null)
 
   // importa o PDF (apenas em memória — nunca persistido)
@@ -1481,6 +1701,23 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     setPopup(null); acumRef.current = ''; setAcumLen(0)
     try { const r = await resumirIA(trecho, nomeRef.current); onExtract?.(`📝 Resumo da seleção${curPageRef.current ? ` (p. ${curPageRef.current})` : ''}\n${r}`, curPageRef.current) }
     catch (e: any) { alert('Falha ao resumir: ' + (e?.message || e)) }
+  }
+
+  /* "Não entendi" e Dicionário contextual — abrem um painel de resultado */
+  const explicarSelecao = async () => {
+    const trecho = popup?.shown; if (!trecho) return
+    setPopup(null); acumRef.current = ''; setAcumLen(0)
+    setAiPop({ open: true, carregando: true, titulo: '🤔 Explicação detalhada', texto: '', origem: trecho })
+    try { const r = await explicarTrechoIA(trecho, nomeRef.current); setAiPop(p => p && { ...p, carregando: false, texto: r }) }
+    catch (e: any) { setAiPop(null); alert('Falha: ' + (e?.message || e)) }
+  }
+  const dicionarioSelecao = async () => {
+    const trecho = popup?.shown; if (!trecho) return
+    const ctx = nomeRef.current
+    setPopup(null); acumRef.current = ''; setAcumLen(0)
+    setAiPop({ open: true, carregando: true, titulo: '📖 Dicionário', texto: '', origem: trecho })
+    try { const r = await dicionarioIA(trecho, ctx); setAiPop(p => p && { ...p, carregando: false, texto: r }) }
+    catch (e: any) { setAiPop(null); alert('Falha: ' + (e?.message || e)) }
   }
 
   /* ─────────── GERAR PERGUNTAS DA PÁGINA (comando reutilizável) ─────────── */
@@ -1915,6 +2152,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           <button onClick={() => onAddBookmark?.(curPageRef.current)} disabled={!numPages} title="Marcar esta página (bookmark)" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🔖</button>
           {/* feature 10: modo foco / leitura imersiva */}
           <button onClick={onToggleFoco} disabled={!numPages} title="Modo foco / leitura imersiva (oculta painéis)" style={{ ...btn, width: 'auto', padding: '0 8px', background: foco ? '#5b5bd6' : 'var(--surface)', color: foco ? '#fff' : 'var(--text-secondary)', border: foco ? 'none' : '1px solid var(--border)' }}>⛶</button>
+          <button onClick={() => setReader(true)} disabled={!numPages} title="Modo Reader — texto limpo e reflowável (efeito Kindle)" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>📖</button>
         </>}
 
         <span style={{ flex: 1 }} />
@@ -1973,8 +2211,16 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         {thumbsOpen && numPages > 0 && (
           <ThumbStrip pdf={pdfRef.current} numPages={numPages} curPage={curPage} onGo={irParaPagina} />
         )}
+        {/* linha do tempo de leitura + dificuldade */}
+        {numPages > 0 && !foco && !secondary && (
+          <BarraLeitura numPages={numPages} curPage={curPage} fileKey={nome || 'doc'} gotoPage={irParaPagina} getPageText={textoDaPagina} />
+        )}
+        {/* Modo Reader (overlay com texto limpo) */}
+        {reader && numPages > 0 && (
+          <ReaderMode numPages={numPages} startPage={curPageRef.current} getPageText={textoDaPagina} nome={nome} onClose={() => setReader(false)} />
+        )}
         <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll}
-          style={{ position: 'absolute', top: numPages ? 4 : 0, bottom: 0, left: thumbsOpen && numPages ? 120 : 0, right: chat.open && numPages ? 332 : 0, overflow: 'auto', padding: foco ? '40px 8%' : 18, background: foco ? 'var(--card-bg)' : 'var(--bg-subtle, #1112)', transition: 'padding .25s', ['--pr-filter' as any]: tomFilter(tom) }}>
+          style={{ position: 'absolute', top: numPages && !foco && !secondary ? 18 : 0, bottom: 0, left: thumbsOpen && numPages ? 120 : 0, right: chat.open && numPages ? 332 : 0, overflow: 'auto', padding: foco ? '40px 8%' : 18, background: foco ? 'var(--card-bg)' : 'var(--bg-subtle, #1112)', transition: 'padding .25s', ['--pr-filter' as any]: tomFilter(tom) }}>
           {!numPages && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, color: 'var(--text-muted)', fontSize: '0.9rem', padding: 20 }}>
               <div>Importe um PDF para começar a leitura.</div>
@@ -2084,7 +2330,32 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onGerarFlashcard?.(t, nomeRef.current) }} style={{ ...popBtn, flex: 1, textAlign: 'center' }}>🃏 Flashcard (IA)</button>
           </div>
           <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onColetarMapa?.(t, curPageRef.current) }} style={{ ...popBtn, background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><IconMapa size={14} color="#fff" /> Coletar p/ mapa mental</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onMouseDown={e => { e.preventDefault(); explicarSelecao() }} style={{ ...popBtn, flex: 1, textAlign: 'center', background: '#0e7490', color: '#fff', border: 'none', fontWeight: 700 }}>🤔 Não entendi</button>
+            <button onMouseDown={e => { e.preventDefault(); dicionarioSelecao() }} style={{ ...popBtn, flex: 1, textAlign: 'center', background: '#475569', color: '#fff', border: 'none', fontWeight: 700 }}>📖 Dicionário</button>
+          </div>
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
+        </div>
+      </>, document.body)}
+
+      {/* painel de resultado: "Não entendi" / Dicionário */}
+      {aiPop?.open && createPortal(<>
+        <div onMouseDown={() => setAiPop(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 9550 }} />
+        <div className="pr-pop" style={{ position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', zIndex: 9551, width: 'min(560px,95vw)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 30px 80px rgba(0,0,0,.45)', padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 8 }}>
+            <b style={{ color: 'var(--text-primary)', fontSize: '.98rem' }}>{aiPop.titulo}</b>
+            <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); setAiPop(null) }} style={btn}>✕</button>
+          </div>
+          <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 10, maxHeight: 54, overflow: 'auto', borderLeft: '3px solid var(--border)', paddingLeft: 8 }}>"{aiPop.origem.slice(0, 220)}{aiPop.origem.length > 220 ? '…' : ''}"</div>
+          {aiPop.carregando ? (
+            <div style={{ padding: '34px 0', textAlign: 'center', color: 'var(--text-muted)' }}>Consultando a IA…</div>
+          ) : (<>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', marginBottom: 12 }}>{aiPop.texto}</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onMouseDown={e => { e.preventDefault(); onExtract?.(`${aiPop.titulo} (p. ${curPageRef.current})\n${aiPop.texto}`, curPageRef.current); setAiPop(null) }} style={{ ...btn, width: 'auto', padding: '0 12px' }}>➜ Inserir nas notas</button>
+              <button onMouseDown={e => { e.preventDefault(); setAiPop(null) }} style={{ height: 32, padding: '0 16px', borderRadius: 8, border: 'none', background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '.84rem', cursor: 'pointer' }}>Fechar</button>
+            </div>
+          </>)}
         </div>
       </>, document.body)}
 
