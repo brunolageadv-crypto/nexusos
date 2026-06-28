@@ -999,6 +999,7 @@ const ATALHOS = [
   { id: 'saude', l: 'Saúde', i: '✚', c: '#059669' }, { id: 'wishlist', l: 'Wishlist', i: '🛒', c: '#D97706' },
   { id: 'viagens', l: 'Viagens', i: '✈️', c: '#0284C7' }, { id: 'journal', l: 'Notas', i: '✦', c: '#2563EB' },
   { id: 'media', l: 'Media', i: '▶', c: '#3B82F6' }, { id: 'gaming', l: 'Gaming', i: '🎮', c: '#9333EA' },
+  { id: 'arcade', l: 'Arcade', i: '🕹️', c: '#7C3AED' }, { id: 'inventario', l: 'Inventário', i: '📦', c: '#0891B2' },
   { id: 'agenda', l: 'Agenda', i: '📅', c: '#0891B2' }, { id: 'links', l: 'Links', i: '🔗', c: '#0D9488' },
   { id: 'logs', l: 'Logs', i: '📊', c: '#0F766E' }, { id: 'geosfera', l: 'Geosfera', i: '🌍', c: '#16A34A' },
   { id: 'financeiro', l: 'Financeiro', i: '◎', c: '#15803D' },
@@ -1402,8 +1403,24 @@ function ColAcessoRapido({ onNavigate }: any) {
         <span style={{ color: '#5b5bd6' }}>▦</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Acesso Rápido</span>
       </div>
+      {/* Destaque · PDF Reader (linha inteira, acesso principal) */}
+      <div style={{ flexShrink: 0, padding: '14px 14px 0' }}>
+        <button onClick={() => onNavigate('pdfreader')}
+          style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '15px 18px', borderRadius: 16, border: '1px solid #0EA5E955', cursor: 'pointer', textAlign: 'left', color: '#fff', background: 'linear-gradient(120deg,#0EA5E9,#0284C7 52%,#6366F1)', boxShadow: '0 10px 26px #0EA5E945', transition: 'transform .2s cubic-bezier(.4,0,.2,1), box-shadow .2s' }}
+          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 16px 38px #0EA5E966' }}
+          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'none'; el.style.boxShadow = '0 10px 26px #0EA5E945' }}>
+          <span aria-hidden style={{ position: 'absolute', top: -34, right: -12, width: 130, height: 130, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.22), transparent 70%)', pointerEvents: 'none' }} />
+          <span style={{ fontSize: '1.9rem', display: 'inline-flex', filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.28))' }}>📖</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.06rem', lineHeight: 1.1, letterSpacing: '0.01em' }}>PDF Reader</div>
+            <div style={{ fontSize: '0.68rem', opacity: 0.9, marginTop: 3 }}>Leitura, anotações, dicionário e mapas — seu hub principal</div>
+          </div>
+          <span style={{ fontSize: '1.25rem', opacity: 0.95, flexShrink: 0 }}>→</span>
+        </button>
+      </div>
+
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px,1fr))', gap: 10, alignContent: 'start' }}>
-        {ATALHOS.map(a => (
+        {ATALHOS.filter(a => a.id !== 'pdfreader').map(a => (
           <button key={a.id} onClick={() => onNavigate(a.id)}
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '16px 8px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all .18s cubic-bezier(.4,0,.2,1)', minHeight: 86 }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${a.c}22, ${a.c}0a)`; el.style.borderColor = a.c; el.style.color = a.c; el.style.transform = 'translateY(-3px) scale(1.03)'; el.style.boxShadow = `0 12px 26px ${a.c}40`; const ic = el.querySelector('.ar-ic') as HTMLElement; if (ic) ic.style.transform = 'scale(1.18)' }}
