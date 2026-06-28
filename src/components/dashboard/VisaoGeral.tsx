@@ -1405,17 +1405,26 @@ function ColAcessoRapido({ onNavigate }: any) {
       </div>
       {/* Destaque · PDF Reader (linha inteira, acesso principal) */}
       <div style={{ flexShrink: 0, padding: '14px 14px 0' }}>
-        <button onClick={() => onNavigate('pdfreader')}
-          style={{ position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', gap: 14, width: '100%', padding: '15px 18px', borderRadius: 16, border: '1px solid #0EA5E955', cursor: 'pointer', textAlign: 'left', color: '#fff', background: 'linear-gradient(120deg,#0EA5E9,#0284C7 52%,#6366F1)', boxShadow: '0 10px 26px #0EA5E945', transition: 'transform .2s cubic-bezier(.4,0,.2,1), box-shadow .2s' }}
-          onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'translateY(-2px)'; el.style.boxShadow = '0 16px 38px #0EA5E966' }}
-          onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.transform = 'none'; el.style.boxShadow = '0 10px 26px #0EA5E945' }}>
-          <span aria-hidden style={{ position: 'absolute', top: -34, right: -12, width: 130, height: 130, borderRadius: '50%', background: 'radial-gradient(circle, rgba(255,255,255,0.22), transparent 70%)', pointerEvents: 'none' }} />
-          <span style={{ fontSize: '1.9rem', display: 'inline-flex', filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.28))' }}>📖</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.06rem', lineHeight: 1.1, letterSpacing: '0.01em' }}>PDF Reader</div>
-            <div style={{ fontSize: '0.68rem', opacity: 0.9, marginTop: 3 }}>Leitura, anotações, dicionário e mapas — seu hub principal</div>
+        <style>{`
+          .pdf-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;width:100%;padding:16px 18px;border-radius:16px;border:1px solid rgba(124,148,135,0.5);cursor:pointer;text-align:left;color:#f3f7f4;background:linear-gradient(120deg,#647d72,#4c635a 52%,#39473f);box-shadow:0 8px 22px rgba(57,71,63,0.42);transition:transform .24s cubic-bezier(.34,1.42,.5,1),box-shadow .24s,filter .24s,border-color .24s}
+          .pdf-hero:hover{transform:translateY(-5px) scale(1.025);box-shadow:0 24px 54px rgba(57,71,63,0.7);filter:saturate(1.22) brightness(1.12);border-color:rgba(180,200,188,0.85)}
+          .pdf-hero:active{transform:translateY(-1px) scale(.998)}
+          .pdf-hero .pdf-glow{position:absolute;inset:0;pointer-events:none;opacity:.4;transition:opacity .3s;background:radial-gradient(circle at 88% -25%,rgba(255,255,255,0.35),transparent 58%)}
+          .pdf-hero:hover .pdf-glow{opacity:1}
+          .pdf-hero::before{content:'';position:absolute;top:-25%;left:-75%;width:60%;height:150%;background:linear-gradient(105deg,transparent,rgba(255,255,255,0.55),transparent);transform:skewX(-18deg);transition:left .62s cubic-bezier(.4,0,.2,1);pointer-events:none}
+          .pdf-hero:hover::before{left:140%}
+          .pdf-hero::after{content:'';position:absolute;inset:0;border-radius:16px;pointer-events:none;opacity:0;transition:opacity .3s;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.35),inset 0 14px 30px rgba(255,255,255,0.12)}
+          .pdf-hero:hover::after{opacity:1}
+          .pdf-hero .pdf-ic{font-size:1.95rem;display:inline-flex;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.32));transition:transform .26s}
+          .pdf-hero:hover .pdf-ic{transform:scale(1.14) rotate(-5deg)}
+        `}</style>
+        <button onClick={() => onNavigate('pdfreader')} className="pdf-hero">
+          <span aria-hidden className="pdf-glow" />
+          <span className="pdf-ic">📖</span>
+          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.08rem', lineHeight: 1.1, letterSpacing: '0.01em' }}>PDF Reader</div>
+            <div style={{ fontSize: '0.68rem', opacity: 0.92, marginTop: 3 }}>Leitura, anotações, dicionário e mapas — seu hub principal</div>
           </div>
-          <span style={{ fontSize: '1.25rem', opacity: 0.95, flexShrink: 0 }}>→</span>
         </button>
       </div>
 
