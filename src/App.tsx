@@ -7,6 +7,7 @@ import GestorEditais from './components/editais/GestorEditais'
 import PDFReader from './components/pdfreader/PDFReader'
 import Arcade from './components/dashboard/Arcade'
 import Inventario from './components/inventario/Inventario'
+import Projetos3D from './components/projetos3d/Projetos3D'
 import ChecklistTopbar from './components/dashboard/ChecklistTopbar'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
@@ -105,6 +106,7 @@ const NAV = [
     { id: 'saude',      label: 'Saúde',              icon: '✚',  svgIcon: null },
     { id: 'wishlist',   label: 'Wishlist',           icon: '🛒', svgIcon: null },
     { id: 'inventario', label: 'Inventário',         icon: '📦', svgIcon: null },
+    { id: 'projetos3d', label: 'Projetos 3D',        icon: '🧩', svgIcon: null },
     { id: 'viagens',    label: 'Viagens',             icon: '✈️', svgIcon: null },
   ]},
   { section: 'ENTRETENIMENTO', items: [
@@ -267,6 +269,7 @@ function AppShell() {
           {active === 'saude'      && <SaudeBemEstar />}
           {active === 'wishlist'   && <WishlistCompras />}
           {active === 'inventario' && <Inventario />}
+          {active === 'projetos3d' && <Projetos3D />}
           {active === 'journal'    && <Diario onNavigate={setActive} />}
           {active === 'media'      && <MediaTracker />}
           {active === 'gaming'     && <GamingHub />}
