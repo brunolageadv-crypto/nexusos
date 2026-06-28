@@ -1627,6 +1627,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const [aiPop, setAiPop] = useState<{ open: boolean; carregando: boolean; titulo: string; texto: string; origem: string } | null>(null)  // resultado de "Não entendi"/Dicionário
   const [reader, setReader] = useState(false)   // Modo Reader (texto limpo reflowável)
   const [barraH, setBarraH] = useState(36)   // altura dinâmica da linha do tempo
+  const [copiado, setCopiado] = useState(false)   // feedback do botão copiar no popup
   const [ocrStatus, setOcrStatus] = useState<{ running: boolean; pct: number; page: number } | null>(null)
 
   // importa o PDF (apenas em memória — nunca persistido)
@@ -2395,26 +2396,44 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       {/* POP-UP DE DECISÃO — mostra o texto capturado */}
       {popup && createPortal(<>
         <div onMouseDown={() => setPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 6500 }} />
-        <div className="pr-pop" style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 6, padding: 10, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 12px 36px rgba(0,0,0,0.35)', width: 280 }}>
-          <div onMouseDown={arrastarPopup} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'move', marginBottom: 2, userSelect: 'none' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>⠿</span>
-            <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)' }}>{acumLen > 0 ? 'Frase em composição' : 'Texto capturado'}</span>
+        <div className="pr-pop" style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 10, padding: 14, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 18, boxShadow: '0 20px 60px rgba(0,0,0,0.42)', width: 344 }}>
+          {/* cabeçalho */}
+          <div onMouseDown={arrastarPopup} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'move', userSelect: 'none' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', fontSize: '.82rem', flexShrink: 0 }}>🕐</span>
+            <b style={{ fontSize: '.86rem', color: 'var(--text-primary)', letterSpacing: '.01em' }}>NEXUS Captura e Inteligência</b>
+            {acumLen > 0 && <span style={{ fontSize: '.58rem', fontWeight: 800, color: '#7c3aed', background: 'rgba(124,58,237,.12)', padding: '2px 6px', borderRadius: 8 }}>compondo</span>}
             <span style={{ flex: 1 }} />
-            <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} title="Fechar" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.85rem' }}>✕</button>
+            <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} title="Fechar" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 2 }}>✕</button>
           </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', lineHeight: 1.4, maxHeight: 90, overflowY: 'auto', padding: '6px 8px', background: 'var(--surface)', borderRadius: 8, border: '1px solid var(--border)' }}>{popup.shown}</div>
-          <button onMouseDown={e => { e.preventDefault(); enviar() }} style={{ ...popBtn, background: '#15803D', color: '#fff', border: 'none', fontWeight: 700 }}>➜ Enviar para Palavras Destacadas</button>
-          <button onMouseDown={e => { e.preventDefault(); pedirPalavrasChave() }} style={{ ...popBtn, background: '#EA580C', color: '#fff', border: 'none', fontWeight: 700 }}>✦ Extrair palavras-chave (IA)</button>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onMouseDown={e => { e.preventDefault(); resumirSelecao() }} style={{ ...popBtn, flex: 1, textAlign: 'center' }}>🧠 Resumir (IA)</button>
-            <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onGerarFlashcard?.(t, nomeRef.current) }} style={{ ...popBtn, flex: 1, textAlign: 'center' }}>🃏 Flashcard (IA)</button>
+          {/* área de texto capturado */}
+          <div style={{ position: 'relative', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '9px 11px' }}>
+            <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: 1.45, maxHeight: 88, overflowY: 'auto', paddingRight: 22 }}>{popup.shown}</div>
+            <button onMouseDown={e => { e.preventDefault(); try { navigator.clipboard?.writeText(popup.shown); setCopiado(true); setTimeout(() => setCopiado(false), 1200) } catch {} }} title="Copiar texto" style={{ position: 'absolute', top: 7, right: 7, border: 'none', background: 'transparent', color: copiado ? '#16a34a' : 'var(--text-muted)', cursor: 'pointer', fontSize: '.82rem' }}>{copiado ? '✓' : '⧉'}</button>
+            <div style={{ textAlign: 'right', fontSize: '.6rem', color: 'var(--text-muted)', marginTop: 4 }}>{(popup.shown || '').length} caracteres</div>
           </div>
-          <button onMouseDown={e => { e.preventDefault(); const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onColetarMapa?.(t, curPageRef.current) }} style={{ ...popBtn, background: '#7c3aed', color: '#fff', border: 'none', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><IconMapa size={14} color="#fff" /> Coletar p/ mapa mental</button>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onMouseDown={e => { e.preventDefault(); explicarSelecao() }} style={{ ...popBtn, flex: 1, textAlign: 'center', background: '#0e7490', color: '#fff', border: 'none', fontWeight: 700 }}>🤔 Não entendi</button>
-            <button onMouseDown={e => { e.preventDefault(); dicionarioSelecao() }} style={{ ...popBtn, flex: 1, textAlign: 'center', background: '#475569', color: '#fff', border: 'none', fontWeight: 700 }}>📖 Dicionário</button>
+          {/* 4 ações de IA (cards) */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+            {[
+              { lbl: ['Palavras-', 'Chave (IA)'], ic: '🏷️', grad: 'linear-gradient(150deg,#2dd4bf,#0d9488)', on: () => pedirPalavrasChave() },
+              { lbl: ['Resumo', '(IA)'], ic: '📖', grad: 'linear-gradient(150deg,#818cf8,#6366f1)', on: () => resumirSelecao() },
+              { lbl: ['Flashcards', '(IA)'], ic: '🗂️', grad: 'linear-gradient(150deg,#fb923c,#ea580c)', on: () => { const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onGerarFlashcard?.(t, nomeRef.current) } },
+              { lbl: ['Mapa', 'Mental (IA)'], ic: null, grad: 'linear-gradient(150deg,#a78bfa,#7c3aed)', on: () => { const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onColetarMapa?.(t, curPageRef.current) } },
+            ].map((c, i) => (
+              <button key={i} onMouseDown={e => { e.preventDefault(); c.on() }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 7, padding: '11px 4px 9px', border: 'none', borderRadius: 14, background: c.grad, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.18)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 9, background: 'rgba(255,255,255,.25)', fontSize: '.95rem' }}>{c.ic || <IconMapa size={17} color="#fff" />}</span>
+                <span style={{ fontSize: '.62rem', fontWeight: 700, lineHeight: 1.15, textAlign: 'center' }}>{c.lbl[0]}<br />{c.lbl[1]}</span>
+              </button>
+            ))}
           </div>
-          <button onMouseDown={e => { e.preventDefault(); compor() }} style={popBtn}>＋ Continuar compondo a frase</button>
+          {/* enviar + dicionário */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onMouseDown={e => { e.preventDefault(); enviar() }} style={{ ...popBtn, flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}>✉️ Enviar p/ Palavras Destacadas</button>
+            <button onMouseDown={e => { e.preventDefault(); dicionarioSelecao() }} style={{ ...popBtn, flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}>📖 Dicionário</button>
+          </div>
+          {/* não entendi */}
+          <button onMouseDown={e => { e.preventDefault(); explicarSelecao() }} style={{ ...popBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: 'var(--surface)', fontWeight: 700, color: 'var(--text-secondary)' }}><span style={{ display: 'inline-flex', width: 18, height: 18, borderRadius: '50%', background: '#0e7490', color: '#fff', alignItems: 'center', justifyContent: 'center', fontSize: '.7rem' }}>?</span> Não Entendi?</button>
+          {/* continuar composição */}
+          <button onMouseDown={e => { e.preventDefault(); compor() }} style={{ ...popBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'transparent', color: 'var(--text-muted)', fontWeight: 600 }}>✎ Continuar Composição de Texto</button>
         </div>
       </>, document.body)}
 
