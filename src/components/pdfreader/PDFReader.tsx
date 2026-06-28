@@ -1313,6 +1313,7 @@ function BarraLeitura({ numPages, curPage, fileKey, gotoPage, getPageText, onHei
   const [motivos, setMotivos] = useState<Record<string, string>>({})
   const [painel, setPainel] = useState(false)
   const [relatorio, setRelatorio] = useState(false)
+  const [colapsada, setColapsada] = useState<boolean>(() => { try { return localStorage.getItem('nexus_pr_barra_oculta') === '1' } catch { return false } })
   const [analise, setAnalise] = useState<{ pct: number } | null>(null)
   const [de, setDe] = useState(1)
   const [ate, setAte] = useState(1)
@@ -1327,7 +1328,8 @@ function BarraLeitura({ numPages, curPage, fileKey, gotoPage, getPageText, onHei
     setLidas(prev => { if (prev.has(curPage)) return prev; const n = new Set(prev); n.add(curPage); try { localStorage.setItem(keyL, JSON.stringify([...n])) } catch {} ; return n })
   }, [curPage, fileKey])
   const temDific = Object.keys(dific).length > 0
-  useEffect(() => { onHeight?.(temDific ? 50 : 36) }, [temDific])
+  useEffect(() => { onHeight?.(colapsada ? 16 : (temDific ? 50 : 36)) }, [temDific, colapsada])
+  const toggleColapsar = () => setColapsada(c => { const v = !c; try { localStorage.setItem('nexus_pr_barra_oculta', v ? '1' : '0') } catch {} ; return v })
   const toggleLida = (p: number) => setLidas(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); try { localStorage.setItem(keyL, JSON.stringify([...n])) } catch {} ; return n })
   const resetar = () => { if (confirm('Resetar todo o progresso de leitura deste PDF?')) { setLidas(new Set()); try { localStorage.removeItem(keyL) } catch {} } }
   const pct = numPages ? Math.round((lidas.size / numPages) * 100) : 0
@@ -1352,6 +1354,12 @@ function BarraLeitura({ numPages, curPage, fileKey, gotoPage, getPageText, onHei
     return g
   }, [dific])
   if (!numPages) return null
+  // barra recolhida: apenas uma aba com a seta para reexibir
+  if (colapsada) return (
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 35, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg)', borderBottom: '1px solid var(--border)' }}>
+      <button onClick={toggleColapsar} title="Mostrar linha do tempo de leitura/dificuldade" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, height: 14, padding: '0 10px', border: '1px solid var(--border)', borderRadius: 7, background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.6rem', fontWeight: 700 }}>▾ Linha do tempo</button>
+    </div>
+  )
   const cells: number[] = []; for (let p = 1; p <= numPages; p++) cells.push(p)
   const posPct = (p: number) => numPages > 1 ? ((p - 0.5) / numPages) * 100 : 50
   const marks = (() => { if (numPages <= 1) return [1]; const set = new Set([1, numPages]); [.25, .5, .75].forEach(f => set.add(Math.max(1, Math.round(numPages * f)))); return [...set].sort((a, b) => a - b) })()
@@ -1362,6 +1370,7 @@ function BarraLeitura({ numPages, curPage, fileKey, gotoPage, getPageText, onHei
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 35, background: 'var(--card-bg)', borderBottom: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,.06)', padding: '4px 12px 3px' }}>
       {/* cabeçalho minimalista */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+        <button onClick={toggleColapsar} title="Ocultar a linha do tempo (fica fixo)" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 16, border: '1px solid var(--border)', borderRadius: 6, background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '.62rem', fontWeight: 700 }}>▴</button>
         <button onClick={() => setPainel(p => !p)} title="Opções da linha do tempo" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 16, padding: '0 6px', border: '1px solid var(--border)', borderRadius: 6, background: painel ? '#5b5bd6' : 'transparent', color: painel ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontSize: '.62rem', fontWeight: 700 }}>≡ Leitura</button>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: '.64rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
@@ -2164,7 +2173,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             {(TONS.find(t => t.id === tom) || TONS[0]).icon}<span style={{ fontSize: '0.6rem' }}>▾</span>
           </button>
           {tomOpen && (
-            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 30, width: 190, padding: 6, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
+            <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 60, width: 190, padding: 6, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
               {TONS.map(t => (
                 <button key={t.id} onClick={() => { setTom(t.id); setTomOpen(false) }}
                   style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '7px 9px', borderRadius: 7, border: 'none', cursor: 'pointer', textAlign: 'left', background: t.id === tom ? 'var(--surface)' : 'transparent', color: 'var(--text-primary)', fontSize: '0.82rem', fontWeight: t.id === tom ? 700 : 500 }}>
@@ -2193,7 +2202,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
               <span style={{ width: 14, height: 14, borderRadius: 3, background: corRealce, border: '1px solid var(--border)' }} />▾
             </button>
             {paletaOpen && (
-              <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 30, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
+              <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 60, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
                 {PALETA_REALCE.map(c => <button key={c} onClick={() => { setCorRealce(c); setPaletaOpen(false) }} style={{ width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
               </div>
             )}
