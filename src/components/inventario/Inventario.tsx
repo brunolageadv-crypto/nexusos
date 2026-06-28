@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
+import { collection, doc, getDoc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import { formatBRL } from '../../utils'
@@ -31,6 +31,25 @@ function diffDays(from: Date, to: Date): number {
 }
 function isURL(v: string): boolean { return /^https?:\/\/\S+$/i.test((v || '').trim()) }
 
+// Nota fiscal: guardada como base64 num doc separado (Firestore limita 1 MB/doc)
+const MAX_NF_BYTES = 700_000
+function fileToDataURL(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(r.result as string)
+    r.onerror = () => rej(r.error)
+    r.readAsDataURL(file)
+  })
+}
+function dataURLtoBlob(dataUrl: string): Blob {
+  const [head, b64] = dataUrl.split(',')
+  const mime = (head.match(/data:(.*?);base64/) || [])[1] || 'application/pdf'
+  const bin = atob(b64 || '')
+  const arr = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return new Blob([arr], { type: mime })
+}
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 type Status = 'Ativo' | 'Vendido' | 'Doado' | 'Quebrado' | 'Em_Manutenção'
@@ -61,7 +80,12 @@ interface Item {
   data_validade: string
   // mídia & documentos
   fotos: string[]
+  foto_fit: 'cover' | 'contain'
+  foto_altura: number
+  foto_pos: number
   nota_fiscal_url: string
+  tem_nf: boolean
+  nota_fiscal_nome: string
   // categorização
   tags: string[]
   criadoEm: number
@@ -162,7 +186,8 @@ function itemVazio(): Item {
     id: newId(), nome: '', descricao: '', marca: '', modelo: '', numero_serie: '',
     data_compra: todayISO(), valor_pago: 0, valor_atual_estimado: 0, fornecedor_loja: '', fornecedor_url: '', metodo_pagamento: '',
     comodo: '', sub_localizacao: '', status: 'Ativo', garantia_meses: 12, recorrencia: '', data_validade: '',
-    fotos: [], nota_fiscal_url: '', tags: [], criadoEm: Date.now(), updatedAt: Date.now(),
+    fotos: [], foto_fit: 'cover', foto_altura: 132, foto_pos: 50, nota_fiscal_url: '', tem_nf: false, nota_fiscal_nome: '',
+    tags: [], criadoEm: Date.now(), updatedAt: Date.now(),
   }
 }
 
@@ -231,7 +256,20 @@ export default function Inventario() {
   async function remover(item: Item) {
     if (!uid || !db) return
     if (!window.confirm(`Remover "${item.nome || 'item'}" do inventário?`)) return
+    if (item.tem_nf) { try { await deleteDoc(doc(db, 'users', uid, 'inventario_anexos', item.id)) } catch { /* anexo já removido */ } }
     await deleteDoc(doc(db, 'users', uid, 'inventario', item.id))
+  }
+
+  async function abrirNF(item: Item) {
+    if (!uid || !db) return
+    try {
+      const snap = await getDoc(doc(db, 'users', uid, 'inventario_anexos', item.id))
+      const dataUrl = snap.exists() ? (snap.data().nf_base64 as string) : ''
+      if (!dataUrl) { window.alert('Nota fiscal não encontrada.'); return }
+      const url = URL.createObjectURL(dataURLtoBlob(dataUrl))
+      window.open(url, '_blank')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch { window.alert('Não foi possível abrir a nota fiscal.') }
   }
 
   const alertas = useMemo(() => computarAlertas(itens), [itens])
@@ -392,8 +430,10 @@ export default function Inventario() {
                 return (
                   <div key={item.id} style={{ borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-xs)', overflow: 'hidden' }}>
                     {foto && (
-                      <img src={foto} alt={item.nome} loading="lazy" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
-                        style={{ width: '100%', height: 132, objectFit: 'cover', borderBottom: '1px solid var(--border)' }} />
+                      <div style={{ width: '100%', height: item.foto_altura || 132, background: 'var(--bg-3)', borderBottom: '1px solid var(--border)', overflow: 'hidden' }}>
+                        <img src={foto} alt={item.nome} loading="lazy" onError={e => { const el = e.currentTarget.parentElement as HTMLElement | null; if (el) el.style.display = 'none' }}
+                          style={{ width: '100%', height: '100%', objectFit: item.foto_fit || 'cover', objectPosition: `50% ${item.foto_pos ?? 50}%`, display: 'block' }} />
+                      </div>
                     )}
                     <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
@@ -415,12 +455,14 @@ export default function Inventario() {
 
                       {item.tags.length > 0 && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{item.tags.map(t => <TagChip key={t} tag={t} />)}</div>}
 
-                      {(item.fornecedor_loja || item.nota_fiscal_url) && (
+                      {(item.fornecedor_loja || item.nota_fiscal_url || item.tem_nf) && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                           {item.fornecedor_loja && (isURL(item.fornecedor_url)
                             ? <a href={item.fornecedor_url} target="_blank" rel="noopener noreferrer" style={linkChip}>🛍️ {item.fornecedor_loja}</a>
                             : <span style={{ ...linkChip, cursor: 'default' }}>🛍️ {item.fornecedor_loja}</span>)}
-                          {isURL(item.nota_fiscal_url) && <a href={item.nota_fiscal_url} target="_blank" rel="noopener noreferrer" style={linkChip}>📄 Nota fiscal</a>}
+                          {isURL(item.nota_fiscal_url)
+                            ? <a href={item.nota_fiscal_url} target="_blank" rel="noopener noreferrer" style={linkChip}>📄 Nota fiscal</a>
+                            : item.tem_nf ? <button onClick={() => abrirNF(item)} style={{ ...linkChip, cursor: 'pointer' }}>📄 Nota fiscal</button> : null}
                         </div>
                       )}
 
@@ -560,7 +602,7 @@ export default function Inventario() {
         </div>
       )}
 
-      {editando && <ModalItem item={editando} onChange={setEditando} onClose={() => setEditando(null)} onSave={() => salvar(editando)} novaTag={novaTag} setNovaTag={setNovaTag} />}
+      {editando && <ModalItem item={editando} uid={uid} onChange={setEditando} onClose={() => setEditando(null)} onSave={() => salvar(editando)} onAbrirNF={abrirNF} novaTag={novaTag} setNovaTag={setNovaTag} />}
     </div>
   )
 }
@@ -598,8 +640,8 @@ function Barra({ label, sub, valor, pct, cor }: { label: string; sub: string; va
 }
 
 // ─── Modal de edição/criação ─────────────────────────────────────────────────
-function ModalItem({ item, onChange, onClose, onSave, novaTag, setNovaTag }: {
-  item: Item; onChange: (i: Item) => void; onClose: () => void; onSave: () => void; novaTag: string; setNovaTag: (s: string) => void
+function ModalItem({ item, uid, onChange, onClose, onSave, onAbrirNF, novaTag, setNovaTag }: {
+  item: Item; uid: string | null; onChange: (i: Item) => void; onClose: () => void; onSave: () => void; onAbrirNF: (i: Item) => void; novaTag: string; setNovaTag: (s: string) => void
 }) {
   const set = <K extends keyof Item>(k: K, v: Item[K]) => onChange({ ...item, [k]: v })
   const sugeridas = sugerirTags(item).filter(t => !item.tags.includes(t))
@@ -607,8 +649,32 @@ function ModalItem({ item, onChange, onClose, onSave, novaTag, setNovaTag }: {
   const garExp = dataExpiracaoGarantia(item)
   const foto = item.fotos.find(isURL)
   const fornecedorUrlInvalido = item.fornecedor_url.trim() !== '' && !isURL(item.fornecedor_url)
-  const nfUrlInvalido = item.nota_fiscal_url.trim() !== '' && !isURL(item.nota_fiscal_url)
   const fotoUrlInvalido = (item.fotos[0] || '').trim() !== '' && !isURL(item.fotos[0] || '')
+
+  const [uploading, setUploading] = useState(false)
+  const [uploadErro, setUploadErro] = useState('')
+
+  async function enviarNF(file: File | undefined) {
+    if (!file) return
+    setUploadErro('')
+    if (file.type !== 'application/pdf') { setUploadErro('Selecione um arquivo PDF.'); return }
+    if (file.size > MAX_NF_BYTES) { setUploadErro(`PDF muito grande (${(file.size / 1024).toFixed(0)} KB). Máximo ~${Math.round(MAX_NF_BYTES / 1024)} KB — comprima o PDF e tente novamente.`); return }
+    if (!uid || !db) { setUploadErro('Sem conexão com o banco de dados.'); return }
+    setUploading(true)
+    try {
+      const dataUrl = await fileToDataURL(file)
+      await setDoc(doc(db, 'users', uid, 'inventario_anexos', item.id), { nf_base64: dataUrl, nome: file.name, updatedAt: Date.now() })
+      onChange({ ...item, tem_nf: true, nota_fiscal_nome: file.name, nota_fiscal_url: '' })
+    } catch {
+      setUploadErro('Falha ao salvar o PDF. Tente um arquivo menor.')
+    } finally { setUploading(false) }
+  }
+
+  async function removerNF() {
+    if (uid && db && item.tem_nf) { try { await deleteDoc(doc(db, 'users', uid, 'inventario_anexos', item.id)) } catch { /* noop */ } }
+    onChange({ ...item, tem_nf: false, nota_fiscal_url: '', nota_fiscal_nome: '' })
+    setUploadErro('')
+  }
 
   function addTag(t: string) {
     const tag = t.startsWith('#') ? t.trim() : `#${t.trim()}`
@@ -668,15 +734,68 @@ function ModalItem({ item, onChange, onClose, onSave, novaTag, setNovaTag }: {
           {/* Mídia & Documentos */}
           <section>
             <SecTitle>Mídia & documentos</SecTitle>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
               <Campo label="Foto (URL da imagem)" hint={fotoUrlInvalido ? '⚠ URL inválida (use https://…)' : 'A imagem aparece no card do item.'}>
                 <input style={{ ...inputStyle, borderColor: fotoUrlInvalido ? '#ef4444' : undefined }} value={item.fotos[0] || ''} onChange={e => set('fotos', e.target.value.trim() ? [e.target.value.trim()] : [])} placeholder="https://…/foto.jpg" />
               </Campo>
-              {foto && <img src={foto} alt="prévia" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 10, border: '1px solid var(--border)' }} />}
-              <Campo label="Nota fiscal (URL do PDF)" hint={nfUrlInvalido ? '⚠ URL inválida (use https://…)' : 'Link para o PDF da nota fiscal.'}>
-                <input style={{ ...inputStyle, borderColor: nfUrlInvalido ? '#ef4444' : undefined }} value={item.nota_fiscal_url} onChange={e => set('nota_fiscal_url', e.target.value)} placeholder="https://…/nota-fiscal.pdf" />
-              </Campo>
-              {isURL(item.nota_fiscal_url) && <a href={item.nota_fiscal_url} target="_blank" rel="noopener noreferrer" style={{ ...linkChip, alignSelf: 'flex-start' }}>📄 Abrir nota fiscal</a>}
+
+              {foto && (
+                <div>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 6, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Prévia — exatamente como aparece no card</div>
+                  <div style={{ width: '100%', maxWidth: 300, height: item.foto_altura || 132, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                    <img src={foto} alt="prévia" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+                      style={{ width: '100%', height: '100%', objectFit: item.foto_fit || 'cover', objectPosition: `50% ${item.foto_pos ?? 50}%`, display: 'block' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginTop: 12, alignItems: 'flex-end' }}>
+                    <div>
+                      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 4, fontFamily: 'var(--font-mono)', textTransform: 'uppercase' }}>Ajuste</div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {([['cover', 'Preencher'], ['contain', 'Imagem inteira']] as const).map(([f, lb]) => (
+                          <button key={f} onClick={() => set('foto_fit', f)} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${item.foto_fit === f ? 'var(--accent)' : 'var(--border-md)'}`, background: item.foto_fit === f ? 'var(--accent)' : 'var(--card-bg)', color: item.foto_fit === f ? '#fff' : 'var(--text-secondary)', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}>{lb}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.66rem', color: 'var(--text-muted)', minWidth: 150 }}>
+                      Altura: <strong style={{ color: 'var(--text-secondary)' }}>{item.foto_altura || 132}px</strong>
+                      <input type="range" min={90} max={280} value={item.foto_altura || 132} onChange={e => set('foto_altura', Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
+                    </label>
+                    {(item.foto_fit || 'cover') === 'cover' && (
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.66rem', color: 'var(--text-muted)', minWidth: 150 }}>
+                        Enquadramento vertical: <strong style={{ color: 'var(--text-secondary)' }}>{item.foto_pos ?? 50}%</strong>
+                        <input type="range" min={0} max={100} value={item.foto_pos ?? 50} onChange={e => set('foto_pos', Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
+                      </label>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 6, opacity: 0.85 }}>
+                    "Preencher" recorta para encher o espaço (use o enquadramento para posicionar). "Imagem inteira" mostra a foto completa sem cortes.
+                  </div>
+                </div>
+              )}
+
+              {/* Nota fiscal — upload de PDF */}
+              <div>
+                <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: 'var(--font-mono)', marginBottom: 6 }}>Nota fiscal (PDF)</div>
+                {(item.tem_nf || isURL(item.nota_fiscal_url)) ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border-md)', background: 'var(--bg-1)' }}>
+                    <span style={{ fontSize: '1.1rem' }}>📄</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: '0.78rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.nota_fiscal_nome || (isURL(item.nota_fiscal_url) ? 'Link externo' : 'Nota fiscal')}</span>
+                    {isURL(item.nota_fiscal_url)
+                      ? <a href={item.nota_fiscal_url} target="_blank" rel="noopener noreferrer" style={linkChip}>Abrir</a>
+                      : <button onClick={() => onAbrirNF(item)} style={{ ...linkChip, cursor: 'pointer' }}>Abrir</button>}
+                    <button onClick={removerNF} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #ef444433', background: '#ef444412', color: '#ef4444', fontSize: '0.7rem', fontWeight: 700, cursor: 'pointer' }}>Remover</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, alignSelf: 'flex-start', padding: '9px 16px', borderRadius: 10, border: '1px dashed var(--border-md)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: 700, cursor: uploading ? 'wait' : 'pointer' }}>
+                      {uploading ? '⏳ Salvando…' : '⬆ Enviar PDF do PC'}
+                      <input type="file" accept="application/pdf,.pdf" disabled={uploading} onChange={e => { enviarNF(e.target.files?.[0]); e.currentTarget.value = '' }} style={{ display: 'none' }} />
+                    </label>
+                    <input style={inputStyle} value={item.nota_fiscal_url} onChange={e => set('nota_fiscal_url', e.target.value)} placeholder="…ou cole um link para o PDF (https://…)" />
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', opacity: 0.85 }}>O PDF é guardado no seu banco (máx. ~{Math.round(MAX_NF_BYTES / 1024)} KB). Para arquivos maiores, comprima antes.</span>
+                  </div>
+                )}
+                {uploadErro && <div style={{ marginTop: 6, fontSize: '0.7rem', color: '#ef4444' }}>{uploadErro}</div>}
+              </div>
             </div>
           </section>
 
