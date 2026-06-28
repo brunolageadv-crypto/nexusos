@@ -31,6 +31,9 @@ function diffDays(from: Date, to: Date): number {
 }
 function isURL(v: string): boolean { return /^https?:\/\/\S+$/i.test((v || '').trim()) }
 
+// Mantém a altura da imagem do card num intervalo equilibrado (contém valores antigos grandes)
+function clampAltura(h?: number): number { return Math.min(Math.max(Number(h) || 150, 100), 240) }
+
 // Nota fiscal: guardada como base64 num doc separado (Firestore limita 1 MB/doc)
 const MAX_NF_BYTES = 700_000
 function fileToDataURL(file: File): Promise<string> {
@@ -186,7 +189,7 @@ function itemVazio(): Item {
     id: newId(), nome: '', descricao: '', marca: '', modelo: '', numero_serie: '',
     data_compra: todayISO(), valor_pago: 0, valor_atual_estimado: 0, fornecedor_loja: '', fornecedor_url: '', metodo_pagamento: '',
     comodo: '', sub_localizacao: '', status: 'Ativo', garantia_meses: 12, recorrencia: '', data_validade: '',
-    fotos: [], foto_fit: 'cover', foto_altura: 132, foto_pos: 50, nota_fiscal_url: '', tem_nf: false, nota_fiscal_nome: '',
+    fotos: [], foto_fit: 'cover', foto_altura: 150, foto_pos: 50, nota_fiscal_url: '', tem_nf: false, nota_fiscal_nome: '',
     tags: [], criadoEm: Date.now(), updatedAt: Date.now(),
   }
 }
@@ -419,7 +422,7 @@ export default function Inventario() {
               {itens.length === 0 ? 'Nenhum item ainda. Clique em “+ Adicionar”.' : 'Nenhum item corresponde aos filtros.'}
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 290px), 290px))', gap: 14, justifyContent: 'start' }}>
               {filtrados.map(item => {
                 const sm = STATUS_META[item.status]
                 const gar = dataExpiracaoGarantia(item)
@@ -430,7 +433,7 @@ export default function Inventario() {
                 return (
                   <div key={item.id} style={{ borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-xs)', overflow: 'hidden' }}>
                     {foto && (
-                      <div style={{ width: '100%', height: item.foto_altura || 132, background: 'var(--bg-3)', borderBottom: '1px solid var(--border)', overflow: 'hidden' }}>
+                      <div style={{ width: '100%', height: clampAltura(item.foto_altura), background: 'var(--bg-3)', borderBottom: '1px solid var(--border)', overflow: 'hidden' }}>
                         <img src={foto} alt={item.nome} loading="lazy" onError={e => { const el = e.currentTarget.parentElement as HTMLElement | null; if (el) el.style.display = 'none' }}
                           style={{ width: '100%', height: '100%', objectFit: item.foto_fit || 'cover', objectPosition: `50% ${item.foto_pos ?? 50}%`, display: 'block' }} />
                       </div>
@@ -742,7 +745,7 @@ function ModalItem({ item, uid, onChange, onClose, onSave, onAbrirNF, novaTag, s
               {foto && (
                 <div>
                   <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginBottom: 6, fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Prévia — exatamente como aparece no card</div>
-                  <div style={{ width: '100%', maxWidth: 300, height: item.foto_altura || 132, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ width: '100%', maxWidth: 290, height: clampAltura(item.foto_altura), background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
                     <img src={foto} alt="prévia" onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
                       style={{ width: '100%', height: '100%', objectFit: item.foto_fit || 'cover', objectPosition: `50% ${item.foto_pos ?? 50}%`, display: 'block' }} />
                   </div>
@@ -756,8 +759,8 @@ function ModalItem({ item, uid, onChange, onClose, onSave, onAbrirNF, novaTag, s
                       </div>
                     </div>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.66rem', color: 'var(--text-muted)', minWidth: 150 }}>
-                      Altura: <strong style={{ color: 'var(--text-secondary)' }}>{item.foto_altura || 132}px</strong>
-                      <input type="range" min={90} max={280} value={item.foto_altura || 132} onChange={e => set('foto_altura', Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
+                      Altura: <strong style={{ color: 'var(--text-secondary)' }}>{clampAltura(item.foto_altura)}px</strong>
+                      <input type="range" min={100} max={240} value={clampAltura(item.foto_altura)} onChange={e => set('foto_altura', Number(e.target.value))} style={{ accentColor: 'var(--accent)' }} />
                     </label>
                     {(item.foto_fit || 'cover') === 'cover' && (
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.66rem', color: 'var(--text-muted)', minWidth: 150 }}>
