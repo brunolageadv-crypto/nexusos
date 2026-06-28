@@ -2396,17 +2396,16 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       {/* POP-UP DE DECISÃO — mostra o texto capturado */}
       {popup && createPortal(<>
         <div onMouseDown={() => setPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 6500 }} />
-        <div className="pr-pop" style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 10, padding: 14, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 18, boxShadow: '0 20px 60px rgba(0,0,0,0.42)', width: 344 }}>
+        <div className="pr-pop" style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 10, padding: 14, background: 'color-mix(in srgb, var(--card-bg) 80%, transparent)', backdropFilter: 'blur(16px) saturate(1.3)', WebkitBackdropFilter: 'blur(16px) saturate(1.3)', border: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', borderRadius: 18, boxShadow: '0 20px 60px rgba(0,0,0,0.4)', width: 344 }}>
           {/* cabeçalho */}
           <div onMouseDown={arrastarPopup} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'move', userSelect: 'none' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', fontSize: '.82rem', flexShrink: 0 }}>🕐</span>
-            <b style={{ fontSize: '.86rem', color: 'var(--text-primary)', letterSpacing: '.01em' }}>NEXUS Captura e Inteligência</b>
+            <b style={{ fontSize: '.96rem', fontWeight: 600, letterSpacing: '.03em', fontFamily: 'Georgia, "Times New Roman", serif', fontStyle: 'italic', background: 'linear-gradient(120deg,#7c3aed,#5b5bd6 55%,#0891b2)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', color: 'transparent' }}>Captura e Inteligência</b>
             {acumLen > 0 && <span style={{ fontSize: '.58rem', fontWeight: 800, color: '#7c3aed', background: 'rgba(124,58,237,.12)', padding: '2px 6px', borderRadius: 8 }}>compondo</span>}
             <span style={{ flex: 1 }} />
             <button onMouseDown={e => { e.preventDefault(); acumRef.current = ''; setAcumLen(0); setPopup(null); lastCapRef.current = null }} title="Fechar" style={{ border: 'none', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 2 }}>✕</button>
           </div>
           {/* área de texto capturado */}
-          <div style={{ position: 'relative', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '9px 11px' }}>
+          <div style={{ position: 'relative', background: 'color-mix(in srgb, var(--surface) 70%, transparent)', border: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', borderRadius: 12, padding: '9px 11px' }}>
             <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', lineHeight: 1.45, maxHeight: 88, overflowY: 'auto', paddingRight: 22 }}>{popup.shown}</div>
             <button onMouseDown={e => { e.preventDefault(); try { navigator.clipboard?.writeText(popup.shown); setCopiado(true); setTimeout(() => setCopiado(false), 1200) } catch {} }} title="Copiar texto" style={{ position: 'absolute', top: 7, right: 7, border: 'none', background: 'transparent', color: copiado ? '#16a34a' : 'var(--text-muted)', cursor: 'pointer', fontSize: '.82rem' }}>{copiado ? '✓' : '⧉'}</button>
             <div style={{ textAlign: 'right', fontSize: '.6rem', color: 'var(--text-muted)', marginTop: 4 }}>{(popup.shown || '').length} caracteres</div>
@@ -2414,14 +2413,14 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {/* 4 ações de IA (cards) */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
             {[
-              { lbl: ['Palavras-', 'Chave (IA)'], ic: '🏷️', grad: 'linear-gradient(150deg,#2dd4bf,#0d9488)', on: () => pedirPalavrasChave() },
-              { lbl: ['Resumo', '(IA)'], ic: '📖', grad: 'linear-gradient(150deg,#818cf8,#6366f1)', on: () => resumirSelecao() },
-              { lbl: ['Flashcards', '(IA)'], ic: '🗂️', grad: 'linear-gradient(150deg,#fb923c,#ea580c)', on: () => { const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onGerarFlashcard?.(t, nomeRef.current) } },
-              { lbl: ['Mapa', 'Mental (IA)'], ic: null, grad: 'linear-gradient(150deg,#a78bfa,#7c3aed)', on: () => { const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onColetarMapa?.(t, curPageRef.current) } },
+              { lbl: ['Palavras-', 'Chave'], ic: '🏷️', grad: 'linear-gradient(155deg,#d8f6ef,#a9e6db)', fg: '#0f766e', on: () => pedirPalavrasChave() },
+              { lbl: ['Resumo', ''], ic: '📖', grad: 'linear-gradient(155deg,#e4e9ff,#c5cffb)', fg: '#4338ca', on: () => resumirSelecao() },
+              { lbl: ['Flashcards', ''], ic: '🗂️', grad: 'linear-gradient(155deg,#ffeede,#fdd6ad)', fg: '#c2410c', on: () => { const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onGerarFlashcard?.(t, nomeRef.current) } },
+              { lbl: ['Mapa', 'Mental'], ic: null, grad: 'linear-gradient(155deg,#efeafe,#dccffb)', fg: '#6d28d9', on: () => { const t = popup?.shown; setPopup(null); acumRef.current = ''; setAcumLen(0); if (t) onColetarMapa?.(t, curPageRef.current) } },
             ].map((c, i) => (
-              <button key={i} onMouseDown={e => { e.preventDefault(); c.on() }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', gap: 7, padding: '11px 4px 9px', border: 'none', borderRadius: 14, background: c.grad, color: '#fff', cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,.18)' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 9, background: 'rgba(255,255,255,.25)', fontSize: '.95rem' }}>{c.ic || <IconMapa size={17} color="#fff" />}</span>
-                <span style={{ fontSize: '.62rem', fontWeight: 700, lineHeight: 1.15, textAlign: 'center' }}>{c.lbl[0]}<br />{c.lbl[1]}</span>
+              <button key={i} className="pr-card" onMouseDown={e => { e.preventDefault(); c.on() }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '13px 4px', border: 'none', borderRadius: 14, background: c.grad, color: c.fg, cursor: 'pointer', boxShadow: '0 3px 9px rgba(0,0,0,.08)' }}>
+                <span style={{ fontSize: '1.25rem', lineHeight: 1, filter: 'saturate(.9)' }}>{c.ic || <IconMapa size={22} color={c.fg} />}</span>
+                <span style={{ fontSize: '.64rem', fontWeight: 800, lineHeight: 1.12, textAlign: 'center' }}>{c.lbl[0]}{c.lbl[1] ? <><br />{c.lbl[1]}</> : null}</span>
               </button>
             ))}
           </div>
@@ -4035,6 +4034,9 @@ export default function PDFReader() {
         .pr-app button:not(:disabled):hover, .pr-pop button:not(:disabled):hover { filter: brightness(1.14); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.16); }
         .pr-app button:not(:disabled):active, .pr-pop button:not(:disabled):active { transform: translateY(0) scale(.96); filter: brightness(1.03); }
         .pr-app button:disabled, .pr-pop button:disabled { cursor: default; }
+        .pr-card { transition: transform .16s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease, filter .16s ease !important; }
+        .pr-card:hover { transform: translateY(-4px) scale(1.04) !important; box-shadow: 0 12px 24px rgba(0,0,0,.22) !important; filter: saturate(1.12) brightness(1.03) !important; }
+        .pr-card:active { transform: translateY(-1px) scale(.99) !important; }
         /* botão "Importar PDF" (é um label com input de arquivo) */
         .pr-app label:has(> input[type="file"]) { transition: filter .13s ease, transform .12s ease, box-shadow .13s ease; }
         .pr-app label:has(> input[type="file"]):hover { filter: brightness(1.12); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.16); }
