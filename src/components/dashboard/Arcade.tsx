@@ -21,7 +21,7 @@ function save(key: string, val: unknown) {
 
 // ─── XP / Levels ─────────────────────────────────────────────────────────────
 const LEVELS = [0,100,250,500,900,1400,2100,3000,4200,5700,7500,9800,12600,16000,20000,25000,31000,38500,47500,58500]
-function getLevel(xp: number) {
+export function getLevel(xp: number) {
   let lv = 1
   for (let i = 1; i < LEVELS.length; i++) { if (xp >= LEVELS[i]) lv = i + 1 }
   return Math.min(lv, LEVELS.length)
@@ -842,7 +842,8 @@ export const GAMES: GameDef[] = [
 const CATS = ['Todos', ...Array.from(new Set(GAMES.map(g => g.cat)))]
 
 // ─── Main Arcade Component ────────────────────────────────────────────────────
-export default function Arcade() {
+export default function Arcade({ variant = 'card' }: { variant?: 'card' | 'page' } = {}) {
+  const isPage = variant === 'page'
   // Persistence
   const [xp, setXpState] = useState(() => load<number>(SK.xp, 0))
   const [history, setHistory] = useState<HistEntry[]>(() => load(SK.history, []))
@@ -853,7 +854,7 @@ export default function Arcade() {
   const [lastGame, setLastGame] = useState<string>(() => load(SK.lastGame, ''))
 
   // UI
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(variant === 'page')
   const [view, setView] = useState<'menu'|'game'|'history'|'achievements'|'stats'|'favs'>('menu')
   const [catFilter, setCatFilter] = useState('Todos')
   const [searchQ, setSearchQ] = useState('')
@@ -883,7 +884,7 @@ export default function Arcade() {
 
   // ESC to close
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (activeGame) { setActiveGame(null); setView('menu') } else setOpen(false) } }
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (activeGame) { setActiveGame(null); setView('menu') } else if (!isPage) setOpen(false) } }
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
   }, [activeGame])
 
@@ -1006,26 +1007,32 @@ export default function Arcade() {
   // ── Modal ─────────────────────────────────────────────────────────────────
   return (
     <>
-      <div onClick={() => setOpen(true)}
-        style={{ gridColumn: 'span 2', padding: '18px 22px', borderRadius: 16, border: '1px solid rgba(124,58,237,0.3)', background: 'linear-gradient(135deg,rgba(124,58,237,0.08),rgba(167,139,250,0.05),transparent)', cursor: 'pointer', opacity: 0.7 }}
-        onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity='1'}
-        onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity='0.7'}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: '1.2rem' }}>🎮</span>
-          <span style={{ fontWeight: 700, color: '#a78bfa' }}>ARCADE — Nível {lv} · {xp.toLocaleString()} XP</span>
+      {!isPage && (
+        <div onClick={() => setOpen(true)}
+          style={{ gridColumn: 'span 2', padding: '18px 22px', borderRadius: 16, border: '1px solid rgba(124,58,237,0.3)', background: 'linear-gradient(135deg,rgba(124,58,237,0.08),rgba(167,139,250,0.05),transparent)', cursor: 'pointer', opacity: 0.7 }}
+          onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity='1'}
+          onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity='0.7'}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: '1.2rem' }}>🎮</span>
+            <span style={{ fontWeight: 700, color: '#a78bfa' }}>ARCADE — Nível {lv} · {xp.toLocaleString()} XP</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Backdrop */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => { setOpen(false); setActiveGame(null); setView('menu') }} />
+      {/* Backdrop — apenas modo card */}
+      {!isPage && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9990, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }} onClick={() => { setOpen(false); setActiveGame(null); setView('menu') }} />
+      )}
 
-      {/* Modal */}
+      {/* Painel — modal flutuante (card) ou página inteira (page) */}
       <div ref={modalRef}
-        style={{ position: 'fixed', left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex: 9991, background: 'var(--bg-2,#1a1b26)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 20, display: 'flex', flexDirection: 'column', boxShadow: '0 40px 100px rgba(0,0,0,0.7)', overflow: 'hidden', userSelect: 'none' }}>
+        style={isPage
+          ? { position: 'relative', width: '100%', height: '100%', minHeight: 0, background: 'var(--bg-2,#1a1b26)', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden', userSelect: 'none' }
+          : { position: 'fixed', left: pos.x, top: pos.y, width: size.w, height: size.h, zIndex: 9991, background: 'var(--bg-2,#1a1b26)', border: '1px solid rgba(124,58,237,0.3)', borderRadius: 20, display: 'flex', flexDirection: 'column', boxShadow: '0 40px 100px rgba(0,0,0,0.7)', overflow: 'hidden', userSelect: 'none' }}>
 
-        {/* Title bar (draggable) */}
-        <div onMouseDown={onMouseDown}
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: 'linear-gradient(135deg,rgba(124,58,237,0.15),rgba(167,139,250,0.08))', borderBottom: '1px solid rgba(124,58,237,0.2)', cursor: 'grab', flexShrink: 0 }}>
+        {/* Title bar (arrastável apenas no modo card) */}
+        <div onMouseDown={isPage ? undefined : onMouseDown}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: 'linear-gradient(135deg,rgba(124,58,237,0.15),rgba(167,139,250,0.08))', borderBottom: '1px solid rgba(124,58,237,0.2)', cursor: isPage ? 'default' : 'grab', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <span style={{ fontSize: '1.2rem' }}>🎮</span>
             <div>
@@ -1040,7 +1047,7 @@ export default function Arcade() {
           <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {activeGame && <button onClick={() => { setActiveGame(null); setView('menu') }} style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid rgba(124,58,237,0.3)', background: 'rgba(124,58,237,0.1)', color: '#a78bfa', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>← Menu</button>}
             <button onClick={doShuffle} style={{ padding: '5px 12px', borderRadius: 8, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', color: '#fff', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}>🎲 Sortear</button>
-            <button onClick={() => { setOpen(false); setActiveGame(null); setView('menu') }} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(248,113,113,0.15)', color: '#f87171', fontWeight: 900, cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+            {!isPage && <button onClick={() => { setOpen(false); setActiveGame(null); setView('menu') }} style={{ width: 28, height: 28, borderRadius: 8, border: 'none', background: 'rgba(248,113,113,0.15)', color: '#f87171', fontWeight: 900, cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>}
           </div>
         </div>
 

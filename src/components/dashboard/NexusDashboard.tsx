@@ -1,7 +1,7 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
 import PainelChecklistDia from './ChecklistDia'
-import PainelArcade from './Arcade'
+import { GAMES, getLevel } from './Arcade'
 import PainelGeosfera from './GeosferaCard'
 import VisaoGeral, { PaginaInicial } from './VisaoGeral'
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
@@ -1723,7 +1723,7 @@ function PainelVisaoGeral({ onNavigate, global }: any) {
       case 'viagens-confirmadas': return <PainelVisaoGeralViagensConfirmadas key="viagens-confirmadas" {...props} />
       case 'logs-hoje': return <PainelVisaoGeralLogs key="logs-hoje" {...props} />
       case 'checklist-dia': return <PainelChecklistDia key="checklist-dia" {...props} />
-      case 'arcade': return <PainelArcade key="arcade" />
+      case 'arcade': return <PainelArcadeLauncher key="arcade" onNavigate={onNavigate} dragging={dragging} dragOver={dragOver} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={handleDrop} />
       case 'geosfera': return <PainelGeosfera key="geosfera" {...props} />
       default: return null
     }
@@ -2196,6 +2196,34 @@ function PainelVisaoGeralDiario({ onNavigate, dragging, dragOver: _dOdiario, onD
           <div style={{ fontSize:'0.68rem', color:'var(--text-secondary)', lineHeight:1.4, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>{recente.conteudo}</div>
         </div>
       )}
+    </button>
+  )
+}
+
+function PainelArcadeLauncher({ onNavigate, dragging, dragOver: _dOarcade, onDragStart, onDragEnd, onDragOver, onDrop }: any) {
+  const [xp, setXp] = useState(0)
+  useEffect(() => {
+    try { const v = localStorage.getItem('arcade_xp'); setXp(v ? JSON.parse(v) : 0) } catch { setXp(0) }
+  }, [])
+  let stats = { played: 0, wins: 0 }
+  try { const s = localStorage.getItem('arcade_stats'); if (s) { const p = JSON.parse(s); stats = { played: p.played || 0, wins: p.wins || 0 } } } catch { /* noop */ }
+  const lv = getLevel(xp)
+  const cor = '#7c3aed'
+  return (
+    <button onClick={()=>onNavigate('arcade')} draggable onDragStart={()=>onDragStart?.('arcade')} onDragEnd={()=>onDragEnd?.()} onDragOver={e=>onDragOver?.(e,'arcade')} onDrop={e=>onDrop?.(e,'arcade')} style={{ padding:'16px 20px', borderRadius:16, border:`1px solid ${cor}25`, background:`linear-gradient(135deg,${cor}0a,transparent)`, textAlign:'left', cursor:'grab', transition:'all 0.2s', opacity: dragging==='arcade'?0.45:1 }}
+      onMouseEnter={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(-2px)';el.style.boxShadow=`0 8px 24px ${cor}20`}}
+      onMouseLeave={e=>{const el=e.currentTarget as HTMLElement;el.style.transform='translateY(0)';el.style.boxShadow='none'}}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:'0.65rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.1em', fontFamily:'var(--font-mono)', marginBottom:4 }}>Arcade</div>
+          <div style={{ fontFamily:'var(--font-display)', fontWeight:900, fontSize:'1.5rem', color:cor, lineHeight:1 }}>{GAMES.length} jogos</div>
+          <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginTop:3 }}>Nível {lv} · {xp.toLocaleString('pt-BR')} XP · {stats.wins} vitórias</div>
+        </div>
+        <span style={{ fontSize:'1.5rem', opacity:0.6 }}>🕹️</span>
+      </div>
+      <div style={{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'9px 14px', borderRadius:12, background:`linear-gradient(135deg,${cor},#a855f7)`, color:'#fff', fontWeight:800, fontSize:'0.82rem' }}>
+        ▶ Abrir Arcade
+      </div>
     </button>
   )
 }

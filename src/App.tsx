@@ -4,9 +4,9 @@ import { db } from './lib/firebase'
 import { useAuth } from './hooks/useAuth'
 import LoginPage from './auth/LoginPage'
 import GestorEditais from './components/editais/GestorEditais'
-import MapaMental from './components/mapamental/MapaMental'
-import AnalisePDF from './components/analisepdf/AnalisePDF'
 import PDFReader from './components/pdfreader/PDFReader'
+import Arcade from './components/dashboard/Arcade'
+import Inventario from './components/inventario/Inventario'
 import ChecklistTopbar from './components/dashboard/ChecklistTopbar'
 import NexusDashboard from './components/dashboard/NexusDashboard'
 import Concursos from './components/concursos/Concursos'
@@ -97,8 +97,6 @@ const NAV = [
     { id: 'editais',    label: 'Editais',            icon: null, svgIcon: 'editais' },
     { id: 'concursos',  label: 'Concursos',          icon: '🎯', svgIcon: null },
     { id: 'prontuario', label: 'Prontuário ADM',     icon: '📋', svgIcon: null },
-    { id: 'mapamental', label: 'Mapa Mental',        icon: '🧠', svgIcon: null },
-    { id: 'analisepdf', label: 'Análise de PDF',     icon: '📄', svgIcon: null },
     { id: 'pdfreader',  label: 'PDF Reader',         icon: '📖', svgIcon: null },
   ]},
   { section: 'FINANÇAS & VIDA', items: [
@@ -106,12 +104,14 @@ const NAV = [
     { id: 'ponto',      label: 'Ponto',              icon: '⊙',  svgIcon: null },
     { id: 'saude',      label: 'Saúde',              icon: '✚',  svgIcon: null },
     { id: 'wishlist',   label: 'Wishlist',           icon: '🛒', svgIcon: null },
+    { id: 'inventario', label: 'Inventário',         icon: '📦', svgIcon: null },
     { id: 'viagens',    label: 'Viagens',             icon: '✈️', svgIcon: null },
   ]},
   { section: 'ENTRETENIMENTO', items: [
     { id: 'journal',    label: 'Notas',              icon: '✦',  svgIcon: null },
     { id: 'media',      label: 'Media',              icon: '▶',  svgIcon: null },
     { id: 'gaming',     label: 'Gaming',             icon: '🎮', svgIcon: null },
+    { id: 'arcade',     label: 'Arcade',             icon: '🕹️', svgIcon: null },
   ]},
   { section: 'UTILIDADES', items: [
     { id: 'agenda',     label: 'Agenda',             icon: '📅', svgIcon: null },
@@ -263,14 +263,14 @@ function AppShell() {
           {active === 'financeiro' && <Financeiro />}
           {active === 'ponto'      && <PontoEletronico />}
           {active === 'prontuario' && <ProntuarioADM />}
-          {active === 'mapamental' && <MapaMental />}
-          {active === 'analisepdf' && <AnalisePDF />}
           {active === 'pdfreader'  && <PDFReader />}
           {active === 'saude'      && <SaudeBemEstar />}
           {active === 'wishlist'   && <WishlistCompras />}
+          {active === 'inventario' && <Inventario />}
           {active === 'journal'    && <Diario onNavigate={setActive} />}
           {active === 'media'      && <MediaTracker />}
           {active === 'gaming'     && <GamingHub />}
+          {active === 'arcade'     && <Arcade variant="page" />}
           {active === 'links'      && <LinksInteresse />}
           {active === 'agenda'     && <Agenda />}
           {active === 'viagens'    && <Viagens />}

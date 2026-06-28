@@ -388,18 +388,18 @@ function ViagensLista({ viagens, onNavigate }: any) {
 }
 
 // — Análise de PDF (NOVO) —
-function PdfKpi({ pdfNotes, pdfFolders, onNavigate }: any) { return <Kpi icon="📄" label="Análise de PDF" value={pdfNotes.length} sub={`${pdfFolders.length} pasta(s)`} color="#D93025" navTo="analisepdf" onNavigate={onNavigate} /> }
+function PdfKpi({ pdfNotes, pdfFolders, onNavigate }: any) { return <Kpi icon="📄" label="Análise de PDF" value={pdfNotes.length} sub={`${pdfFolders.length} pasta(s)`} color="#D93025" navTo="pdfreader" onNavigate={onNavigate} /> }
 function PdfRecentes({ pdfNotes, onNavigate }: any) {
   const ord = [...pdfNotes].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
   return (
-    <CardShell icon="📄" title="Anotações de PDF" color="#D93025" badge={`${pdfNotes.length} nota(s)`} footer="Abrir Análise de PDF" navTo="analisepdf" onNavigate={onNavigate}>
+    <CardShell icon="📄" title="Anotações de PDF" color="#D93025" badge={`${pdfNotes.length} nota(s)`} footer="Abrir PDF Reader" navTo="pdfreader" onNavigate={onNavigate}>
       {ord.length === 0 ? <Empty icon="📄" msg="Nenhuma anotação ainda" /> : ord.slice(0, 6).map((n: any) => <Linha key={n.id} cor="#D93025" titulo={n.title || 'Sem título'} meta={n.updatedAt ? new Date(n.updatedAt).toLocaleDateString('pt-BR') : ''} />)}
     </CardShell>
   )
 }
 
 // — Mapa Mental (NOVO) —
-function MapasKpi({ mm, onNavigate }: any) { return <Kpi icon="🧠" label="Mapas Mentais" value={mm.maps} sub={`${mm.folders} pasta(s)`} color="#7c6cff" navTo="mapamental" onNavigate={onNavigate} /> }
+function MapasKpi({ mm, onNavigate }: any) { return <Kpi icon="🧠" label="Mapas Mentais" value={mm.maps} sub={`${mm.folders} pasta(s)`} color="#7c6cff" navTo="pdfreader" onNavigate={onNavigate} /> }
 
 // — Saudação / relógio (fundo temático por horário) —
 function skyTheme(h: number) {
@@ -994,8 +994,7 @@ function Saudacao() {
 // — Atalhos —  (cor base neutra; ao passar o mouse, cada um ganha sua cor vibrante)
 const ATALHOS = [
   { id: 'editais', l: 'Editais', i: '⚖', c: '#2563EB' }, { id: 'concursos', l: 'Concursos', i: '🎯', c: '#7C3AED' },
-  { id: 'prontuario', l: 'Prontuário', i: '📋', c: '#4F46E5' }, { id: 'mapamental', l: 'Mapa Mental', i: '🧠', c: '#6D28D9' },
-  { id: 'analisepdf', l: 'Análise PDF', i: '📄', c: '#DC2626' }, { id: 'pdfreader', l: 'PDF Reader', i: '📖', c: '#0EA5E9' },
+  { id: 'prontuario', l: 'Prontuário', i: '📋', c: '#4F46E5' }, { id: 'pdfreader', l: 'PDF Reader', i: '📖', c: '#0EA5E9' },
   { id: 'ponto', l: 'Ponto', i: '⊙', c: '#EA580C' },
   { id: 'saude', l: 'Saúde', i: '✚', c: '#059669' }, { id: 'wishlist', l: 'Wishlist', i: '🛒', c: '#D97706' },
   { id: 'viagens', l: 'Viagens', i: '✈️', c: '#0284C7' }, { id: 'journal', l: 'Notas', i: '✦', c: '#2563EB' },
