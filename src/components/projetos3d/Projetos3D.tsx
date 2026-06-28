@@ -192,7 +192,21 @@ export default function Projetos3D() {
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh', color: 'var(--text-muted)' }}>Carregando Projetos 3D…</div>
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="p3d-root" style={{ padding: '20px 24px', maxWidth: 1320, margin: '0 auto' }}>
+      <style>{`
+        .p3d-root button { transition: transform .15s ease, box-shadow .18s ease, filter .15s ease, background .2s ease, border-color .2s ease; }
+        .p3d-root button:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.06); }
+        .p3d-root button:active:not(:disabled) { transform: translateY(0); filter: brightness(.98); }
+        .p3d-root .p3d-prim:hover:not(:disabled) { box-shadow: 0 10px 26px rgba(124,58,237,0.42) !important; }
+        .p3d-root .p3d-card { transition: transform .22s cubic-bezier(.34,1.3,.5,1), box-shadow .22s ease, border-color .22s ease; }
+        .p3d-root .p3d-card:hover { transform: translateY(-4px); box-shadow: 0 16px 38px rgba(0,0,0,0.22); border-color: var(--accent); }
+        .p3d-root .p3d-tab { position: relative; }
+        .p3d-root .p3d-tab::after { content:''; position:absolute; left:14px; right:14px; bottom:-3px; height:2px; border-radius:2px; background:var(--accent); transform:scaleX(0); transform-origin:center; transition:transform .22s ease; }
+        .p3d-root .p3d-tab:hover::after { transform:scaleX(.6); }
+        .p3d-root .p3d-tab-on::after { transform:scaleX(1) !important; }
+        .p3d-root input[type=range] { accent-color: var(--accent); }
+        .p3d-mb-card { transition: transform .2s ease, box-shadow .2s ease; }
+      `}</style>
       {/* Cabeçalho */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14, marginBottom: 16 }}>
         <div>
@@ -204,9 +218,9 @@ export default function Projetos3D() {
             {impAtiva ? `${impAtiva.nome} · ${impAtiva.bx}×${impAtiva.by}×${impAtiva.bz} mm` : 'sem impressora'} · {projetos.length} projeto(s) · {filamentos.length} filamento(s)
           </div>
         </div>
-        {aba === 'projetos' && <button onClick={() => setEditProj(novoProjeto(impAtiva?.id || ''))} style={btnPrim}>+ Novo projeto</button>}
-        {aba === 'filamentos' && <button onClick={() => setEditFil(novoFilamento())} style={btnPrim}>+ Filamento</button>}
-        {aba === 'config' && <button onClick={() => setEditImp(novaImpressora())} style={btnPrim}>+ Impressora</button>}
+        {aba === 'projetos' && <button onClick={() => setEditProj(novoProjeto(impAtiva?.id || ''))} className="p3d-prim" style={btnPrim}>+ Novo projeto</button>}
+        {aba === 'filamentos' && <button onClick={() => setEditFil(novoFilamento())} className="p3d-prim" style={btnPrim}>+ Filamento</button>}
+        {aba === 'config' && <button onClick={() => setEditImp(novaImpressora())} className="p3d-prim" style={btnPrim}>+ Impressora</button>}
       </div>
 
       {/* Painel de avisos (orientação do dia) */}
@@ -228,7 +242,7 @@ export default function Projetos3D() {
       {/* Abas internas */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 2, flexWrap: 'wrap' }}>
         {([['projetos', '🧩 Projetos'], ['filamentos', '🧵 Filamentos'], ['manutencao', '🔧 Manutenção'], ['config', '⚙️ Impressora & Custos']] as const).map(([id, lb]) => (
-          <button key={id} onClick={() => setAba(id)} style={{ padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: aba === id ? 800 : 500, color: aba === id ? 'var(--text-accent)' : 'var(--text-muted)', borderBottom: `2px solid ${aba === id ? 'var(--accent)' : 'transparent'}`, marginBottom: -3 }}>{lb}</button>
+          <button key={id} onClick={() => setAba(id)} className={aba === id ? 'p3d-tab p3d-tab-on' : 'p3d-tab'} style={{ padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: aba === id ? 800 : 500, color: aba === id ? 'var(--text-accent)' : 'var(--text-muted)', marginBottom: -3 }}>{lb}</button>
         ))}
       </div>
 
@@ -244,7 +258,7 @@ export default function Projetos3D() {
               const custo = custoProjeto(p, filamentos, cfg, impAtiva)
               const acoes = analisarProjeto(p, impAtiva, filamentos).filter(a => a.nivel !== 'info')
               return (
-                <div key={p.id} style={{ borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div key={p.id} className="p3d-card" style={{ borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   {p.foto_url && <div style={{ height: 140, background: 'var(--bg-3)' }}><img src={p.foto_url} alt={p.nome} loading="lazy" onError={e => { const el = e.currentTarget.parentElement as HTMLElement | null; if (el) el.style.display = 'none' }} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /></div>}
                   <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
@@ -279,7 +293,7 @@ export default function Projetos3D() {
                 const pct = f.peso_total_g > 0 ? Math.round((f.peso_restante_g / f.peso_total_g) * 100) : 0
                 const cor = pct < 20 ? '#ef4444' : pct < 40 ? '#f59e0b' : '#10b981'
                 return (
-                  <div key={f.id} style={{ borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div key={f.id} className="p3d-card" style={{ borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ width: 18, height: 18, borderRadius: '50%', background: f.hex || '#888', border: '1px solid var(--border-md)', flexShrink: 0 }} />
                       <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)' }}>{f.material} {f.cor}</div>
@@ -394,10 +408,19 @@ function ModalProjeto({ projeto, uid, impAtiva, impressoras, filamentos, cfg, on
   const imp = impressoras.find(i => i.id === projeto.impressora_id) || impAtiva
   const [stlSource, setStlSource] = useState<ArrayBuffer | string | null>(null)
   const [carregandoStl, setCarregandoStl] = useState(false)
+  const [viewerFull, setViewerFull] = useState(false)
   const [iaTxt, setIaTxt] = useState(projeto.ai_plano || '')
   const [iaBusy, setIaBusy] = useState(false)
   const [iaErro, setIaErro] = useState('')
   const [problema, setProblema] = useState('')
+
+  // Esc fecha a visualização ampliada
+  useEffect(() => {
+    if (!viewerFull) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setViewerFull(false) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [viewerFull])
 
   // Carrega STL salvo (base64) ao abrir
   useEffect(() => {
@@ -456,8 +479,9 @@ function ModalProjeto({ projeto, uid, impAtiva, impressoras, filamentos, cfg, on
   function aplicarTemp() { const t = TEMP_PRESET[projeto.material]; if (!t) return; const f = filamentos.find(x => x.id === projeto.filamento_id); if (f) { /* mantém o do rolo */ } /* só informativo */ }
 
   return (
+    <>
     <div onClick={onClose} style={modalBg}>
-      <div onClick={e => e.stopPropagation()} style={{ ...modalCard, maxWidth: 820 }}>
+      <div onClick={e => e.stopPropagation()} style={{ ...modalCard, maxWidth: 980 }}>
         <div style={modalHead}>
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.05rem', color: 'var(--text-primary)' }}>{projeto.nome || 'Novo projeto'}</div>
           <button onClick={onClose} style={closeBtn}>×</button>
@@ -500,11 +524,13 @@ function ModalProjeto({ projeto, uid, impAtiva, impressoras, filamentos, cfg, on
             {(stlSource || projeto.tem_stl) && (
               <>
                 {stlSource
-                  ? <STLViewer source={stlSource} bed={imp ? { x: imp.bx, y: imp.by, z: imp.bz } : undefined} onAnalyze={onAnalyze} />
+                  ? (!viewerFull && <STLViewer source={stlSource} bed={imp ? { x: imp.bx, y: imp.by, z: imp.bz } : undefined} height={400} onAnalyze={onAnalyze} />)
                   : <div style={{ padding: 14, borderRadius: 12, background: 'var(--bg-1)', fontSize: '0.78rem', color: 'var(--text-muted)' }}>STL muito grande pra salvar — recarregue o arquivo pra visualizar em 3D.</div>}
+                {stlSource && viewerFull && <div style={{ padding: 20, borderRadius: 12, background: 'var(--bg-1)', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>🔍 Visualização aberta em tela cheia — feche para voltar.</div>}
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, fontSize: '0.75rem' }}>
                   {projeto.dims_x > 0 && <span style={{ color: 'var(--text-secondary)' }}>📐 {projeto.dims_x.toFixed(1)} × {projeto.dims_y.toFixed(1)} × {projeto.dims_z.toFixed(1)} mm · {projeto.volume_cm3.toFixed(1)} cm³ · {Math.round(projeto.triangulos).toLocaleString('pt-BR')} triângulos</span>}
                   {imp && projeto.dims_x > 0 && <span style={{ fontWeight: 700, color: fit.cabe ? '#10b981' : '#f59e0b' }}>{fit.cabe ? '✅ Cabe na mesa' : `⚠ ${fit.motivo}`}</span>}
+                  {stlSource && <button onClick={() => setViewerFull(true)} style={btnSec}>⛶ Ampliar</button>}
                   <label style={{ ...btnSec, cursor: 'pointer' }}>Trocar STL<input type="file" accept=".stl" onChange={e => { carregarStl(e.target.files?.[0]); e.currentTarget.value = '' }} style={{ display: 'none' }} /></label>
                 </div>
                 <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 4 }}>Arraste para girar · scroll para zoom. Verde = cabe na impressora; laranja = precisa redimensionar/dividir.</div>
@@ -573,10 +599,24 @@ function ModalProjeto({ projeto, uid, impAtiva, impressoras, filamentos, cfg, on
         </div>
         <div style={modalFoot}>
           <button onClick={onClose} style={btnSec}>Cancelar</button>
-          <button onClick={onSave} disabled={!projeto.nome.trim()} style={{ ...btnPrim, opacity: projeto.nome.trim() ? 1 : 0.5 }}>Salvar</button>
+          <button onClick={onSave} disabled={!projeto.nome.trim()} className="p3d-prim" style={{ ...btnPrim, opacity: projeto.nome.trim() ? 1 : 0.5 }}>Salvar</button>
         </div>
       </div>
     </div>
+
+    {viewerFull && stlSource && (
+      <div onClick={() => setViewerFull(false)} style={{ position: 'fixed', inset: 0, zIndex: 10001, background: 'rgba(8,10,14,0.92)', backdropFilter: 'blur(4px)', display: 'flex', flexDirection: 'column', padding: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ color: '#e8eef5', fontWeight: 800, fontFamily: 'var(--font-display)', fontSize: '1rem' }}>{projeto.nome || 'Modelo'} — visualização ampliada</div>
+          <button onClick={e => { e.stopPropagation(); setViewerFull(false) }} style={{ padding: '8px 16px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.85rem' }}>✕ Fechar (Esc)</button>
+        </div>
+        <div onClick={e => e.stopPropagation()} style={{ flex: 1, minHeight: 0, borderRadius: 14, overflow: 'hidden' }}>
+          <STLViewer source={stlSource} bed={imp ? { x: imp.bx, y: imp.by, z: imp.bz } : undefined} height={Math.round(window.innerHeight * 0.82)} onAnalyze={onAnalyze} />
+        </div>
+        <div style={{ color: 'rgba(232,238,245,0.7)', fontSize: '0.72rem', textAlign: 'center', marginTop: 8 }}>Arraste para girar · scroll para zoom · clique fora para fechar</div>
+      </div>
+    )}
+    </>
   )
 }
 function Mini({ l, v, cor }: { l: string; v: string; cor?: string }) { return <div><div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>{l}</div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.05rem', color: cor || 'var(--text-primary)' }}>{v}</div></div> }

@@ -1000,6 +1000,7 @@ const ATALHOS = [
   { id: 'viagens', l: 'Viagens', i: '✈️', c: '#0284C7' }, { id: 'journal', l: 'Notas', i: '✦', c: '#2563EB' },
   { id: 'media', l: 'Media', i: '▶', c: '#3B82F6' }, { id: 'gaming', l: 'Gaming', i: '🎮', c: '#9333EA' },
   { id: 'arcade', l: 'Arcade', i: '🕹️', c: '#7C3AED' }, { id: 'inventario', l: 'Inventário', i: '📦', c: '#0891B2' },
+  { id: 'projetos3d', l: 'Projetos 3D', i: '🧩', c: '#8B5CF6' },
   { id: 'agenda', l: 'Agenda', i: '📅', c: '#0891B2' }, { id: 'links', l: 'Links', i: '🔗', c: '#0D9488' },
   { id: 'logs', l: 'Logs', i: '📊', c: '#0F766E' }, { id: 'geosfera', l: 'Geosfera', i: '🌍', c: '#16A34A' },
   { id: 'financeiro', l: 'Financeiro', i: '◎', c: '#15803D' },
