@@ -132,6 +132,8 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
   const [impBusy, setImpBusy] = useState(false)
   const [estudoAberto, setEstudoAberto] = useState<Record<string, boolean>>({})
   const [conferindo, setConferindo] = useState<Record<string, boolean>>({})
+  // destino de importação / mover arquivo (escolha de pasta)
+  const [destino, setDestino] = useState<{ tipo: 'import'; file: File } | { tipo: 'mover'; docId: string } | null>(null)
 
   // janela
   const [pos, setPos] = useState({ x: 80, y: 60 })
@@ -220,8 +222,8 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
     const idx = blocos.findIndex(b => b.id === el.dataset.bloco)
     if (idx >= 0) editar(idx, el.innerHTML)
   }
-  // importar Word (.docx) ou PDF → novo arquivo na pasta "Importados"
-  async function importarArquivo(file?: File) {
+  // importar Word (.docx) ou PDF → novo arquivo na pasta escolhida (ou "Importados" se não informada)
+  async function importarArquivo(file?: File, pastaAlvo?: string) {
     if (!file || !uid || !db) return
     setImpBusy(true)
     try {
@@ -235,18 +237,42 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
       } else if (/\.pdf$/i.test(file.name)) {
         novos = textoParaBlocos(await pdfParaTexto(await file.arrayBuffer()))
       } else { alert('Envie um arquivo .docx (Word) ou .pdf'); setImpBusy(false); return }
-      let pastaId = pastas.find(p => p.nome === 'Importados' && p.parent === '')?.id
-      if (!pastaId) { pastaId = nid(); await setDoc(doc(db, 'users', uid, 'toggle_pastas', pastaId), clean({ id: pastaId, nome: 'Importados', parent: '', cor: PALETA[2], criadoEm: Date.now() })) }
+      let pastaId = pastaAlvo
+      if (!pastaId) {
+        pastaId = pastas.find(p => p.nome === 'Importados' && p.parent === '')?.id
+        if (!pastaId) { pastaId = nid(); await setDoc(doc(db, 'users', uid, 'toggle_pastas', pastaId), clean({ id: pastaId, nome: 'Importados', parent: '', cor: PALETA[2], criadoEm: Date.now() })) }
+      }
       const id = nid()
       await setDoc(doc(db, 'users', uid, 'toggle_docs', id), clean({ id, pasta: pastaId, titulo: nome, cor: '', blocos: novos, numerado: true, updatedAt: Date.now() }))
       setAbertas(a => ({ ...a, [pastaId!]: true })); setDocId(id)
     } catch (e: any) { alert('Falha ao importar: ' + (e?.message || e)) }
     setImpBusy(false)
   }
+  // mover um arquivo já existente para outra pasta/subpasta
+  async function moverDoc(docId: string, pastaAlvo: string) {
+    if (!uid || !db) return
+    const d = docs.find(x => x.id === docId); if (!d) return
+    await setDoc(doc(db, 'users', uid, 'toggle_docs', docId), clean({ ...d, pasta: pastaAlvo, updatedAt: Date.now() }))
+    setAbertas(a => ({ ...a, [pastaAlvo]: true }))
+  }
+  // lista achatada de pastas (com indentação) para o seletor de destino
+  function pastasPlanas(): { id: string; label: string }[] {
+    const out: { id: string; label: string }[] = []
+    const walk = (parent: string, depth: number) => {
+      pastas.filter(p => p.parent === parent).sort((a, b) => a.nome.localeCompare(b.nome)).forEach(p => {
+        out.push({ id: p.id, label: (depth ? '\u00A0\u00A0\u00A0'.repeat(depth) + '↳ ' : '') + p.nome })
+        walk(p.id, depth + 1)
+      })
+    }
+    walk('', 0)
+    return out
+  }
   // estudo: gabarito (texto dos blocos-filhos da pergunta), correção por IA e marcação de resultado
   function setBlocoCampo(i: number, campo: Partial<Bloco>) { const bs = blocos.slice(); bs[i] = { ...bs[i], ...campo }; setBlocos(bs) }
   function gabaritoDe(i: number): string { const nv = blocos[i].nivel; let g = ''; for (let j = i + 1; j < blocos.length && blocos[j].nivel > nv; j++) g += stripHtml(blocos[j].html) + '\n'; return g.trim() }
   function marcarResultado(i: number, res: 'a' | 'e') { setBlocoCampo(i, { res: blocos[i].res === res ? undefined : res, data: blocos[i].res === res ? undefined : hojeISO() }) }
+  // limpa a resposta digitada e a correção da IA (mantém o histórico de acerto/erro) — permite reestudar do zero
+  function limparResposta(i: number) { setBlocoCampo(i, { resp: '', pct: undefined, fb: undefined }) }
   async function conferirIA(i: number) {
     const minha = (blocos[i].resp || '').trim()
     if (!minha) { alert('Escreva sua resposta primeiro.'); return }
@@ -333,6 +359,7 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
               <div key={d.id} className="tg-row" onClick={() => setDocId(d.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', borderRadius: 7, cursor: 'pointer', background: docId === d.id ? 'var(--surface)' : 'transparent' }}>
                 <span style={{ fontSize: '.78rem' }}>📄</span>
                 <span style={{ flex: 1, fontSize: '.8rem', color: docId === d.id ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: docId === d.id ? 700 : 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.titulo || 'Sem título'}</span>
+                <button className="tg-act" onClick={e => { e.stopPropagation(); setDestino({ tipo: 'mover', docId: d.id }) }} title="Mover para outra pasta" style={miniBtn}>📂</button>
                 <button className="tg-act" onClick={e => { e.stopPropagation(); excluirArquivo(d) }} style={miniBtn}>🗑️</button>
               </div>
             ))}
@@ -356,6 +383,13 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
         .tg-row:hover{background:var(--surface)}
         .tg-blk .tg-bact{opacity:0;transition:opacity .15s}
         .tg-blk:hover .tg-bact{opacity:1}
+        /* destaque visual ao passar o mouse sobre a pergunta/bloco */
+        .tg-blk{transition:box-shadow .12s ease}
+        .tg-blk:hover{box-shadow:inset 0 0 0 200px color-mix(in srgb,var(--accent) 7%,transparent), inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 45%,transparent)}
+        /* botão Responder: oculto por padrão, surge ao passar o mouse na pergunta (efeito forte no próprio botão) */
+        .tg-respbtn{opacity:0}
+        .tg-blk:hover .tg-respbtn{opacity:1}
+        .tg-respbtn:hover{filter:brightness(1.06);transform:translateY(-1px) scale(1.04);box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 35%,transparent)}
         .tg-caret:hover{background:var(--surface)!important}
         .tg-fmt{border:1px solid var(--border-md);background:var(--card-bg);color:var(--text-secondary);cursor:pointer;border-radius:7px;height:28px;min-width:28px;padding:0 7px;font-size:.82rem;display:inline-flex;align-items:center;justify-content:center;transition:all .12s}
         .tg-fmt:hover{background:var(--surface);color:var(--text-primary);transform:translateY(-1px)}
@@ -384,7 +418,7 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
             <button onClick={() => novaPasta('')} style={{ flex: 1, ...softBtn }}>+ Pasta</button>
             <label style={{ ...softBtn, cursor: impBusy ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Importar Word (.docx) ou PDF com perguntas e respostas">
               {impBusy ? '⏳' : '📥'} Importar
-              <input type="file" accept=".docx,.pdf" disabled={impBusy} onChange={e => { importarArquivo(e.target.files?.[0]); e.currentTarget.value = '' }} style={{ display: 'none' }} />
+              <input type="file" accept=".docx,.pdf" disabled={impBusy} onChange={e => { const f = e.target.files?.[0]; if (f) setDestino({ tipo: 'import', file: f }); e.currentTarget.value = '' }} style={{ display: 'none' }} />
             </label>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
@@ -457,8 +491,20 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
                       onPaste={e => { const t = e.clipboardData.getData('text/plain'); if (t && t.includes('\n')) { e.preventDefault(); colarInteligente(i, t) } }}
                       style={{ flex: 1, outline: 'none', fontSize: '.9rem', lineHeight: 1.55, color: 'var(--text-primary)', minHeight: 22, padding: '2px 4px', wordBreak: 'break-word' }}
                     />
+                    {b.nivel === 0 && (
+                      <button className="tg-respbtn" onClick={() => setEstudoAberto(s => ({ ...s, [b.id]: !s[b.id] }))} title="Responder e conferir"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4, height: 24, padding: '0 9px', borderRadius: 7, cursor: 'pointer',
+                          fontSize: '.7rem', fontWeight: 800, whiteSpace: 'nowrap', flexShrink: 0, marginTop: 1, transition: 'all .12s',
+                          ...(estudoAberto[b.id]
+                            ? { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' }
+                            : b.res
+                              ? { background: 'var(--card-bg)', color: b.res === 'a' ? '#10b981' : '#ef4444', border: `1px solid ${b.res === 'a' ? '#10b98155' : '#ef444455'}` }
+                              : { background: 'var(--surface)', color: 'var(--text-secondary)', border: '1px solid var(--border-md)' }),
+                          opacity: (estudoAberto[b.id] || b.res) ? 1 : undefined,
+                        }}>📝 Responder</button>
+                    )}
                     <span className="tg-bact" style={{ display: 'flex', gap: 1, marginTop: 2 }}>
-                      {b.nivel === 0 && <button onClick={() => setEstudoAberto(s => ({ ...s, [b.id]: !s[b.id] }))} title="Responder e conferir" style={{ ...miniBtn, color: estudoAberto[b.id] ? 'var(--accent)' : (b.res ? (b.res === 'a' ? '#10b981' : '#ef4444') : undefined) }}>📝</button>}
                       <button onClick={() => moverBloco(i, -1)} title="Mover para cima" style={miniBtn}>↑</button>
                       <button onClick={() => moverBloco(i, 1)} title="Mover para baixo" style={miniBtn}>↓</button>
                       <button onClick={() => corBloco(i)} title="Cor de fundo do bloco" style={miniBtn}>🎨</button>
@@ -473,6 +519,7 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
                         <button onClick={() => conferirIA(i)} disabled={conferindo[b.id]} style={{ ...softBtn, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', border: 'none', opacity: conferindo[b.id] ? 0.6 : 1 }}>{conferindo[b.id] ? '⏳ Conferindo…' : '✓ Conferir com IA'}</button>
                         <button onClick={() => marcarResultado(i, 'a')} style={{ ...softBtn, color: b.res === 'a' ? '#fff' : '#10b981', background: b.res === 'a' ? '#10b981' : 'var(--card-bg)', border: b.res === 'a' ? 'none' : '1px solid #10b98155' }}>✓ Acertei</button>
                         <button onClick={() => marcarResultado(i, 'e')} style={{ ...softBtn, color: b.res === 'e' ? '#fff' : '#ef4444', background: b.res === 'e' ? '#ef4444' : 'var(--card-bg)', border: b.res === 'e' ? 'none' : '1px solid #ef444455' }}>✗ Errei</button>
+                        {(b.resp || typeof b.pct === 'number' || b.fb) && <button onClick={() => limparResposta(i)} title="Apagar a resposta e a correção da IA para reestudar do zero (mantém o histórico de acerto/erro)" style={{ ...softBtn }}>🧹 Limpar</button>}
                         {b.res && b.data && <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{b.res === 'a' ? 'Acertou' : 'Errou'} em {brData(b.data)}</span>}
                       </div>
                       {typeof b.pct === 'number' && (b.pct > 0 || !!b.fb) && (
@@ -493,6 +540,33 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
           </>)}
         </div>
       </div>
+
+      {/* modal: escolher pasta de destino (importar arquivo novo ou mover existente) */}
+      {destino && (
+        <div onMouseDown={() => setDestino(null)} style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onMouseDown={e => e.stopPropagation()} style={{ width: 380, maxWidth: '92vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 20px 60px rgba(0,0,0,.4)', overflow: 'hidden' }}>
+            <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: '1.05rem' }}>{destino.tipo === 'import' ? '📥' : '📂'}</span>
+              <b style={{ fontSize: '.9rem', color: 'var(--text-primary)' }}>{destino.tipo === 'import' ? 'Importar para qual pasta?' : 'Mover para qual pasta?'}</b>
+              <span style={{ flex: 1 }} />
+              <button onClick={() => setDestino(null)} style={{ ...winBtn, width: 24, height: 24 }}>✕</button>
+            </div>
+            {destino.tipo === 'import' && <div style={{ padding: '8px 16px 0', fontSize: '.76rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{destino.file.name}</div>}
+            <div style={{ padding: 10, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {pastas.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '.8rem', textAlign: 'center', padding: 14 }}>Nenhuma pasta ainda — crie uma abaixo.</div>}
+              {pastasPlanas().map(p => (
+                <button key={p.id} onClick={async () => { const dst = destino; setDestino(null); if (dst.tipo === 'import') await importarArquivo(dst.file, p.id); else await moverDoc(dst.docId, p.id) }}
+                  style={{ textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '.84rem', fontWeight: 600, whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis' }}>📁 {p.label}</button>
+              ))}
+            </div>
+            <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+              <button onClick={async () => { if (!uid || !db) return; const nome = window.prompt('Nome da nova pasta:'); if (!nome) return; const id = nid(); await setDoc(doc(db, 'users', uid, 'toggle_pastas', id), clean({ id, nome, parent: '', cor: PALETA[pastas.length % PALETA.length], criadoEm: Date.now() })); const dst = destino; setDestino(null); if (dst.tipo === 'import') await importarArquivo(dst.file, id); else await moverDoc(dst.docId, id) }}
+                style={{ ...softBtn, flex: 1 }}>＋ Nova pasta e usar</button>
+              {destino.tipo === 'import' && <button onClick={async () => { const dst = destino; setDestino(null); if (dst.tipo === 'import') await importarArquivo(dst.file) }} style={{ ...softBtn }} title="Pasta padrão 'Importados'">Importados</button>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* alça de redimensionar */}
       {!max && <div onMouseDown={e => { rez.current = { ow: size.w, oh: size.h, px: e.clientX, py: e.clientY } }} style={{ position: 'absolute', right: 0, bottom: 0, width: 18, height: 18, cursor: 'nwse-resize', background: 'linear-gradient(135deg,transparent 45%,var(--text-muted) 45%,var(--text-muted) 55%,transparent 55%)', opacity: 0.5 }} />}

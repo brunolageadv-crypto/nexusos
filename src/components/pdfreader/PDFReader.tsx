@@ -976,7 +976,7 @@ function RichEditor({ editorRef, onChange }: any) {
         <Sep />
         {/* aprimorar texto com IA */}
         <button onClick={aprimorarTexto} title="Aprimorar o texto com IA (seleção, ou tudo) — pede confirmação antes de substituir"
-          style={{ height: 30, padding: '0 9px', borderRadius: 7, border: 'none', background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>✨ Aprimorar</button>
+          style={{ height: 30, padding: '0 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>✨ Aprimorar</button>
         <Sep />
         <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
         <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
@@ -2172,7 +2172,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }} onMouseMove={onMouseMove}>
       {/* TOOLBAR DE LEITURA */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
-        <label style={{ padding: '6px 12px', borderRadius: 8, background: '#5b5bd6', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+        <label style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
           ↥ Importar PDF<input ref={fileInputRef} type="file" accept="application/pdf" hidden onChange={e => e.target.files?.[0] && importar(e.target.files[0])} />
         </label>
         <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 600, maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{nome || '—'}</span>
@@ -2255,7 +2255,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {/* feature 4: marcar página */}
           <button onClick={() => onAddBookmark?.(curPageRef.current)} disabled={!numPages} title="Marcar esta página (bookmark)" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🔖</button>
           {/* feature 10: modo foco / leitura imersiva */}
-          {!secondary && <button onClick={() => setToggleOpen(true)} disabled={false} title="Toggle — blocos aninhados estilo Notion (janela redimensionável)" style={{ ...btn, width: 'auto', padding: '0 10px', background: 'linear-gradient(135deg,#8b5cf6,#6d28d9)', color: '#fff', border: 'none', fontWeight: 800, boxShadow: '0 2px 8px rgba(124,58,237,0.35)' }}>🔀 Toggle</button>}
+          {!secondary && <button onClick={() => setToggleOpen(true)} disabled={false} title="Toggle — blocos aninhados estilo Notion (janela redimensionável)" style={{ ...btn, width: 'auto', padding: '0 10px', fontWeight: 800 }}>🔀 Toggle</button>}
           <button onClick={onToggleFoco} disabled={!numPages} title="Modo foco / leitura imersiva (oculta painéis)" style={{ ...btn, width: 'auto', padding: '0 8px', background: foco ? '#5b5bd6' : 'var(--surface)', color: foco ? '#fff' : 'var(--text-secondary)', border: foco ? 'none' : '1px solid var(--border)' }}>⛶</button>
           <button onClick={() => setReader(true)} disabled={!numPages} title="Modo Reader — texto limpo e reflowável (efeito Kindle)" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>📖</button>
         </>}
@@ -4058,16 +4058,16 @@ export default function PDFReader() {
   return (
     <div className="pr-app" style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--card-bg)' }}>
       <style>{`
-        .pr-app button, .pr-pop button { transition: filter .13s ease, transform .12s ease, box-shadow .13s ease; }
-        .pr-app button:not(:disabled):hover, .pr-pop button:not(:disabled):hover { filter: brightness(1.14); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.16); }
-        .pr-app button:not(:disabled):active, .pr-pop button:not(:disabled):active { transform: translateY(0) scale(.96); filter: brightness(1.03); }
+        .pr-app button, .pr-pop button { transition: filter .13s ease, transform .12s ease, box-shadow .13s ease, border-color .13s ease; }
+        .pr-app button:not(:disabled):hover, .pr-pop button:not(:disabled):hover { filter: brightness(1.16) saturate(1.1); transform: translateY(-2px) scale(1.06); box-shadow: 0 0 0 2px var(--accent), 0 6px 16px rgba(0,0,0,.28); border-color: var(--accent) !important; z-index: 3; }
+        .pr-app button:not(:disabled):active, .pr-pop button:not(:disabled):active { transform: translateY(0) scale(.95); filter: brightness(1.04); }
         .pr-app button:disabled, .pr-pop button:disabled { cursor: default; }
         .pr-card { transition: transform .16s cubic-bezier(.34,1.56,.64,1), box-shadow .16s ease, filter .16s ease !important; }
         .pr-card:hover { transform: translateY(-4px) scale(1.04) !important; box-shadow: 0 12px 24px rgba(0,0,0,.22) !important; filter: saturate(1.12) brightness(1.03) !important; }
         .pr-card:active { transform: translateY(-1px) scale(.99) !important; }
         /* botão "Importar PDF" (é um label com input de arquivo) */
-        .pr-app label:has(> input[type="file"]) { transition: filter .13s ease, transform .12s ease, box-shadow .13s ease; }
-        .pr-app label:has(> input[type="file"]):hover { filter: brightness(1.12); transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.16); }
+        .pr-app label:has(> input[type="file"]) { transition: filter .13s ease, transform .12s ease, box-shadow .13s ease, border-color .13s ease; }
+        .pr-app label:has(> input[type="file"]):hover { filter: brightness(1.16) saturate(1.1); transform: translateY(-2px) scale(1.04); box-shadow: 0 0 0 2px var(--accent), 0 6px 16px rgba(0,0,0,.28); border-color: var(--accent) !important; }
         /* modo pautado/quadriculado: texto (digitado ou colado) casa com as pautas (passo segue a fonte) */
         .pr-ruled, .pr-ruled * { line-height: var(--pr-pitch, 28px) !important; }
         .pr-ruled p, .pr-ruled div, .pr-ruled li, .pr-ruled h1, .pr-ruled h2, .pr-ruled h3, .pr-ruled ul, .pr-ruled ol, .pr-ruled blockquote { margin-top: 0 !important; margin-bottom: 0 !important; }
@@ -4146,16 +4146,16 @@ export default function PDFReader() {
           </div>
           <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
           <button onClick={() => setComparar(c => !c)} title="Comparar dois PDFs lado a lado" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, background: comparar ? '#5b5bd6' : 'var(--surface)', color: comparar ? '#fff' : 'var(--text-secondary)', border: comparar ? 'none' : '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⇆</button>
-          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, background: '#2d2d35', color: '#fff', border: 'none' }}>
-            <IconMapa size={16} color="#fff" />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#15151a', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
+          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            <IconMapa size={16} color="currentColor" />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
           </button>
           <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             🃏{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}
           </button>
-          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#2d2d35', color: '#fff', border: 'none' }}><Icon e="📖" size={16} /></button>
+          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📖" size={16} /></button>
           <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⚙" size={16} /></button>
           <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
-          <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', background: '#5b5bd6', color: '#fff', border: 'none', fontSize: '0.78rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon e="🖨️" size={14} /> Exportar</button>
+          <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', fontSize: '0.78rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon e="🖨️" size={14} /> Exportar</button>
         </div>
         {!store.uid && <div style={{ padding: '6px 12px', fontSize: '0.7rem', color: '#EA580C', background: 'var(--surface)' }}>Faça login para salvar documentos no Firestore.</div>}
         <div style={{ flex: 1, minHeight: 0 }}>
