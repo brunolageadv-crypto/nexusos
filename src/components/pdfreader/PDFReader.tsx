@@ -21,6 +21,7 @@ import Icon from '../Icon'
 import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
+import ToggleNotion from './ToggleNotion'
 
 /* remove undefined (Firestore não aceita) — mesmo helper do AnalisePDF */
 function clean<T extends object>(obj: T): T { return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T }
@@ -1585,6 +1586,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const [resumindo, setResumindo] = useState(false)          // feature 5
   // gerar perguntas (comando customizável e reutilizável)
   const [gerandoQ, setGerandoQ] = useState(false)
+  const [toggleOpen, setToggleOpen] = useState(false)
   const [qCmd, setQCmd] = useState<string>(() => lerComandoPerguntas())
   const [qEdit, setQEdit] = useState(false)
   const qCmdRef = useRef(qCmd); qCmdRef.current = qCmd
@@ -1791,6 +1793,18 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     setPopup(null); acumRef.current = ''; setAcumLen(0)
     try { const r = await resumirIA(trecho, nomeRef.current); onExtract?.(`📝 Resumo da seleção${curPageRef.current ? ` (p. ${curPageRef.current})` : ''}\n${r}`, curPageRef.current) }
     catch (e: any) { alert('Falha ao resumir: ' + (e?.message || e)) }
+  }
+
+  // gerar PERGUNTAS do trecho selecionado (reusa o MESMO comando salvo do botão da página)
+  const gerarPerguntasSelecao = async () => {
+    const trecho = popup?.shown; if (!trecho) return
+    if (!qCmdRef.current?.trim()) { setPopup(null); setQEdit(true); return }
+    setPopup(null); acumRef.current = ''; setAcumLen(0); setGerandoQ(true)
+    try {
+      const r = await gerarPerguntasCustomIA(qCmdRef.current, trecho, nomeRef.current)
+      onExtract?.(`❓ Perguntas da seleção${curPageRef.current ? ` (p. ${curPageRef.current})` : ''}\n${r}`, curPageRef.current)
+    } catch (e: any) { alert('Falha ao gerar perguntas: ' + (e?.message || e)) }
+    setGerandoQ(false)
   }
 
   /* "Não entendi" e Dicionário contextual — abrem um painel de resultado */
@@ -2241,6 +2255,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {/* feature 4: marcar página */}
           <button onClick={() => onAddBookmark?.(curPageRef.current)} disabled={!numPages} title="Marcar esta página (bookmark)" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🔖</button>
           {/* feature 10: modo foco / leitura imersiva */}
+          {!secondary && <button onClick={() => setToggleOpen(true)} disabled={false} title="Toggle — blocos aninhados estilo Notion (janela redimensionável)" style={{ ...btn, width: 'auto', padding: '0 10px', background: 'linear-gradient(135deg,#8b5cf6,#6d28d9)', color: '#fff', border: 'none', fontWeight: 800, boxShadow: '0 2px 8px rgba(124,58,237,0.35)' }}>🔀 Toggle</button>}
           <button onClick={onToggleFoco} disabled={!numPages} title="Modo foco / leitura imersiva (oculta painéis)" style={{ ...btn, width: 'auto', padding: '0 8px', background: foco ? '#5b5bd6' : 'var(--surface)', color: foco ? '#fff' : 'var(--text-secondary)', border: foco ? 'none' : '1px solid var(--border)' }}>⛶</button>
           <button onClick={() => setReader(true)} disabled={!numPages} title="Modo Reader — texto limpo e reflowável (efeito Kindle)" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>📖</button>
         </>}
@@ -2433,6 +2448,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
               </button>
             ))}
           </div>
+          {/* perguntas da seleção (mesmo comando do botão da página) */}
+          <button onMouseDown={e => { e.preventDefault(); gerarPerguntasSelecao() }} disabled={gerandoQ} style={{ ...popBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', fontWeight: 800, opacity: gerandoQ ? 0.6 : 1 }}>{gerandoQ ? '⏳ Gerando…' : '❓ Gerar Perguntas (da seleção)'}</button>
           {/* enviar + dicionário */}
           <div style={{ display: 'flex', gap: 8 }}>
             <button onMouseDown={e => { e.preventDefault(); enviar() }} style={{ ...popBtn, flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}>✉️ Enviar p/ Palavras Destacadas</button>
@@ -2444,6 +2461,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           <button onMouseDown={e => { e.preventDefault(); compor() }} style={{ ...popBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'transparent', color: 'var(--text-muted)', fontWeight: 600 }}>✎ Continuar Composição de Texto</button>
         </div>
       </>, document.body)}
+
+      {!secondary && <ToggleNotion open={toggleOpen} onClose={() => setToggleOpen(false)} />}
 
       {/* painel de resultado: "Não entendi" / Dicionário */}
       {aiPop?.open && createPortal(<>
