@@ -42,7 +42,7 @@ function blocosDePares(pares: { p: string; r: string }[], nivelBase = 0): Bloco[
   const out: Bloco[] = []
   for (const par of pares) {
     out.push({ ...blocoVazio(nivelBase), html: `<b>${escapeHtml(par.p.trim())}</b>`, aberto: !par.r.trim() })
-    if (par.r.trim()) out.push({ ...blocoVazio(nivelBase + 1), html: escapeHtml(par.r.trim()), cor: 'verde' })
+    if (par.r.trim()) out.push({ ...blocoVazio(nivelBase + 1), html: escapeHtml(par.r.trim()) })
   }
   return out
 }
@@ -55,10 +55,63 @@ function parseJSONpares(raw: string): { p: string; r: string }[] {
   try { const arr = JSON.parse(s); return Array.isArray(arr) ? arr.map((x: any) => ({ p: String(x.p || x.pergunta || '').trim(), r: String(x.r || x.resposta || '').trim() })).filter(x => x.p) : [] } catch { return [] }
 }
 
+// ─── Importação (Word .docx via mammoth · PDF via pdf.js CDN) ───────────────
+const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174'
+function carregarScript(src: string) { return new Promise<void>((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = () => res(); s.onerror = () => rej(new Error('falha ao carregar ' + src)); document.head.appendChild(s) }) }
+async function garantePdfjs(): Promise<any> {
+  if (!(window as any).pdfjsLib) { await carregarScript(PDFJS_CDN + '/pdf.min.js'); const lib = (window as any).pdfjsLib; if (lib?.GlobalWorkerOptions && !lib.GlobalWorkerOptions.workerSrc) lib.GlobalWorkerOptions.workerSrc = PDFJS_CDN + '/pdf.worker.min.js' }
+  return (window as any).pdfjsLib
+}
+async function pdfParaTexto(buf: ArrayBuffer): Promise<string> {
+  const lib = await garantePdfjs(); const pdf = await lib.getDocument({ data: buf }).promise
+  let txt = ''
+  for (let p = 1; p <= pdf.numPages; p++) { const pg = await pdf.getPage(p); const c = await pg.getTextContent(); let lastY = 0; for (const it of c.items as any[]) { const y = it.transform?.[5] ?? 0; if (lastY && Math.abs(y - lastY) > 3) txt += '\n'; txt += (it.str || ''); lastY = y } txt += '\n' }
+  return txt
+}
+function ehPerguntaTxt(t: string) { return QRE.test(t) || /\?\s*$/.test(t) || /^\s*\d+\s*[).\-]/.test(t) || /^(quest|pergunta)/i.test(t) }
+// HTML do Word → blocos: mantém TABELAS como blocos próprios e aninha respostas nas perguntas
+function htmlParaBlocos(html: string): Bloco[] {
+  const dom = new DOMParser().parseFromString(html, 'text/html')
+  const els: { tipo: 'texto' | 'tabela'; html: string; txt: string }[] = []
+  Array.from(dom.body.children).forEach(node => {
+    const tag = node.tagName.toLowerCase()
+    if (tag === 'table') els.push({ tipo: 'tabela', html: node.outerHTML, txt: '' })
+    else if (tag === 'ul' || tag === 'ol') Array.from(node.children).forEach(li => { const t = (li.textContent || '').trim(); if (t) els.push({ tipo: 'texto', html: li.innerHTML, txt: t }) })
+    else { const t = (node.textContent || '').trim(); if (t) els.push({ tipo: 'texto', html: node.innerHTML, txt: t }) }
+  })
+  const out: Bloco[] = []; let temPergunta = false
+  for (const el of els) {
+    if (el.tipo === 'tabela') { out.push({ ...blocoVazio(temPergunta ? 1 : 0), html: el.html }); continue }
+    if (ehPerguntaTxt(el.txt)) { const h = el.html.replace(/^\s*(\d+\s*[).\-]|p\s*[:.\-)]|pergunta\s*[:.\-)]|quest[ãa]o[^:]*[:.\-)])\s*/i, ''); out.push({ ...blocoVazio(0), html: `<b>${h}</b>`, aberto: false }); temPergunta = true }
+    else { const h = el.html.replace(/^\s*(r\s*[:.\-)]|resp(osta)?\s*[:.\-)]|gabarito\s*[:.\-)]|a\s*[:.\-)])\s*/i, ''); out.push({ ...blocoVazio(temPergunta ? 1 : 0), html: h }) }
+  }
+  return out.length ? out : [blocoVazio()]
+}
+function textoParaBlocos(texto: string): Bloco[] {
+  const pares = parseQA(texto)
+  if (pares.length && pares.some(p => p.r.trim())) return blocosDePares(pares, 0)
+  return texto.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(l => ({ ...blocoVazio(0), html: escapeHtml(l) }))
+}
+// Correção por IA (estilo prova de concurso)
+function promptCorrecao(pergunta: string, gabarito: string, minha: string): string {
+  return `Você é um avaliador rigoroso de provas discursivas de concurso público brasileiro (padrão CEBRASPE).
+Pergunta: ${pergunta}
+Gabarito / padrão esperado: ${gabarito || '(não informado — avalie pela técnica jurídica e correção do conteúdo)'}
+Resposta do candidato: ${minha}
+Avalie o quanto a resposta atende ao padrão esperado e se passaria na prova. Dê um percentual de adequação de 0 a 100 e um feedback curto e objetivo (o que acertou, o que faltou, erros a corrigir). Responda APENAS em JSON válido, sem texto extra: {"pct": <0-100>, "fb": "<feedback>"}.`
+}
+function parseCorrecao(raw: string): { pct: number; fb: string } {
+  let s = raw.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim()
+  const m = s.match(/\{[\s\S]*\}/); if (m) s = m[0]
+  try { const o = JSON.parse(s); return { pct: Math.max(0, Math.min(100, Math.round(Number(o.pct) || 0))), fb: String(o.fb || '').trim() } } catch { return { pct: 0, fb: raw.slice(0, 500) } }
+}
+function hojeISO() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}` }
+function brData(iso?: string) { return iso ? iso.split('-').reverse().join('/') : '' }
+
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Pasta { id: string; nome: string; parent: string; cor: string; criadoEm: number }
-interface Bloco { id: string; html: string; nivel: number; aberto: boolean; cor: string }
-interface DocT { id: string; pasta: string; titulo: string; cor: string; blocos: Bloco[]; updatedAt: number }
+interface Bloco { id: string; html: string; nivel: number; aberto: boolean; cor: string; resp?: string; res?: 'a' | 'e'; data?: string; pct?: number; fb?: string }
+interface DocT { id: string; pasta: string; titulo: string; cor: string; blocos: Bloco[]; updatedAt: number; numerado?: boolean }
 
 const PALETA = ['#7c3aed', '#0891b2', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#64748b']
 const COR_BLOCO: Record<string, string> = { '': 'transparent', amarelo: 'rgba(245,158,11,0.14)', verde: 'rgba(16,185,129,0.14)', azul: 'rgba(14,165,233,0.14)', roxo: 'rgba(124,58,237,0.14)', rosa: 'rgba(236,72,153,0.14)', vermelho: 'rgba(239,68,68,0.14)' }
@@ -76,6 +129,9 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
   const [docId, setDocId] = useState<string>('')
   const [doc_, setDoc_] = useState<DocT | null>(null)
   const [iaBusy, setIaBusy] = useState(false)
+  const [impBusy, setImpBusy] = useState(false)
+  const [estudoAberto, setEstudoAberto] = useState<Record<string, boolean>>({})
+  const [conferindo, setConferindo] = useState<Record<string, boolean>>({})
 
   // janela
   const [pos, setPos] = useState({ x: 80, y: 60 })
@@ -164,6 +220,46 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
     const idx = blocos.findIndex(b => b.id === el.dataset.bloco)
     if (idx >= 0) editar(idx, el.innerHTML)
   }
+  // importar Word (.docx) ou PDF → novo arquivo na pasta "Importados"
+  async function importarArquivo(file?: File) {
+    if (!file || !uid || !db) return
+    setImpBusy(true)
+    try {
+      let novos: Bloco[]
+      const nome = file.name.replace(/\.(docx|pdf)$/i, '')
+      if (/\.docx$/i.test(file.name)) {
+        // @ts-ignore — mammoth browser build não traz tipos próprios
+        const mammoth: any = (await import('mammoth/mammoth.browser')).default
+        const { value: html } = await mammoth.convertToHtml({ arrayBuffer: await file.arrayBuffer() })
+        novos = htmlParaBlocos(html)
+      } else if (/\.pdf$/i.test(file.name)) {
+        novos = textoParaBlocos(await pdfParaTexto(await file.arrayBuffer()))
+      } else { alert('Envie um arquivo .docx (Word) ou .pdf'); setImpBusy(false); return }
+      let pastaId = pastas.find(p => p.nome === 'Importados' && p.parent === '')?.id
+      if (!pastaId) { pastaId = nid(); await setDoc(doc(db, 'users', uid, 'toggle_pastas', pastaId), clean({ id: pastaId, nome: 'Importados', parent: '', cor: PALETA[2], criadoEm: Date.now() })) }
+      const id = nid()
+      await setDoc(doc(db, 'users', uid, 'toggle_docs', id), clean({ id, pasta: pastaId, titulo: nome, cor: '', blocos: novos, numerado: true, updatedAt: Date.now() }))
+      setAbertas(a => ({ ...a, [pastaId!]: true })); setDocId(id)
+    } catch (e: any) { alert('Falha ao importar: ' + (e?.message || e)) }
+    setImpBusy(false)
+  }
+  // estudo: gabarito (texto dos blocos-filhos da pergunta), correção por IA e marcação de resultado
+  function setBlocoCampo(i: number, campo: Partial<Bloco>) { const bs = blocos.slice(); bs[i] = { ...bs[i], ...campo }; setBlocos(bs) }
+  function gabaritoDe(i: number): string { const nv = blocos[i].nivel; let g = ''; for (let j = i + 1; j < blocos.length && blocos[j].nivel > nv; j++) g += stripHtml(blocos[j].html) + '\n'; return g.trim() }
+  function marcarResultado(i: number, res: 'a' | 'e') { setBlocoCampo(i, { res: blocos[i].res === res ? undefined : res, data: blocos[i].res === res ? undefined : hojeISO() }) }
+  async function conferirIA(i: number) {
+    const minha = (blocos[i].resp || '').trim()
+    if (!minha) { alert('Escreva sua resposta primeiro.'); return }
+    if (!iaConfigurada()) { alert('Configure a IA (Gemini) — a mesma do PDF Reader.'); return }
+    const id = blocos[i].id
+    setConferindo(c => ({ ...c, [id]: true }))
+    try {
+      const raw = await callLLM3D(promptCorrecao(stripHtml(blocos[i].html), gabaritoDe(i), minha))
+      const r = parseCorrecao(raw)
+      setBlocoCampo(i, { pct: r.pct, fb: r.fb })
+    } catch (e: any) { alert('IA: ' + (e?.message || e)) }
+    setConferindo(c => ({ ...c, [id]: false }))
+  }
   function colarMulti(i: number, linhas: string[]) { const bs = blocos.slice(); const nv = bs[i].nivel; const novos = linhas.map(l => ({ ...blocoVazio(nv), html: escapeHtml(l) })); bs.splice(i + (bs[i].html ? 1 : 0), bs[i].html ? 0 : 1, ...novos); setBlocos(bs) }
   // colar com detecção automática de pergunta→resposta (resposta aninhada e oculta)
   function colarInteligente(i: number, texto: string) {
@@ -198,6 +294,9 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
     blocos.forEach((b, i) => { if (corte >= 0) { if (b.nivel > corte) return; corte = -1 } out.push(i); if (!b.aberto && i < blocos.length - 1 && blocos[i + 1].nivel > b.nivel) corte = b.nivel })
     return out
   }, [blocos])
+  const numerado = doc_?.numerado !== false
+  const numeroDe = useMemo(() => { const m: Record<string, number> = {}; let n = 0; blocos.forEach(b => { if (b.nivel === 0) { n++; m[b.id] = n } }); return m }, [blocos])
+  const stats = useMemo(() => { const qs = blocos.filter(b => b.nivel === 0); const resp = qs.filter(b => b.res); const ac = qs.filter(b => b.res === 'a'); return { total: qs.length, respondidas: resp.length, acertos: ac.length, pct: resp.length ? Math.round(ac.length / resp.length * 100) : 0 } }, [blocos])
 
   // ── Janela: mover / redimensionar ──
   useEffect(() => {
@@ -262,6 +361,10 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
         .tg-fmt:hover{background:var(--surface);color:var(--text-primary);transform:translateY(-1px)}
         .tg-sw{width:18px;height:18px;border-radius:5px;border:1px solid var(--border-md);cursor:pointer;padding:0;transition:transform .12s}
         .tg-sw:hover{transform:scale(1.15)}
+        .tg-ed table{border-collapse:collapse;margin:5px 0;font-size:.82rem;max-width:100%}
+        .tg-ed td,.tg-ed th{border:1px solid var(--border-md);padding:4px 8px;vertical-align:top}
+        .tg-ed th{background:var(--surface)}
+        .tg-ed img{max-width:100%;height:auto;border-radius:6px}
         .tg-ed:empty:before{content:attr(data-ph);color:var(--text-muted);opacity:.6}
       `}</style>
       {/* barra de título */}
@@ -279,6 +382,10 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
         <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)' }}>
           <div style={{ display: 'flex', gap: 6, padding: 10, borderBottom: '1px solid var(--border)' }}>
             <button onClick={() => novaPasta('')} style={{ flex: 1, ...softBtn }}>+ Pasta</button>
+            <label style={{ ...softBtn, cursor: impBusy ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Importar Word (.docx) ou PDF com perguntas e respostas">
+              {impBusy ? '⏳' : '📥'} Importar
+              <input type="file" accept=".docx,.pdf" disabled={impBusy} onChange={e => { importarArquivo(e.target.files?.[0]); e.currentTarget.value = '' }} style={{ display: 'none' }} />
+            </label>
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: 8 }}>
             {pastas.length === 0 ? <div style={{ color: 'var(--text-muted)', fontSize: '.78rem', textAlign: 'center', padding: 20 }}>Crie uma pasta para começar.</div> : arvore('', 0)}
@@ -296,9 +403,21 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
           ) : (<>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
               <input value={doc_.titulo} onChange={e => salvarDoc({ ...doc_, titulo: e.target.value })} placeholder="Título do arquivo" style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }} />
+              <button onClick={() => salvarDoc({ ...doc_, numerado: !numerado })} title={numerado ? 'Usando numeração — clique para marcador' : 'Usando marcador — clique para numeração'} style={{ ...softBtn, minWidth: 38 }}>{numerado ? '1.' : '•'}</button>
               <button onClick={organizarIA} disabled={iaBusy} title="Identifica perguntas e respostas e aninha as respostas (ocultas) dentro de cada pergunta" style={{ ...softBtn, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', border: 'none', opacity: iaBusy ? 0.6 : 1 }}>{iaBusy ? '⏳ Organizando…' : '✨ Organizar P/R com IA'}</button>
               <button onClick={() => { const bs = blocos.concat(blocoVazio(0)); setBlocos(bs); setTimeout(() => focar(bs[bs.length - 1].id), 30) }} style={softBtn}>+ Bloco</button>
             </div>
+            {stats.total > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '8px 18px', borderBottom: '1px solid var(--border)', background: 'var(--card-bg)', fontSize: '.74rem', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 800, color: 'var(--text-accent)', textTransform: 'uppercase', letterSpacing: '.06em', fontSize: '.62rem' }}>📊 Desempenho</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{stats.total} pergunta(s)</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{stats.respondidas} respondida(s)</span>
+                <span style={{ color: '#10b981', fontWeight: 700 }}>{stats.acertos} acerto(s)</span>
+                {stats.respondidas > 0 && <span style={{ fontWeight: 800, color: stats.pct >= 70 ? '#10b981' : stats.pct >= 50 ? '#f59e0b' : '#ef4444' }}>{stats.pct}% de aproveitamento</span>}
+                <span style={{ flex: 1 }} />
+                {stats.respondidas > 0 && <button onClick={() => { if (window.confirm('Zerar os resultados (acertos/erros) deste arquivo?')) { const bs = blocos.map(b => b.nivel === 0 ? { ...b, res: undefined, data: undefined } : b); setBlocos(bs) } }} style={{ ...miniBtn, color: 'var(--text-muted)', fontSize: '.68rem' }}>zerar</button>}
+              </div>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', background: 'var(--bg-1)' }}>
               <button className="tg-fmt" title="Negrito (Ctrl+B)" onMouseDown={e => { e.preventDefault(); aplicarFmt('bold') }} style={{ fontWeight: 800 }}>B</button>
               <button className="tg-fmt" title="Itálico" onMouseDown={e => { e.preventDefault(); aplicarFmt('italic') }} style={{ fontStyle: 'italic' }}>I</button>
@@ -318,9 +437,12 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
               {visiveis.map(i => {
                 const b = blocos[i]; const filhos = temFilhos(i)
                 return (
-                  <div key={b.id} className="tg-blk" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginLeft: b.nivel * 22, padding: '2px 4px', borderRadius: 7, background: COR_BLOCO[b.cor] || 'transparent' }}>
+                  <div key={b.id}>
+                  <div className="tg-blk" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginLeft: b.nivel * 22, padding: '2px 4px', borderRadius: 7, background: COR_BLOCO[b.cor] || 'transparent' }}>
                     <button className="tg-caret" onClick={() => filhos && alternar(i)} title={filhos ? (b.aberto ? 'Recolher' : 'Expandir') : ''} style={{ ...caret, color: filhos ? 'var(--text-primary)' : 'transparent', cursor: filhos ? 'pointer' : 'default' }}>{b.aberto ? '▾' : '▸'}</button>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '.5rem', marginTop: 9 }}>●</span>
+                    {numerado && b.nivel === 0
+                      ? <span style={{ color: 'var(--text-accent)', fontWeight: 800, fontSize: '.82rem', marginTop: 3, minWidth: 20, textAlign: 'right' }}>{numeroDe[b.id]}.</span>
+                      : <span style={{ color: 'var(--text-muted)', fontSize: '.5rem', marginTop: 9, minWidth: 12, textAlign: 'center' }}>•</span>}
                     <div
                       data-bloco={b.id} className="tg-ed" data-ph="Escreva… (Tab aninha, Enter novo)"
                       contentEditable suppressContentEditableWarning
@@ -336,12 +458,34 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
                       style={{ flex: 1, outline: 'none', fontSize: '.9rem', lineHeight: 1.55, color: 'var(--text-primary)', minHeight: 22, padding: '2px 4px', wordBreak: 'break-word' }}
                     />
                     <span className="tg-bact" style={{ display: 'flex', gap: 1, marginTop: 2 }}>
+                      {b.nivel === 0 && <button onClick={() => setEstudoAberto(s => ({ ...s, [b.id]: !s[b.id] }))} title="Responder e conferir" style={{ ...miniBtn, color: estudoAberto[b.id] ? 'var(--accent)' : (b.res ? (b.res === 'a' ? '#10b981' : '#ef4444') : undefined) }}>📝</button>}
                       <button onClick={() => moverBloco(i, -1)} title="Mover para cima" style={miniBtn}>↑</button>
                       <button onClick={() => moverBloco(i, 1)} title="Mover para baixo" style={miniBtn}>↓</button>
                       <button onClick={() => corBloco(i)} title="Cor de fundo do bloco" style={miniBtn}>🎨</button>
                       <button onClick={() => indentar(i, 1)} title="Aninhar" style={miniBtn}>⇥</button>
                       <button onClick={() => apagar(i)} title="Excluir" style={miniBtn}>🗑️</button>
                     </span>
+                  </div>
+                  {b.nivel === 0 && estudoAberto[b.id] && (
+                    <div style={{ marginLeft: b.nivel * 22 + 30, marginTop: 4, marginBottom: 10, padding: 12, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--border)' }}>
+                      <textarea value={b.resp || ''} onChange={e => setBlocoCampo(i, { resp: e.target.value })} placeholder="Escreva aqui a sua resposta para comparar com o gabarito…" style={{ width: '100%', boxSizing: 'border-box', minHeight: 74, resize: 'vertical', border: '1px solid var(--border-md)', borderRadius: 8, background: 'var(--card-bg)', color: 'var(--text-primary)', padding: 9, fontSize: '.85rem', outline: 'none', lineHeight: 1.5 }} />
+                      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 9 }}>
+                        <button onClick={() => conferirIA(i)} disabled={conferindo[b.id]} style={{ ...softBtn, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', border: 'none', opacity: conferindo[b.id] ? 0.6 : 1 }}>{conferindo[b.id] ? '⏳ Conferindo…' : '✓ Conferir com IA'}</button>
+                        <button onClick={() => marcarResultado(i, 'a')} style={{ ...softBtn, color: b.res === 'a' ? '#fff' : '#10b981', background: b.res === 'a' ? '#10b981' : 'var(--card-bg)', border: b.res === 'a' ? 'none' : '1px solid #10b98155' }}>✓ Acertei</button>
+                        <button onClick={() => marcarResultado(i, 'e')} style={{ ...softBtn, color: b.res === 'e' ? '#fff' : '#ef4444', background: b.res === 'e' ? '#ef4444' : 'var(--card-bg)', border: b.res === 'e' ? 'none' : '1px solid #ef444455' }}>✗ Errei</button>
+                        {b.res && b.data && <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{b.res === 'a' ? 'Acertou' : 'Errou'} em {brData(b.data)}</span>}
+                      </div>
+                      {typeof b.pct === 'number' && (b.pct > 0 || !!b.fb) && (
+                        <div style={{ marginTop: 9, padding: 10, borderRadius: 9, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                            <strong style={{ color: b.pct >= 60 ? '#10b981' : b.pct >= 40 ? '#f59e0b' : '#ef4444', fontSize: '1.15rem', fontFamily: 'var(--font-display)' }}>{b.pct}%</strong>
+                            <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>de adequação ao gabarito (estimativa da IA)</span>
+                          </div>
+                          {b.fb && <div style={{ marginTop: 5, fontSize: '.82rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{b.fb}</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   </div>
                 )
               })}
