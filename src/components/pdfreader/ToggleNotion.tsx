@@ -65,6 +65,7 @@ const COR_BLOCO: Record<string, string> = { '': 'transparent', amarelo: 'rgba(24
 const CORES_BLOCO = ['', 'amarelo', 'verde', 'azul', 'roxo', 'rosa', 'vermelho']
 
 function blocoVazio(nivel = 0): Bloco { return { id: nid(), html: '', nivel, aberto: true, cor: '' } }
+function fimSubarvore(arr: Bloco[], i: number): number { const nv = arr[i].nivel; let j = i + 1; while (j < arr.length && arr[j].nivel > nv) j++; return j - 1 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 export default function ToggleNotion({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -138,6 +139,31 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
   function apagar(i: number) { if (blocos.length <= 1) { const bs = [blocoVazio()]; setBlocos(bs); return } const bs = blocos.slice(); bs.splice(i, 1); setBlocos(bs); setTimeout(() => focar(bs[Math.max(0, i - 1)].id), 10) }
   function alternar(i: number) { const bs = blocos.slice(); bs[i] = { ...bs[i], aberto: !bs[i].aberto }; setBlocos(bs) }
   function corBloco(i: number) { const bs = blocos.slice(); const idx = CORES_BLOCO.indexOf(bs[i].cor); bs[i] = { ...bs[i], cor: CORES_BLOCO[(idx + 1) % CORES_BLOCO.length] }; setBlocos(bs) }
+  // mover bloco (com seus filhos) para cima/baixo entre irmãos do mesmo nível
+  function moverBloco(i: number, dir: -1 | 1) {
+    const bs = blocos.slice(); const nv = bs[i].nivel; const fim = fimSubarvore(bs, i); const bloco = bs.slice(i, fim + 1)
+    if (dir < 0) {
+      let k = i - 1; if (k < 0 || bs[k].nivel < nv) return
+      while (k > 0 && bs[k].nivel > nv) k--
+      if (bs[k].nivel !== nv) return
+      const prev = bs.slice(k, i)
+      bs.splice(k, fim - k + 1, ...bloco, ...prev)
+    } else {
+      const prox = fim + 1; if (prox >= bs.length || bs[prox].nivel !== nv) return
+      const fimProx = fimSubarvore(bs, prox); const proxArr = bs.slice(prox, fimProx + 1)
+      bs.splice(i, fimProx - i + 1, ...proxArr, ...bloco)
+    }
+    setBlocos(bs); setTimeout(() => focar(bloco[0].id), 10)
+  }
+  // aplicar formatação ao bloco em foco (mantém a seleção via onMouseDown preventDefault)
+  function aplicarFmt(cmd: string, valor?: string) {
+    const el = document.activeElement as HTMLElement | null
+    if (!el || !el.dataset || !el.dataset.bloco) return
+    try { document.execCommand('styleWithCSS', false, 'true') } catch { /* */ }
+    document.execCommand(cmd, false, valor)
+    const idx = blocos.findIndex(b => b.id === el.dataset.bloco)
+    if (idx >= 0) editar(idx, el.innerHTML)
+  }
   function colarMulti(i: number, linhas: string[]) { const bs = blocos.slice(); const nv = bs[i].nivel; const novos = linhas.map(l => ({ ...blocoVazio(nv), html: escapeHtml(l) })); bs.splice(i + (bs[i].html ? 1 : 0), bs[i].html ? 0 : 1, ...novos); setBlocos(bs) }
   // colar com detecção automática de pergunta→resposta (resposta aninhada e oculta)
   function colarInteligente(i: number, texto: string) {
@@ -231,6 +257,11 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
         .tg-row:hover{background:var(--surface)}
         .tg-blk .tg-bact{opacity:0;transition:opacity .15s}
         .tg-blk:hover .tg-bact{opacity:1}
+        .tg-caret:hover{background:var(--surface)!important}
+        .tg-fmt{border:1px solid var(--border-md);background:var(--card-bg);color:var(--text-secondary);cursor:pointer;border-radius:7px;height:28px;min-width:28px;padding:0 7px;font-size:.82rem;display:inline-flex;align-items:center;justify-content:center;transition:all .12s}
+        .tg-fmt:hover{background:var(--surface);color:var(--text-primary);transform:translateY(-1px)}
+        .tg-sw{width:18px;height:18px;border-radius:5px;border:1px solid var(--border-md);cursor:pointer;padding:0;transition:transform .12s}
+        .tg-sw:hover{transform:scale(1.15)}
         .tg-ed:empty:before{content:attr(data-ph);color:var(--text-muted);opacity:.6}
       `}</style>
       {/* barra de título */}
@@ -268,12 +299,27 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
               <button onClick={organizarIA} disabled={iaBusy} title="Identifica perguntas e respostas e aninha as respostas (ocultas) dentro de cada pergunta" style={{ ...softBtn, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', border: 'none', opacity: iaBusy ? 0.6 : 1 }}>{iaBusy ? '⏳ Organizando…' : '✨ Organizar P/R com IA'}</button>
               <button onClick={() => { const bs = blocos.concat(blocoVazio(0)); setBlocos(bs); setTimeout(() => focar(bs[bs.length - 1].id), 30) }} style={softBtn}>+ Bloco</button>
             </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', background: 'var(--bg-1)' }}>
+              <button className="tg-fmt" title="Negrito (Ctrl+B)" onMouseDown={e => { e.preventDefault(); aplicarFmt('bold') }} style={{ fontWeight: 800 }}>B</button>
+              <button className="tg-fmt" title="Itálico" onMouseDown={e => { e.preventDefault(); aplicarFmt('italic') }} style={{ fontStyle: 'italic' }}>I</button>
+              <button className="tg-fmt" title="Sublinhado" onMouseDown={e => { e.preventDefault(); aplicarFmt('underline') }} style={{ textDecoration: 'underline' }}>U</button>
+              <button className="tg-fmt" title="Tachado" onMouseDown={e => { e.preventDefault(); aplicarFmt('strikeThrough') }} style={{ textDecoration: 'line-through' }}>S</button>
+              <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
+              <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>cor</span>
+              {['#e8424d', '#2f7de1', '#16a34a', '#f59e0b', '#a855f7'].map(c => <button key={c} className="tg-sw" title="Cor do texto" onMouseDown={e => { e.preventDefault(); aplicarFmt('foreColor', c) }} style={{ background: c }} />)}
+              <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
+              <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>realce</span>
+              {[['am', 'rgba(245,158,11,.5)'], ['vd', 'rgba(16,185,129,.45)'], ['az', 'rgba(56,189,248,.45)'], ['rs', 'rgba(236,72,153,.4)']].map(([n, c]) => <button key={n} className="tg-sw" title="Realçar" onMouseDown={e => { e.preventDefault(); aplicarFmt('hiliteColor', c) }} style={{ background: c }} />)}
+              <button className="tg-fmt" title="Remover realce" onMouseDown={e => { e.preventDefault(); aplicarFmt('hiliteColor', 'transparent') }} style={{ fontSize: '.7rem' }}>⌫</button>
+              <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
+              <button className="tg-fmt" title="Limpar formatação" onMouseDown={e => { e.preventDefault(); aplicarFmt('removeFormat') }} style={{ fontSize: '.72rem' }}>✕ limpar</button>
+            </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
               {visiveis.map(i => {
                 const b = blocos[i]; const filhos = temFilhos(i)
                 return (
                   <div key={b.id} className="tg-blk" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginLeft: b.nivel * 22, padding: '2px 4px', borderRadius: 7, background: COR_BLOCO[b.cor] || 'transparent' }}>
-                    <button onClick={() => filhos && alternar(i)} title={filhos ? (b.aberto ? 'Recolher' : 'Expandir') : ''} style={{ ...caret, color: filhos ? 'var(--text-secondary)' : 'transparent', cursor: filhos ? 'pointer' : 'default' }}>{b.aberto ? '▾' : '▸'}</button>
+                    <button className="tg-caret" onClick={() => filhos && alternar(i)} title={filhos ? (b.aberto ? 'Recolher' : 'Expandir') : ''} style={{ ...caret, color: filhos ? 'var(--text-primary)' : 'transparent', cursor: filhos ? 'pointer' : 'default' }}>{b.aberto ? '▾' : '▸'}</button>
                     <span style={{ color: 'var(--text-muted)', fontSize: '.5rem', marginTop: 9 }}>●</span>
                     <div
                       data-bloco={b.id} className="tg-ed" data-ph="Escreva… (Tab aninha, Enter novo)"
@@ -284,13 +330,15 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
                         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); novoApos(i) }
                         else if (e.key === 'Tab') { e.preventDefault(); indentar(i, e.shiftKey ? -1 : 1) }
                         else if (e.key === 'Backspace' && (e.currentTarget as HTMLElement).innerHTML === '') { e.preventDefault(); apagar(i) }
-                        else if (e.key === 'b' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); document.execCommand('bold') }
+                        else if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) { e.preventDefault(); document.execCommand(e.key.toLowerCase() === 'b' ? 'bold' : e.key.toLowerCase() === 'i' ? 'italic' : 'underline'); editar(i, (e.currentTarget as HTMLElement).innerHTML) }
                       }}
                       onPaste={e => { const t = e.clipboardData.getData('text/plain'); if (t && t.includes('\n')) { e.preventDefault(); colarInteligente(i, t) } }}
                       style={{ flex: 1, outline: 'none', fontSize: '.9rem', lineHeight: 1.55, color: 'var(--text-primary)', minHeight: 22, padding: '2px 4px', wordBreak: 'break-word' }}
                     />
                     <span className="tg-bact" style={{ display: 'flex', gap: 1, marginTop: 2 }}>
-                      <button onClick={() => corBloco(i)} title="Cor" style={miniBtn}>🎨</button>
+                      <button onClick={() => moverBloco(i, -1)} title="Mover para cima" style={miniBtn}>↑</button>
+                      <button onClick={() => moverBloco(i, 1)} title="Mover para baixo" style={miniBtn}>↓</button>
+                      <button onClick={() => corBloco(i)} title="Cor de fundo do bloco" style={miniBtn}>🎨</button>
                       <button onClick={() => indentar(i, 1)} title="Aninhar" style={miniBtn}>⇥</button>
                       <button onClick={() => apagar(i)} title="Excluir" style={miniBtn}>🗑️</button>
                     </span>
@@ -311,4 +359,4 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
 const miniBtn: React.CSSProperties = { border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '.74rem', padding: '1px 3px', borderRadius: 5, lineHeight: 1 }
 const winBtn: React.CSSProperties = { border: 'none', background: 'var(--surface)', cursor: 'pointer', fontSize: '.8rem', width: 28, height: 26, borderRadius: 7, color: 'var(--text-secondary)' }
 const softBtn: React.CSSProperties = { border: '1px solid var(--border-md)', background: 'var(--card-bg)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '.76rem', fontWeight: 700, padding: '6px 10px', borderRadius: 8 }
-const caret: React.CSSProperties = { border: 'none', background: 'transparent', fontSize: '.7rem', width: 16, marginTop: 4, padding: 0 }
+const caret: React.CSSProperties = { border: 'none', background: 'transparent', fontSize: '1.05rem', fontWeight: 700, width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 1, padding: 0, borderRadius: 6 }
