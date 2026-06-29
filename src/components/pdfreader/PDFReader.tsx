@@ -22,6 +22,7 @@ import { collection, doc, onSnapshot, setDoc, deleteDoc } from 'firebase/firesto
 import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import ToggleNotion from './ToggleNotion'
+import Revisao from './Revisao'
 
 /* remove undefined (Firestore não aceita) — mesmo helper do AnalisePDF */
 function clean<T extends object>(obj: T): T { return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T }
@@ -975,8 +976,8 @@ function RichEditor({ editorRef, onChange }: any) {
           onClick={() => { const ed = editorRef.current; if (ed) run(() => insertPostit(ed)) }}>📌</IBtn>
         <Sep />
         {/* aprimorar texto com IA */}
-        <button onClick={aprimorarTexto} title="Aprimorar o texto com IA (seleção, ou tudo) — pede confirmação antes de substituir"
-          style={{ height: 30, padding: '0 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>✨ Aprimorar</button>
+        <button onClick={aprimorarTexto} disabled={!!aprimora?.carregando} title="Aprimorar o texto com IA (seleção, ou tudo) — pede confirmação antes de substituir"
+          style={{ height: 30, padding: '0 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{aprimora?.carregando ? <><span className="nx-spin">⏳</span> Aprimorando…</> : '✨ Aprimorar'}</button>
         <Sep />
         <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
         <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
@@ -1132,7 +1133,7 @@ function RichEditor({ editorRef, onChange }: any) {
           backgroundOrigin: 'content-box', backgroundClip: 'border-box',
           backgroundAttachment: 'local',
         }}>
-        <p style={{ color: 'var(--text-muted)' }}>Os trechos extraídos do PDF aparecem aqui. Use os botões 🧠 Resumir e ❓ Perguntas na barra do PDF, ou selecione um trecho para enviar/realçar.</p>
+        <p><br /></p>
       </div>
 
     </div>
@@ -2244,10 +2245,10 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         <button onClick={() => setThumbsOpen(o => !o)} disabled={!numPages} title="Miniaturas das páginas" style={{ ...btn, width: 'auto', padding: '0 8px', background: thumbsOpen ? '#5b5bd6' : 'var(--surface)', color: thumbsOpen ? '#fff' : 'var(--text-secondary)', border: thumbsOpen ? 'none' : '1px solid var(--border)' }}>▦</button>
         {!secondary && <>
           {/* feature 5: resumir página */}
-          <button onClick={resumirPagina} disabled={!numPages || resumindo} title="Resumir esta página (IA) → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px' }}>{resumindo ? '…' : '🧠 Resumir'}</button>
+          <button onClick={resumirPagina} disabled={!numPages || resumindo} title="Resumir esta página (IA) → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px' }}>{resumindo ? <><span className="nx-spin">⏳</span> Resumindo…</> : '🧠 Resumir'}</button>
           {/* gerar perguntas (comando customizável e reutilizável) */}
           <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <button onClick={gerarPerguntasPagina} disabled={!numPages || gerandoQ} title="Gerar perguntas desta página (IA) com seu comando salvo → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>{gerandoQ ? '…' : '❓ Perguntas'}</button>
+            <button onClick={gerarPerguntasPagina} disabled={!numPages || gerandoQ} title="Gerar perguntas desta página (IA) com seu comando salvo → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>{gerandoQ ? <><span className="nx-spin">⏳</span> Gerando…</> : '❓ Perguntas'}</button>
             <button onClick={() => setQEdit(true)} disabled={!numPages} title="Editar o comando das perguntas (define o estilo/estrutura)" style={{ ...btn, width: 26, padding: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: 'none' }}>✎</button>
           </span>
           {/* feature 1: chat com o PDF */}
@@ -2291,6 +2292,12 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
 
       {/* SCROLLER DO PDF + overlays de foco */}
       <div ref={viewBoxRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+        {/* indicador global: IA trabalhando (resumo/perguntas) */}
+        {(resumindo || gerandoQ) && (
+          <div style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 70, pointerEvents: 'none' }}>
+            <span className="nx-ia-badge"><span className="nx-spin" style={{ fontSize: '1rem' }}>⏳</span> {resumindo ? 'Resumindo a página…' : 'Gerando perguntas…'}</span>
+          </div>
+        )}
         {/* feature 12: indicador de progresso de leitura */}
         {numPages > 0 && (
           <div title={`Página ${curPage} de ${numPages} — ${Math.round((maxPage / numPages) * 100)}% lido`}
@@ -3934,6 +3941,7 @@ export default function PDFReader() {
   const [previa, setPrevia] = useState<string | null>(null)
   const [cfgIA, setCfgIA] = useState(false)
   const [diario, setDiario] = useState(false)
+  const [revisaoOpen, setRevisaoOpen] = useState(false)   // revisão espaçada
   const [split, setSplit] = useState(0.56)
   const [viewMode, setViewMode] = useState<'split' | 'pdf' | 'editor'>('split')               // fração de largura da coluna do PDF
   const [autoEditor, setAutoEditor] = useState(false)   // editor oculto, surge ao passar o mouse na lateral direita
@@ -4010,7 +4018,7 @@ export default function PDFReader() {
   // trecho extraído do PDF → insere no editor (com referência de página — feature 7)
   const onExtract = useCallback((texto: string, page?: number) => {
     const ed = editorRef.current; if (!ed) return
-    if (ed.querySelector('p')?.textContent?.startsWith('Os trechos extraídos')) ed.innerHTML = ''
+    if (!ed.textContent?.trim()) ed.innerHTML = ''
     const ehResumoOuMulti = /\n/.test(texto)
     if (ehResumoOuMulti) {
       // resumo/multi-linha: cada linha vira um parágrafo, preservando a referência no título
@@ -4152,6 +4160,7 @@ export default function PDFReader() {
           <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             🃏{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}
           </button>
+          <button onClick={() => setRevisaoOpen(true)} title="Revisão espaçada — acompanhe 48h, 7, 17 e 30 dias" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>🔁 Revisão</button>
           <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📖" size={16} /></button>
           <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⚙" size={16} /></button>
           <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
@@ -4166,6 +4175,7 @@ export default function PDFReader() {
       {previa != null && <PreviaImpressao html={previa} titulo={titulo || 'Palavras Destacadas'} onClose={() => setPrevia(null)} />}
       {cfgIA && <ConfigIAModal store={store} onClose={() => setCfgIA(false)} />}
       {diario && <DiarioLeitura onClose={() => setDiario(false)} />}
+      <Revisao open={revisaoOpen} onClose={() => setRevisaoOpen(false)} />
       {fcGerar && <FlashcardGerarModal trecho={fcGerar.trecho} fonte={fcGerar.fonte} store={fcStore} onClose={(n: number) => { setFcGerar(null); if (n) { /* salvo */ } }} />}
       {fcRevisar && <FlashcardRevisarModal store={fcStore} onClose={() => setFcRevisar(false)} />}
       {hubMapas && <MapaMentalHub store={mapStore} insumos={insumos} onLimparInsumos={() => setInsumos([])} api={viewerApi} onClose={() => setHubMapas(false)} />}
