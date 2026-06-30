@@ -24,22 +24,25 @@ import { useUid } from '../../hooks/useUid'
 import ToggleNotion from './ToggleNotion'
 import Revisao from './Revisao'
 
-/* Menu suspenso que abre ao passar o mouse (consolida vários botões em uma linha) */
+/* Menu suspenso que abre ao passar o mouse (consolida vários botões em uma linha).
+   O dropdown é renderizado em portal com posição fixa para nunca ficar atrás de outro painel. */
 function HoverMenu({ trigger, active, children, width = 230, align = 'left', triggerStyle }: any) {
   const [open, setOpen] = useState(false)
+  const [rect, setRect] = useState<{ top: number; left: number; right: number } | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
   const tmr = useRef<any>(null)
-  const entrar = () => { clearTimeout(tmr.current); setOpen(true) }
+  const medir = () => { const r = ref.current?.getBoundingClientRect(); if (r) setRect({ top: r.bottom, left: r.left, right: window.innerWidth - r.right }) }
+  const entrar = () => { clearTimeout(tmr.current); medir(); setOpen(true) }
   const sair = () => { tmr.current = setTimeout(() => setOpen(false), 180) }
   return (
-    <div style={{ position: 'relative', display: 'inline-flex' }} onMouseEnter={entrar} onMouseLeave={sair}>
-      <button onClick={() => setOpen(o => !o)} style={{ height: 30, padding: '0 9px', borderRadius: 8, border: active ? 'none' : '1px solid var(--border)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', background: active ? '#5b5bd6' : 'var(--surface)', color: active ? '#fff' : 'var(--text-secondary)', ...(triggerStyle || {}) }}>
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }} onMouseEnter={entrar} onMouseLeave={sair}>
+      <button onClick={() => { medir(); setOpen(o => !o) }} style={{ height: 30, padding: '0 9px', borderRadius: 8, border: active ? 'none' : '1px solid var(--border)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', background: active ? '#5b5bd6' : 'var(--surface)', color: active ? '#fff' : 'var(--text-secondary)', ...(triggerStyle || {}) }}>
         {trigger}<span style={{ fontSize: '0.56rem', opacity: 0.8 }}>▾</span>
       </button>
-      {open && (
-        <div onMouseEnter={entrar} onMouseLeave={sair} style={{ position: 'absolute', top: '100%', [align]: 0, marginTop: 5, zIndex: 95, minWidth: width, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 38px rgba(0,0,0,.3)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+      {open && rect && createPortal(
+        <div onMouseEnter={entrar} onMouseLeave={sair} style={{ position: 'fixed', top: rect.top + 4, ...(align === 'right' ? { right: rect.right } : { left: rect.left }), zIndex: 9999, minWidth: width, maxWidth: 'min(94vw, 440px)', padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 16px 44px rgba(0,0,0,.4)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
           {children}
-        </div>
-      )}
+        </div>, document.body)}
     </div>
   )
 }
@@ -1628,6 +1631,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     { id: 'barra', nome: 'Barra', icone: '▬' },
     { id: 'circulo', nome: 'Círculo', icone: '●' },
     { id: 'quadrado', nome: 'Quadrado', icone: '■' },
+    { id: 'moldura', nome: 'Retângulo vazado (lê por dentro)', icone: '▭' },
     { id: 'triangulo', nome: 'Triângulo', icone: '▲' },
     { id: 'triangulo-dir', nome: 'Triângulo p/ direita', icone: '▶' },
     { id: 'seta-dir', nome: 'Seta p/ o lado', icone: '➜' },
@@ -2174,7 +2178,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     el.querySelector('.pr-annot')?.remove()
     const list = anotRef.current[n]; if (!list || !list.length) return
     const layer = document.createElement('div'); layer.className = 'pr-annot'
-    layer.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2'
+    layer.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:5'
     const W = el.clientWidth, H = el.clientHeight
     for (const a of list) {
       if (a.kind === 'lido') {
@@ -2188,10 +2192,11 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           layer.appendChild(d)
         }
         const badge = document.createElement('div')
-        badge.textContent = 'OK'
+        badge.textContent = 'OK ✕'
         badge.title = 'Lido — clique para remover'
-        badge.style.cssText = `position:absolute;right:6px;top:${Math.max(2, minY - 1)}px;background:#16a34a;color:#fff;font:800 10px/1 system-ui,sans-serif;letter-spacing:.04em;padding:3px 6px;border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,.3);pointer-events:auto;cursor:pointer;`
-        badge.onclick = (ev) => { ev.stopPropagation(); removerAnot(n, a.id) }
+        badge.style.cssText = `position:absolute;right:6px;top:${Math.max(2, minY - 1)}px;background:#16a34a;color:#fff;font:800 10px/1 system-ui,sans-serif;letter-spacing:.04em;padding:4px 7px;border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,.3);pointer-events:auto;cursor:pointer;`
+        badge.onmousedown = (ev) => { ev.stopPropagation(); ev.preventDefault() }
+        badge.onclick = (ev) => { ev.stopPropagation(); ev.preventDefault(); removerAnot(n, a.id) }
         layer.appendChild(badge)
         continue
       }
@@ -2482,6 +2487,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           if (formaTipo === 'mao') return (
             <svg style={base} viewBox="0 0 24 24" fill="#111" xmlns="http://www.w3.org/2000/svg"><path d="M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83s1.26-1.23 1.3-1.25c.22-.19.49-.29.79-.29.22 0 .42.06.6.16.04.01 4.31 2.46 4.31 2.46V4c0-.83.67-1.5 1.5-1.5S12 3.17 12 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S16 .67 16 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z" /></svg>
           )
+          if (formaTipo === 'moldura') return <div style={{ ...base, opacity: 0.92, background: 'transparent', border: '2.5px solid #111', borderRadius: 4 }} />
           const clip: Record<string, string> = {
             triangulo: 'polygon(50% 0,0% 100%,100% 100%)',
             'triangulo-dir': 'polygon(0 0,100% 50%,0 100%)',
