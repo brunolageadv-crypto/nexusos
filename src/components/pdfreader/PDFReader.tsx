@@ -199,6 +199,7 @@ function promptPerguntasCustom(comando: string, texto: string, foco = '') {
     'Você é um assistente de estudos para concursos públicos brasileiros (foco AGU/CEBRASPE).',
     foco ? `Documento: ${foco}.` : '',
     'Siga ESTRITAMENTE a instrução do usuário, usando apenas o conteúdo do TRECHO abaixo. Não invente nada fora do trecho. Responda em português.',
+    'FORMATO OBRIGATÓRIO: responda começando DIRETAMENTE pela pergunta nº 1, numeradas (1., 2., 3., …). É PROIBIDO escrever qualquer saudação, introdução, cabeçalho, título, observação, conclusão ou comentário — devolva APENAS as perguntas, uma por linha.',
     '',
     'Instrução do usuário:',
     (comando || QCMD_PADRAO).slice(0, 2000),
@@ -206,8 +207,18 @@ function promptPerguntasCustom(comando: string, texto: string, foco = '') {
     'TRECHO:', '"""', (texto || '').slice(0, 9000), '"""',
   ].filter(Boolean).join('\n')
 }
+// remove qualquer introdução/saudação antes da 1ª pergunta e comentários ao redor
+function limparPerguntas(txt: string): string {
+  let s = (txt || '').replace(/\r/g, '').trim()
+  s = s.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/i, '').trim()
+  const linhas = s.split('\n')
+  let ini = linhas.findIndex(l => /^\s*\d+\s*[.)\u2013-]/.test(l))   // 1. / 1) / 1 -
+  if (ini < 0) ini = linhas.findIndex(l => /\?\s*$/.test(l))          // fallback: 1ª linha que termina com "?"
+  if (ini > 0) s = linhas.slice(ini).join('\n').trim()
+  return s
+}
 async function gerarPerguntasCustomIA(comando: string, texto: string, foco = ''): Promise<string> {
-  return (await callLLM(promptPerguntasCustom(comando, texto, foco))).trim()
+  return limparPerguntas((await callLLM(promptPerguntasCustom(comando, texto, foco))).trim())
 }
 
 /* ─────────── APRIMORAR TEXTO (IA) — reescreve melhor, mantendo o sentido ─────────── */
@@ -1599,7 +1610,9 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   useEffect(() => { try { localStorage.setItem('nexus_pr_tom', tom) } catch {} }, [tom])
   const [nome, setNome] = useState('')
   const nomeRef = useRef(''); nomeRef.current = nome
-  const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco'>('none')
+  const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco' | 'linha'>('none')
+  const [linhaH, setLinhaH] = useState<number>(() => { try { return Number(localStorage.getItem('pr_linha_h')) || 30 } catch { return 30 } })
+  useEffect(() => { try { localStorage.setItem('pr_linha_h', String(linhaH)) } catch {} }, [linhaH])
   const [modo, setModo] = useState<'selecionar' | 'realcar'>('selecionar')  // marquee → editor  ou  marquee → realce
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
   const modoRef = useRef(modo); modoRef.current = modo
@@ -1803,7 +1816,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     setPopup(null); acumRef.current = ''; setAcumLen(0); setGerandoQ(true)
     try {
       const r = await gerarPerguntasCustomIA(qCmdRef.current, trecho, nomeRef.current)
-      onExtract?.(`❓ Perguntas da seleção${curPageRef.current ? ` (p. ${curPageRef.current})` : ''}\n${r}`, curPageRef.current)
+      onExtract?.(r, curPageRef.current)
     } catch (e: any) { alert('Falha ao gerar perguntas: ' + (e?.message || e)) }
     setGerandoQ(false)
   }
@@ -2109,7 +2122,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   // ── ANOTAÇÕES (realce/sublinhado) por retângulos de overlay ──
   const salvarAnot = () => { try { if (anotKeyRef.current) localStorage.setItem(anotKeyRef.current, JSON.stringify(anotRef.current)) } catch {} }
   // aplica realce/sublinhado na ÚLTIMA captura do marquee (frações por página, sobrevivem ao zoom)
-  const aplicarAnotacao = (kind: 'realce' | 'sublinhado', cor?: string) => {
+  const aplicarAnotacao = (kind: 'realce' | 'sublinhado' | 'lido', cor?: string) => {
     const cap = lastCapRef.current; if (!cap || !cap.words.length) return
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
     let added = false
@@ -2130,12 +2143,30 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     const layer = document.createElement('div'); layer.className = 'pr-annot'
     layer.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2'
     const W = el.clientWidth, H = el.clientHeight
-    for (const a of list) for (const r of a.rects) {
-      const d = document.createElement('div')
-      const x = r.fx * W, y = r.fy * H, w = r.fw * W, h = r.fh * H
-      if (a.kind === 'sublinhado') d.style.cssText = `position:absolute;left:${x}px;top:${y + h - 2}px;width:${w}px;height:2px;background:${a.cor};`
-      else d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${a.cor};opacity:.42;mix-blend-mode:multiply;border-radius:2px;`
-      layer.appendChild(d)
+    for (const a of list) {
+      if (a.kind === 'lido') {
+        // marcador "lido": leve faixa verde sobre o trecho + selo OK na margem direita da 1ª linha
+        let minY = Infinity
+        for (const r of a.rects) {
+          const x = r.fx * W, y = r.fy * H, w = r.fw * W, h = r.fh * H
+          if (y < minY) minY = y
+          const d = document.createElement('div')
+          d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:#22c55e;opacity:.14;border-radius:2px;`
+          layer.appendChild(d)
+        }
+        const badge = document.createElement('div')
+        badge.textContent = 'OK'
+        badge.style.cssText = `position:absolute;right:6px;top:${Math.max(2, minY - 1)}px;background:#16a34a;color:#fff;font:800 10px/1 system-ui,sans-serif;letter-spacing:.04em;padding:3px 6px;border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,.3);`
+        layer.appendChild(badge)
+        continue
+      }
+      for (const r of a.rects) {
+        const d = document.createElement('div')
+        const x = r.fx * W, y = r.fy * H, w = r.fw * W, h = r.fh * H
+        if (a.kind === 'sublinhado') d.style.cssText = `position:absolute;left:${x}px;top:${y + h - 2}px;width:${w}px;height:2px;background:${a.cor};`
+        else d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${a.cor};opacity:.42;mix-blend-mode:multiply;border-radius:2px;`
+        layer.appendChild(d)
+      }
     }
     el.appendChild(layer)
   }
@@ -2230,6 +2261,14 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         <Tool id="mascara" title="Máscara de leitura">▭</Tool>
         <Tool id="regua" title="Régua de acompanhamento">▬</Tool>
         <Tool id="foco" title="Foco dinâmico">◎</Tool>
+        <Tool id="linha" title="Barra de leitura (faixa azul de uma linha — ajuste a altura com a rolagem ou os botões)"><span style={{ display: 'inline-block', width: 15, height: 6, borderRadius: 2, background: 'linear-gradient(90deg,#60a5fa,#93c5fd)' }} /></Tool>
+        {ferramenta === 'linha' && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 2 }}>
+            <button onClick={() => setLinhaH(h => Math.max(12, h - 4))} title="Diminuir a faixa" style={{ width: 24, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800 }}>−</button>
+            <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', minWidth: 30, textAlign: 'center' }}>{linhaH}px</span>
+            <button onClick={() => setLinhaH(h => Math.min(120, h + 4))} title="Aumentar a faixa" style={{ width: 24, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800 }}>＋</button>
+          </span>
+        )}
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
         {/* OCR sob demanda da página atual */}
         <button onClick={() => ocrPagina(curPage)} disabled={!numPages || ocrStatus?.running}
@@ -2291,7 +2330,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       </div>
 
       {/* SCROLLER DO PDF + overlays de foco */}
-      <div ref={viewBoxRef} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+      <div ref={viewBoxRef} onWheel={e => { if (ferramenta === 'linha' && e.shiftKey) { e.preventDefault(); setLinhaH(h => Math.min(120, Math.max(12, h - Math.sign(e.deltaY) * 4))) } }} style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {/* indicador global: IA trabalhando (resumo/perguntas) */}
         {(resumindo || gerandoQ) && (
           <div style={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 70, pointerEvents: 'none' }}>
@@ -2393,6 +2432,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         </>, document.body)}
         {/* régua (confinada à coluna do PDF) */}
         {ferramenta === 'regua' && <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y, height: 2, background: '#5b5bd6cc', pointerEvents: 'none', zIndex: 40 }} />}
+        {/* barra de leitura: faixa azul suave de uma linha, seguindo o cursor (altura ajustável) */}
+        {ferramenta === 'linha' && <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y - linhaH / 2, height: linhaH, background: 'linear-gradient(90deg, rgba(96,165,250,.16), rgba(147,197,253,.26), rgba(96,165,250,.16))', borderTop: '1px solid rgba(59,130,246,.35)', borderBottom: '1px solid rgba(59,130,246,.35)', pointerEvents: 'none', zIndex: 40 }} />}
         {/* máscara de leitura (faixa clara, resto escurecido) */}
         {ferramenta === 'mascara' && <>
           <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.max(0, pos.y - 26), background: 'rgba(0,0,0,0.55)', pointerEvents: 'none', zIndex: 40 }} />
@@ -2462,6 +2503,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             <button onMouseDown={e => { e.preventDefault(); enviar() }} style={{ ...popBtn, flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}>✉️ Enviar p/ Palavras Destacadas</button>
             <button onMouseDown={e => { e.preventDefault(); dicionarioSelecao() }} style={{ ...popBtn, flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 700 }}>📖 Dicionário</button>
           </div>
+          {/* marcar como lido (selo OK) */}
+          <button onMouseDown={e => { e.preventDefault(); aplicarAnotacao('lido'); setPopup(null) }} title="Marca este trecho como já lido/transformado em leitura (selo OK na margem)" style={{ ...popBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: 'rgba(34,197,94,.12)', border: '1px solid #16a34a55', color: '#16a34a', fontWeight: 700 }}>✓ Marcar como lido (OK)</button>
           {/* não entendi */}
           <button onMouseDown={e => { e.preventDefault(); explicarSelecao() }} style={{ ...popBtn, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: 'var(--surface)', fontWeight: 700, color: 'var(--text-secondary)' }}><span style={{ display: 'inline-flex', width: 18, height: 18, borderRadius: '50%', background: '#0e7490', color: '#fff', alignItems: 'center', justifyContent: 'center', fontSize: '.7rem' }}>?</span> Não Entendi?</button>
           {/* continuar composição */}
@@ -4021,8 +4064,9 @@ export default function PDFReader() {
     if (!ed.textContent?.trim()) ed.innerHTML = ''
     const ehResumoOuMulti = /\n/.test(texto)
     if (ehResumoOuMulti) {
-      // resumo/multi-linha: cada linha vira um parágrafo, preservando a referência no título
-      texto.split('\n').forEach((linha, idx) => { const p = document.createElement('p'); p.textContent = linha; if (idx === 0) p.style.fontWeight = '600'; ed.appendChild(p) })
+      // resumo/multi-linha: cada linha vira um parágrafo. Negrita a 1ª só se for um título (não uma pergunta numerada)
+      const primeiraEhPergunta = /^\s*\d+\s*[.)]/.test(texto.split('\n')[0] || '')
+      texto.split('\n').forEach((linha, idx) => { const p = document.createElement('p'); p.textContent = linha; if (idx === 0 && !primeiraEhPergunta) p.style.fontWeight = '600'; ed.appendChild(p) })
     } else {
       const p = document.createElement('p')
       p.textContent = texto
@@ -4129,10 +4173,10 @@ export default function PDFReader() {
           } : {
             flex: 1, minWidth: 0, display: viewMode === 'pdf' ? 'none' : 'flex', flexDirection: 'column', minHeight: 0,
           }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5, padding: '7px 12px', borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: '1rem', flexShrink: 0 }}>✦</span>
           <input value={titulo} onChange={e => onTitulo(e.target.value)} placeholder="Título do documento" disabled={!store.uid}
-            style={{ flex: 1, minWidth: 60, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
+            style={{ flex: '1 1 160px', minWidth: 60, maxWidth: 360, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
             onFocus={e => (e.target.style.border = '1px solid var(--border)')} onBlur={e => (e.target.style.border = '1px solid transparent')} />
           <span title={salvo ? 'Salvo' : 'Não salvo'} style={{ fontSize: '0.8rem', color: salvo ? '#22c55e' : '#EA580C', flexShrink: 0, marginRight: 2 }}>{salvo ? '✓' : '●'}</span>
           {/* água rápida (feature 4) */}
