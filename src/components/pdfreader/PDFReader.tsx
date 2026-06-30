@@ -24,6 +24,26 @@ import { useUid } from '../../hooks/useUid'
 import ToggleNotion from './ToggleNotion'
 import Revisao from './Revisao'
 
+/* Menu suspenso que abre ao passar o mouse (consolida vários botões em uma linha) */
+function HoverMenu({ trigger, active, children, width = 230, align = 'left', triggerStyle }: any) {
+  const [open, setOpen] = useState(false)
+  const tmr = useRef<any>(null)
+  const entrar = () => { clearTimeout(tmr.current); setOpen(true) }
+  const sair = () => { tmr.current = setTimeout(() => setOpen(false), 180) }
+  return (
+    <div style={{ position: 'relative', display: 'inline-flex' }} onMouseEnter={entrar} onMouseLeave={sair}>
+      <button onClick={() => setOpen(o => !o)} style={{ height: 30, padding: '0 9px', borderRadius: 8, border: active ? 'none' : '1px solid var(--border)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', background: active ? '#5b5bd6' : 'var(--surface)', color: active ? '#fff' : 'var(--text-secondary)', ...(triggerStyle || {}) }}>
+        {trigger}<span style={{ fontSize: '0.56rem', opacity: 0.8 }}>▾</span>
+      </button>
+      {open && (
+        <div onMouseEnter={entrar} onMouseLeave={sair} style={{ position: 'absolute', top: '100%', [align]: 0, marginTop: 5, zIndex: 95, minWidth: width, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 38px rgba(0,0,0,.3)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* remove undefined (Firestore não aceita) — mesmo helper do AnalisePDF */
 function clean<T extends object>(obj: T): T { return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T }
 const newId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
@@ -961,30 +981,20 @@ function RichEditor({ editorRef, onChange }: any) {
         <Btn cmd="strikeThrough" title="Tachado">S̶</Btn>
         <Sep />
         <MenuBtn id="alinhar" label="Alinhar" title="Alinhamento" />
-        <IBtn title="Diminuir recuo (trazer parágrafo para a esquerda)"
-          onClick={() => { const ed = editorRef.current; if (ed) run(() => ajustarRecuo(ed, -24)) }}>⇤</IBtn>
-        <IBtn title="Aumentar recuo (empurrar parágrafo para a direita)"
-          onClick={() => { const ed = editorRef.current; if (ed) run(() => ajustarRecuo(ed, 24)) }}>⇥</IBtn>
         <MenuBtn id="cor" label="🎨" title="Cores" />
         <MenuBtn id="marcadores" label="≔" title="Marcadores e listas" />
         <MenuBtn id="inserir" label="＋" title="Linha divisória e tabela" />
         <MenuBtn id="simbolos" label="✶" title="Inserir símbolo (seta, estrela, joinha, perigo…)" />
         <Sep />
-        {/* fundo da página: branca → pautada → quadriculada (feature 1) */}
-        <IBtn title={`Fundo da página: ${ { blank: 'branca', lined: 'pautada', grid: 'quadriculada' }[pageStyle] } (clique para alternar)`}
-          active={pageStyle !== 'blank'}
-          onClick={() => setPageStyle(p => p === 'blank' ? 'lined' : p === 'lined' ? 'grid' : 'blank')}>
-          {{ blank: '▢', lined: '▤', grid: '▦' }[pageStyle]}
-        </IBtn>
-        {/* modo pergunta: Enter adiciona "?" no fim da linha (feature 2) */}
-        <IBtn title={autoQ ? 'Modo pergunta ATIVO — Enter adiciona "?" no fim da linha (clique para desativar)' : 'Modo pergunta — ao dar Enter adiciona "?" no fim da linha'}
-          active={autoQ} onClick={() => setAutoQ(v => !v)}>?</IBtn>
-        {/* renumerar perguntas em sequência contínua (seleção = só o trecho; sem seleção = tudo) */}
-        <IBtn title="Renumerar perguntas em sequência — selecione o trecho para formar uma cadeia (ou deixe sem seleção para renumerar tudo); pergunta o número inicial"
-          onClick={renumerarPerguntas}>№</IBtn>
-        {/* nota adesiva / post-it (feature 9) */}
-        <IBtn title="Inserir nota adesiva (post-it) — arraste, redimensione, feche no ×"
-          onClick={() => { const ed = editorRef.current; if (ed) run(() => insertPostit(ed)) }}>📌</IBtn>
+        {/* Mais: recuo, fundo da página, modo pergunta, renumerar, post-it (menu suspenso) */}
+        <HoverMenu align="right" width={220} active={pageStyle !== 'blank' || autoQ} trigger={<span>⋯ Mais</span>}>
+          <IBtn title="Diminuir recuo (trazer parágrafo para a esquerda)" onClick={() => { const ed = editorRef.current; if (ed) run(() => ajustarRecuo(ed, -24)) }}>⇤</IBtn>
+          <IBtn title="Aumentar recuo (empurrar parágrafo para a direita)" onClick={() => { const ed = editorRef.current; if (ed) run(() => ajustarRecuo(ed, 24)) }}>⇥</IBtn>
+          <IBtn title={`Fundo da página: ${ { blank: 'branca', lined: 'pautada', grid: 'quadriculada' }[pageStyle] } (clique para alternar)`} active={pageStyle !== 'blank'} onClick={() => setPageStyle(p => p === 'blank' ? 'lined' : p === 'lined' ? 'grid' : 'blank')}>{{ blank: '▢', lined: '▤', grid: '▦' }[pageStyle]}</IBtn>
+          <IBtn title={autoQ ? 'Modo pergunta ATIVO — Enter adiciona "?" no fim da linha (clique para desativar)' : 'Modo pergunta — ao dar Enter adiciona "?" no fim da linha'} active={autoQ} onClick={() => setAutoQ(v => !v)}>?</IBtn>
+          <IBtn title="Renumerar perguntas em sequência — selecione o trecho para formar uma cadeia (ou deixe sem seleção para renumerar tudo); pergunta o número inicial" onClick={renumerarPerguntas}>№</IBtn>
+          <IBtn title="Inserir nota adesiva (post-it) — arraste, redimensione, feche no ×" onClick={() => { const ed = editorRef.current; if (ed) run(() => insertPostit(ed)) }}>📌</IBtn>
+        </HoverMenu>
         <Sep />
         {/* aprimorar texto com IA */}
         <button onClick={aprimorarTexto} disabled={!!aprimora?.carregando} title="Aprimorar o texto com IA (seleção, ou tudo) — pede confirmação antes de substituir"
@@ -1610,9 +1620,25 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   useEffect(() => { try { localStorage.setItem('nexus_pr_tom', tom) } catch {} }, [tom])
   const [nome, setNome] = useState('')
   const nomeRef = useRef(''); nomeRef.current = nome
-  const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco' | 'linha'>('none')
+  const [ferramenta, setFerramenta] = useState<'none' | 'lupa' | 'mascara' | 'regua' | 'foco' | 'linha' | 'forma'>('none')
   const [linhaH, setLinhaH] = useState<number>(() => { try { return Number(localStorage.getItem('pr_linha_h')) || 30 } catch { return 30 } })
   useEffect(() => { try { localStorage.setItem('pr_linha_h', String(linhaH)) } catch {} }, [linhaH])
+  // cursor-forma preto que segue o mouse (ajustável em largura/altura + vários formatos)
+  const FORMAS = [
+    { id: 'barra', nome: 'Barra', icone: '▬' },
+    { id: 'circulo', nome: 'Círculo', icone: '●' },
+    { id: 'quadrado', nome: 'Quadrado', icone: '■' },
+    { id: 'triangulo', nome: 'Triângulo', icone: '▲' },
+    { id: 'triangulo-dir', nome: 'Triângulo p/ direita', icone: '▶' },
+    { id: 'seta-dir', nome: 'Seta p/ o lado', icone: '➜' },
+    { id: 'seta-cima', nome: 'Seta p/ cima', icone: '⬆' },
+    { id: 'mao', nome: 'Mão', icone: '👆' },
+    { id: 'lapis', nome: 'Lápis', icone: '✏️' },
+  ] as const
+  const [formaTipo, setFormaTipo] = useState<string>(() => { try { return localStorage.getItem('pr_forma_tipo') || 'barra' } catch { return 'barra' } })
+  const [formaW, setFormaW] = useState<number>(() => { try { return Number(localStorage.getItem('pr_forma_w')) || 90 } catch { return 90 } })
+  const [formaH, setFormaH] = useState<number>(() => { try { return Number(localStorage.getItem('pr_forma_h')) || 22 } catch { return 22 } })
+  useEffect(() => { try { localStorage.setItem('pr_forma_tipo', formaTipo); localStorage.setItem('pr_forma_w', String(formaW)); localStorage.setItem('pr_forma_h', String(formaH)) } catch {} }, [formaTipo, formaW, formaH])
   const [modo, setModo] = useState<'selecionar' | 'realcar'>('selecionar')  // marquee → editor  ou  marquee → realce
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
   const modoRef = useRef(modo); modoRef.current = modo
@@ -2136,6 +2162,13 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
   }
   const limparAnotacoes = () => { if (!confirm('Remover todos os realces deste PDF?')) return; anotRef.current = {}; pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
+  // remove UMA anotação específica (ex.: clicar no selo "OK" para desmarcar a leitura)
+  const removerAnot = (page: number, id: string) => {
+    const list = anotRef.current[page]; if (!list) return
+    anotRef.current[page] = list.filter((a: any) => a.id !== id)
+    if (!anotRef.current[page].length) delete anotRef.current[page]
+    pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1)
+  }
   // (re)desenha os overlays a partir das frações (independe do zoom)
   const pintarPagina = (el: HTMLElement, n: number) => {
     el.querySelector('.pr-annot')?.remove()
@@ -2156,7 +2189,9 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         }
         const badge = document.createElement('div')
         badge.textContent = 'OK'
-        badge.style.cssText = `position:absolute;right:6px;top:${Math.max(2, minY - 1)}px;background:#16a34a;color:#fff;font:800 10px/1 system-ui,sans-serif;letter-spacing:.04em;padding:3px 6px;border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,.3);`
+        badge.title = 'Lido — clique para remover'
+        badge.style.cssText = `position:absolute;right:6px;top:${Math.max(2, minY - 1)}px;background:#16a34a;color:#fff;font:800 10px/1 system-ui,sans-serif;letter-spacing:.04em;padding:3px 6px;border-radius:6px;box-shadow:0 1px 5px rgba(0,0,0,.3);pointer-events:auto;cursor:pointer;`
+        badge.onclick = (ev) => { ev.stopPropagation(); removerAnot(n, a.id) }
         layer.appendChild(badge)
         continue
       }
@@ -2231,74 +2266,78 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         </div>
         <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
 
-        {/* MODO: selecionar palavra(s)  vs  realçar */}
-        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-          <button onClick={() => setModo('selecionar')} title="Selecionar palavra(s) → enviar ao editor"
-            style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'selecionar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'selecionar' ? '#fff' : 'var(--text-secondary)' }}>✛ Selecionar</button>
-          <button onClick={() => setModo('realcar')} title="Realçar / sublinhar com o retângulo"
-            style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'realcar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'realcar' ? '#fff' : 'var(--text-secondary)' }}>🖊 Realçar</button>
-        </div>
-
-        {/* opções do modo realçar */}
-        {modo === 'realcar' && <>
-          <button onClick={() => setTipoMarca('realce')} title="Realce" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'realce' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'realce' ? '#fff' : 'var(--text-secondary)' }}>✎</button>
-          <button onClick={() => setTipoMarca('sublinhado')} title="Sublinhado" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'sublinhado' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'sublinhado' ? '#fff' : 'var(--text-secondary)' }}><u>S</u></button>
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setPaletaOpen(o => !o)} title="Cor do realce" style={{ ...btn, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 14, height: 14, borderRadius: 3, background: corRealce, border: '1px solid var(--border)' }} />▾
-            </button>
-            {paletaOpen && (
-              <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 60, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, padding: 8, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 10px 30px rgba(0,0,0,.25)' }}>
-                {PALETA_REALCE.map(c => <button key={c} onClick={() => { setCorRealce(c); setPaletaOpen(false) }} style={{ width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
-              </div>
-            )}
+        {/* ── grupos consolidados em menus suspensos (passe o mouse para abrir) ── */}
+        {/* Marcar (selecionar / realçar) */}
+        <HoverMenu align="left" width={250} active={modo === 'realcar'} trigger={<><span>🖊</span> Marcar</>}>
+          <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
+            <button onClick={() => setModo('selecionar')} title="Selecionar palavra(s) → enviar ao editor" style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'selecionar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'selecionar' ? '#fff' : 'var(--text-secondary)' }}>✛ Selecionar</button>
+            <button onClick={() => setModo('realcar')} title="Realçar / sublinhar com o retângulo" style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'realcar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'realcar' ? '#fff' : 'var(--text-secondary)' }}>🖊 Realçar</button>
           </div>
-          <button onClick={limparAnotacoes} title="Limpar realces deste PDF" style={btn}>🧽</button>
-        </>}
+          <button onClick={() => { setModo('realcar'); setTipoMarca('realce') }} title="Realce" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'realce' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'realce' ? '#fff' : 'var(--text-secondary)' }}>✎</button>
+          <button onClick={() => { setModo('realcar'); setTipoMarca('sublinhado') }} title="Sublinhado" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'sublinhado' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'sublinhado' ? '#fff' : 'var(--text-secondary)' }}><u>S</u></button>
+          {PALETA_REALCE.map(c => <button key={c} onClick={() => setCorRealce(c)} title="Cor do realce" style={{ width: 22, height: 22, borderRadius: 5, border: corRealce === c ? '2px solid var(--text-primary)' : '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
+          <button onClick={limparAnotacoes} title="Limpar realces deste PDF" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🧽 Limpar</button>
+        </HoverMenu>
 
-        <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
-        <Tool id="lupa" title="Lupa"><Icon e="🔍" size={15} /></Tool>
-        <Tool id="mascara" title="Máscara de leitura">▭</Tool>
-        <Tool id="regua" title="Régua de acompanhamento">▬</Tool>
-        <Tool id="foco" title="Foco dinâmico">◎</Tool>
-        <Tool id="linha" title="Barra de leitura (faixa azul de uma linha — ajuste a altura com a rolagem ou os botões)"><span style={{ display: 'inline-block', width: 15, height: 6, borderRadius: 2, background: 'linear-gradient(90deg,#60a5fa,#93c5fd)' }} /></Tool>
-        {ferramenta === 'linha' && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 2 }}>
-            <button onClick={() => setLinhaH(h => Math.max(12, h - 4))} title="Diminuir a faixa" style={{ width: 24, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800 }}>−</button>
-            <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', minWidth: 30, textAlign: 'center' }}>{linhaH}px</span>
-            <button onClick={() => setLinhaH(h => Math.min(120, h + 4))} title="Aumentar a faixa" style={{ width: 24, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800 }}>＋</button>
-          </span>
+        {/* Leitura (auxílios) */}
+        <HoverMenu align="left" width={280} active={ferramenta !== 'none'} trigger={<><span>👁</span> Leitura</>}>
+          <Tool id="lupa" title="Lupa"><Icon e="🔍" size={15} /></Tool>
+          <Tool id="mascara" title="Máscara de leitura">▭</Tool>
+          <Tool id="regua" title="Régua de acompanhamento">▬</Tool>
+          <Tool id="foco" title="Foco dinâmico">◎</Tool>
+          <Tool id="linha" title="Barra de leitura azul (ajuste a altura com os botões ou Shift+rolagem)"><span style={{ display: 'inline-block', width: 15, height: 6, borderRadius: 2, background: 'linear-gradient(90deg,#60a5fa,#93c5fd)' }} /></Tool>
+          <Tool id="forma" title="Cursor-forma preto que segue o mouse (vários formatos, ajustável)"><span style={{ display: 'inline-block', width: 12, height: 12, background: '#111', borderRadius: 2 }} /></Tool>
+          {ferramenta === 'linha' && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+              <button onClick={() => setLinhaH(h => Math.max(12, h - 4))} title="Diminuir a faixa" style={{ width: 24, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800 }}>−</button>
+              <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', minWidth: 30, textAlign: 'center' }}>{linhaH}px</span>
+              <button onClick={() => setLinhaH(h => Math.min(120, h + 4))} title="Aumentar a faixa" style={{ width: 24, height: 30, borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', fontWeight: 800 }}>＋</button>
+            </span>
+          )}
+          {ferramenta === 'forma' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', borderTop: '1px solid var(--border)', paddingTop: 6, marginTop: 2 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {FORMAS.map(fo => (
+                  <button key={fo.id} onClick={() => setFormaTipo(fo.id)} title={fo.nome} style={{ width: 30, height: 30, borderRadius: 7, cursor: 'pointer', fontSize: '0.95rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', border: formaTipo === fo.id ? 'none' : '1px solid var(--border)', background: formaTipo === fo.id ? '#5b5bd6' : 'var(--surface)', color: formaTipo === fo.id ? '#fff' : 'var(--text-secondary)' }}>{fo.icone}</button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', width: 46 }}>Largura</span>
+                <input type="range" min={8} max={400} value={formaW} onChange={e => setFormaW(Number(e.target.value))} style={{ flex: 1 }} />
+                <span style={{ fontSize: '.66rem', color: 'var(--text-muted)', width: 40, textAlign: 'right' }}>{formaW}px</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', width: 46 }}>Altura</span>
+                <input type="range" min={8} max={400} value={formaH} onChange={e => setFormaH(Number(e.target.value))} style={{ flex: 1 }} />
+                <span style={{ fontSize: '.66rem', color: 'var(--text-muted)', width: 40, textAlign: 'right' }}>{formaH}px</span>
+              </div>
+            </div>
+          )}
+        </HoverMenu>
+
+        {!secondary && (
+          <HoverMenu align="left" width={250} trigger={<><span>🧠</span> IA</>}>
+            <button onClick={resumirPagina} disabled={!numPages || resumindo} title="Resumir esta página (IA) → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px' }}>{resumindo ? <><span className="nx-spin">⏳</span> Resumindo…</> : '🧠 Resumir'}</button>
+            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <button onClick={gerarPerguntasPagina} disabled={!numPages || gerandoQ} title="Gerar perguntas desta página (IA) com seu comando salvo → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>{gerandoQ ? <><span className="nx-spin">⏳</span> Gerando…</> : '❓ Perguntas'}</button>
+              <button onClick={() => setQEdit(true)} disabled={!numPages} title="Editar o comando das perguntas (define o estilo/estrutura)" style={{ ...btn, width: 26, padding: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: 'none' }}>✎</button>
+            </span>
+            <button onClick={() => setChat(c => ({ ...c, open: !c.open }))} disabled={!numPages} title="Conversar com o documento (IA)" style={{ ...btn, width: 'auto', padding: '0 8px', background: chat.open ? '#5b5bd6' : 'var(--surface)', color: chat.open ? '#fff' : 'var(--text-secondary)', border: chat.open ? 'none' : '1px solid var(--border)' }}>💬 Chat</button>
+            <button onClick={() => setToggleOpen(true)} title="Toggle — blocos aninhados estilo Notion (janela redimensionável)" style={{ ...btn, width: 'auto', padding: '0 10px', fontWeight: 800 }}>🔀 Toggle</button>
+          </HoverMenu>
         )}
-        <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
-        {/* OCR sob demanda da página atual */}
-        <button onClick={() => ocrPagina(curPage)} disabled={!numPages || ocrStatus?.running}
-          title="Reconhecer texto desta página (OCR) — para PDFs digitalizados/imagem"
-          style={{ ...btn, width: 'auto', padding: '0 10px', background: ocrStatus?.running ? 'var(--surface)' : paginaImagem ? '#EA580C' : 'var(--surface)', color: ocrStatus?.running ? 'var(--text-muted)' : paginaImagem ? '#fff' : 'var(--text-secondary)', border: paginaImagem && !ocrStatus?.running ? 'none' : '1px solid var(--border)', whiteSpace: 'nowrap' }}>
-          {ocrStatus?.running ? `OCR… ${ocrStatus.pct}%` : '🔎 OCR'}
-        </button>
 
-        <span style={{ width: 1, height: 22, background: 'var(--border)' }} />
-        {/* feature 3: busca no documento */}
-        <button onClick={() => setBusca(b => ({ ...b, open: !b.open }))} disabled={!numPages} title="Buscar no documento (Ctrl+F)" style={{ ...btn, width: 'auto', padding: '0 8px', background: busca.open ? '#5b5bd6' : 'var(--surface)', color: busca.open ? '#fff' : 'var(--text-secondary)', border: busca.open ? 'none' : '1px solid var(--border)' }}>🔎 Buscar</button>
-        {/* feature 9: miniaturas */}
-        <button onClick={() => setThumbsOpen(o => !o)} disabled={!numPages} title="Miniaturas das páginas" style={{ ...btn, width: 'auto', padding: '0 8px', background: thumbsOpen ? '#5b5bd6' : 'var(--surface)', color: thumbsOpen ? '#fff' : 'var(--text-secondary)', border: thumbsOpen ? 'none' : '1px solid var(--border)' }}>▦</button>
-        {!secondary && <>
-          {/* feature 5: resumir página */}
-          <button onClick={resumirPagina} disabled={!numPages || resumindo} title="Resumir esta página (IA) → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px' }}>{resumindo ? <><span className="nx-spin">⏳</span> Resumindo…</> : '🧠 Resumir'}</button>
-          {/* gerar perguntas (comando customizável e reutilizável) */}
-          <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-            <button onClick={gerarPerguntasPagina} disabled={!numPages || gerandoQ} title="Gerar perguntas desta página (IA) com seu comando salvo → painel de notas" style={{ ...btn, width: 'auto', padding: '0 8px', borderTopRightRadius: 0, borderBottomRightRadius: 0 }}>{gerandoQ ? <><span className="nx-spin">⏳</span> Gerando…</> : '❓ Perguntas'}</button>
-            <button onClick={() => setQEdit(true)} disabled={!numPages} title="Editar o comando das perguntas (define o estilo/estrutura)" style={{ ...btn, width: 26, padding: 0, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: 'none' }}>✎</button>
-          </span>
-          {/* feature 1: chat com o PDF */}
-          <button onClick={() => setChat(c => ({ ...c, open: !c.open }))} disabled={!numPages} title="Conversar com o documento (IA)" style={{ ...btn, width: 'auto', padding: '0 8px', background: chat.open ? '#5b5bd6' : 'var(--surface)', color: chat.open ? '#fff' : 'var(--text-secondary)', border: chat.open ? 'none' : '1px solid var(--border)' }}>💬 Chat</button>
-          {/* feature 4: marcar página */}
-          <button onClick={() => onAddBookmark?.(curPageRef.current)} disabled={!numPages} title="Marcar esta página (bookmark)" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🔖</button>
-          {/* feature 10: modo foco / leitura imersiva */}
-          {!secondary && <button onClick={() => setToggleOpen(true)} disabled={false} title="Toggle — blocos aninhados estilo Notion (janela redimensionável)" style={{ ...btn, width: 'auto', padding: '0 10px', fontWeight: 800 }}>🔀 Toggle</button>}
-          <button onClick={onToggleFoco} disabled={!numPages} title="Modo foco / leitura imersiva (oculta painéis)" style={{ ...btn, width: 'auto', padding: '0 8px', background: foco ? '#5b5bd6' : 'var(--surface)', color: foco ? '#fff' : 'var(--text-secondary)', border: foco ? 'none' : '1px solid var(--border)' }}>⛶</button>
-          <button onClick={() => setReader(true)} disabled={!numPages} title="Modo Reader — texto limpo e reflowável (efeito Kindle)" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>📖</button>
-        </>}
+        {/* Mais (ferramentas) */}
+        <HoverMenu align="left" width={250} trigger={<><span>⋯</span> Mais</>}>
+          <button onClick={() => ocrPagina(curPage)} disabled={!numPages || ocrStatus?.running} title="Reconhecer texto desta página (OCR) — para PDFs digitalizados/imagem" style={{ ...btn, width: 'auto', padding: '0 10px', background: paginaImagem && !ocrStatus?.running ? '#EA580C' : 'var(--surface)', color: paginaImagem && !ocrStatus?.running ? '#fff' : 'var(--text-secondary)', border: paginaImagem && !ocrStatus?.running ? 'none' : '1px solid var(--border)', whiteSpace: 'nowrap' }}>{ocrStatus?.running ? `OCR… ${ocrStatus.pct}%` : '🔎 OCR'}</button>
+          <button onClick={() => setBusca(b => ({ ...b, open: !b.open }))} disabled={!numPages} title="Buscar no documento (Ctrl+F)" style={{ ...btn, width: 'auto', padding: '0 8px', background: busca.open ? '#5b5bd6' : 'var(--surface)', color: busca.open ? '#fff' : 'var(--text-secondary)', border: busca.open ? 'none' : '1px solid var(--border)' }}>🔎 Buscar</button>
+          <button onClick={() => setThumbsOpen(o => !o)} disabled={!numPages} title="Miniaturas das páginas" style={{ ...btn, width: 'auto', padding: '0 8px', background: thumbsOpen ? '#5b5bd6' : 'var(--surface)', color: thumbsOpen ? '#fff' : 'var(--text-secondary)', border: thumbsOpen ? 'none' : '1px solid var(--border)' }}>▦ Miniaturas</button>
+          {!secondary && <>
+            <button onClick={() => onAddBookmark?.(curPageRef.current)} disabled={!numPages} title="Marcar esta página (bookmark)" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🔖 Marcar pág.</button>
+            <button onClick={onToggleFoco} disabled={!numPages} title="Modo foco / leitura imersiva (oculta painéis)" style={{ ...btn, width: 'auto', padding: '0 8px', background: foco ? '#5b5bd6' : 'var(--surface)', color: foco ? '#fff' : 'var(--text-secondary)', border: foco ? 'none' : '1px solid var(--border)' }}>⛶ Foco</button>
+            <button onClick={() => setReader(true)} disabled={!numPages} title="Modo Reader — texto limpo e reflowável (efeito Kindle)" style={{ ...btn, width: 'auto', padding: '0 8px' }}>📖 Reader</button>
+          </>}
+        </HoverMenu>
 
         <span style={{ flex: 1 }} />
         {/* indicador de página + ir para página (campo integrado, sem setinhas) */}
@@ -2434,6 +2473,25 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         {ferramenta === 'regua' && <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y, height: 2, background: '#5b5bd6cc', pointerEvents: 'none', zIndex: 40 }} />}
         {/* barra de leitura: faixa azul suave de uma linha, seguindo o cursor (altura ajustável) */}
         {ferramenta === 'linha' && <div style={{ position: 'absolute', left: 0, right: 0, top: pos.y - linhaH / 2, height: linhaH, background: 'linear-gradient(90deg, rgba(96,165,250,.16), rgba(147,197,253,.26), rgba(96,165,250,.16))', borderTop: '1px solid rgba(59,130,246,.35)', borderBottom: '1px solid rgba(59,130,246,.35)', pointerEvents: 'none', zIndex: 40 }} />}
+        {/* cursor-forma preto: segue o mouse, ajustável em largura/altura, vários formatos */}
+        {ferramenta === 'forma' && (() => {
+          const base: React.CSSProperties = { position: 'absolute', left: pos.x - formaW / 2, top: pos.y - formaH / 2, width: formaW, height: formaH, pointerEvents: 'none', zIndex: 41, opacity: 0.82 }
+          if (formaTipo === 'lapis') return (
+            <svg style={base} viewBox="0 0 24 24" fill="#111" xmlns="http://www.w3.org/2000/svg"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" /></svg>
+          )
+          if (formaTipo === 'mao') return (
+            <svg style={base} viewBox="0 0 24 24" fill="#111" xmlns="http://www.w3.org/2000/svg"><path d="M23 5.5V20c0 2.2-1.8 4-4 4h-7.3c-1.08 0-2.1-.43-2.85-1.19L1 14.83s1.26-1.23 1.3-1.25c.22-.19.49-.29.79-.29.22 0 .42.06.6.16.04.01 4.31 2.46 4.31 2.46V4c0-.83.67-1.5 1.5-1.5S12 3.17 12 4v7h1V1.5c0-.83.67-1.5 1.5-1.5S16 .67 16 1.5V11h1V2.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5V11h1V5.5c0-.83.67-1.5 1.5-1.5s1.5.67 1.5 1.5z" /></svg>
+          )
+          const clip: Record<string, string> = {
+            triangulo: 'polygon(50% 0,0% 100%,100% 100%)',
+            'triangulo-dir': 'polygon(0 0,100% 50%,0 100%)',
+            'seta-dir': 'polygon(0 32%,62% 32%,62% 8%,100% 50%,62% 92%,62% 68%,0 68%)',
+            'seta-cima': 'polygon(50% 0,100% 42%,68% 42%,68% 100%,32% 100%,32% 42%,0 42%)',
+          }
+          const cp = clip[formaTipo]
+          const radius = formaTipo === 'circulo' ? '50%' : formaTipo === 'quadrado' ? 4 : 3
+          return <div style={{ ...base, background: '#111', borderRadius: cp ? 0 : radius, clipPath: cp || 'none' }} />
+        })()}
         {/* máscara de leitura (faixa clara, resto escurecido) */}
         {ferramenta === 'mascara' && <>
           <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.max(0, pos.y - 26), background: 'rgba(0,0,0,0.55)', pointerEvents: 'none', zIndex: 40 }} />
@@ -4179,34 +4237,25 @@ export default function PDFReader() {
             style={{ flex: '1 1 160px', minWidth: 60, maxWidth: 360, border: '1px solid transparent', background: 'transparent', color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.88rem', padding: '4px 6px', borderRadius: 7, outline: 'none' }}
             onFocus={e => (e.target.style.border = '1px solid var(--border)')} onBlur={e => (e.target.style.border = '1px solid transparent')} />
           <span title={salvo ? 'Salvo' : 'Não salvo'} style={{ fontSize: '0.8rem', color: salvo ? '#22c55e' : '#EA580C', flexShrink: 0, marginRight: 2 }}>{salvo ? '✓' : '●'}</span>
-          {/* água rápida (feature 4) */}
-          <AguaRapida />
-          {/* botões de modo de visualização — só ícones, agrupados */}
-          <div style={{ display: 'flex', gap: 2, flexShrink: 0, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
-            {(['pdf', 'split', 'editor'] as const).map(m => (
-              <button key={m} onClick={() => { setAutoEditor(false); setViewMode(m) }} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]}
-                style={{ ...btn, width: 30, padding: 0, background: (!autoEditor && viewMode === m) ? '#5b5bd6' : 'transparent', color: (!autoEditor && viewMode === m) ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon e={{ pdf: '📄', split: '⬜', editor: '✦' }[m]} size={16} />
-              </button>
-            ))}
-            {/* feature 3: editor auto-ocultável (PDF em tela cheia, editor surge na lateral direita) */}
-            <button onClick={() => { setAutoEditor(v => !v); setAutoHover(false) }}
-              title={autoEditor ? 'Editor auto-ocultável ATIVO — PDF em tela cheia; o editor surge ao passar o mouse na lateral direita (clique para desativar)' : 'Editor auto-ocultável — PDF em tela cheia e editor surge ao encostar o mouse na direita'}
-              style={{ ...btn, width: 30, padding: 0, background: autoEditor ? '#5b5bd6' : 'transparent', color: autoEditor ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Icon e="⇥" size={16} />
-            </button>
-          </div>
-          <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
-          <button onClick={() => setComparar(c => !c)} title="Comparar dois PDFs lado a lado" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, background: comparar ? '#5b5bd6' : 'var(--surface)', color: comparar ? '#fff' : 'var(--text-secondary)', border: comparar ? 'none' : '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>⇆</button>
-          <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-            <IconMapa size={16} color="currentColor" />{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}
-          </button>
-          <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            🃏{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}
-          </button>
-          <button onClick={() => setRevisaoOpen(true)} title="Revisão espaçada — acompanhe 48h, 7, 17 e 30 dias" style={{ ...btn, width: 'auto', padding: '0 8px', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}>🔁 Revisão</button>
-          <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="📖" size={16} /></button>
-          <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⚙" size={16} /></button>
+          {/* Exibir (água, visualização, comparar, IA) — menu suspenso */}
+          <HoverMenu align="right" width={270} active={comparar || autoEditor} trigger={<><Icon e="⚙" size={15} /> Exibir</>}>
+            <AguaRapida />
+            <div style={{ display: 'flex', gap: 2, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
+              {(['pdf', 'split', 'editor'] as const).map(m => (
+                <button key={m} onClick={() => { setAutoEditor(false); setViewMode(m) }} title={{ pdf: 'Tela cheia: PDF', split: 'Dividido', editor: 'Tela cheia: Editor' }[m]} style={{ ...btn, width: 30, padding: 0, background: (!autoEditor && viewMode === m) ? '#5b5bd6' : 'transparent', color: (!autoEditor && viewMode === m) ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e={{ pdf: '📄', split: '⬜', editor: '✦' }[m]} size={16} /></button>
+              ))}
+              <button onClick={() => { setAutoEditor(v => !v); setAutoHover(false) }} title={autoEditor ? 'Editor auto-ocultável ATIVO (clique para desativar)' : 'Editor auto-ocultável — PDF em tela cheia; editor surge ao encostar o mouse na direita'} style={{ ...btn, width: 30, padding: 0, background: autoEditor ? '#5b5bd6' : 'transparent', color: autoEditor ? '#fff' : 'var(--text-secondary)', border: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="⇥" size={16} /></button>
+            </div>
+            <button onClick={() => setComparar(c => !c)} title="Comparar dois PDFs lado a lado" style={{ ...btn, width: 'auto', padding: '0 8px', background: comparar ? '#5b5bd6' : 'var(--surface)', color: comparar ? '#fff' : 'var(--text-secondary)', border: comparar ? 'none' : '1px solid var(--border)' }}>⇆ Comparar</button>
+            <button onClick={() => setCfgIA(true)} title="Configurar IA" style={{ ...btn, width: 'auto', padding: '0 8px' }}>⚙ IA</button>
+          </HoverMenu>
+          {/* Estudo (mapas, flashcards, revisão, diário) — menu suspenso */}
+          <HoverMenu align="right" width={250} trigger={<><span>📚</span> Estudo</>}>
+            <button onClick={() => setHubMapas(true)} title="Mapas mentais (gerar, organizar e exportar)" style={{ ...btn, width: 'auto', padding: '0 8px', position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5 }}><IconMapa size={16} color="currentColor" /> Mapas{insumos.length > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: 'var(--accent)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{insumos.length}</span>}</button>
+            <button onClick={() => setFcRevisar(true)} title="Estudo ativo — Flashcards" style={{ ...btn, width: 'auto', padding: '0 8px', position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 4 }}>🃏 Flashcards{fcDevidos > 0 && <span style={{ minWidth: 16, height: 16, padding: '0 4px', borderRadius: 8, background: '#EA580C', color: '#fff', fontSize: '0.62rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{fcDevidos}</span>}</button>
+            <button onClick={() => setRevisaoOpen(true)} title="Revisão espaçada — acompanhe 48h, 7, 17 e 30 dias" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>🔁 Revisão</button>
+            <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>📖 Diário</button>
+          </HoverMenu>
           <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
           <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', fontSize: '0.78rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon e="🖨️" size={14} /> Exportar</button>
         </div>
