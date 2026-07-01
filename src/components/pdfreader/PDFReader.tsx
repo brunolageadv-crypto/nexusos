@@ -1166,6 +1166,8 @@ function RichEditor({ editorRef, onChange }: any) {
 
 /* ═══════════════════════════════ VISUALIZADOR PDF ═══════════════════════════════ */
 const PALETA_REALCE = ['#fff3a3', '#ffd28a', '#ffb3c1', '#c3f0c8', '#bfe3ff', '#e3c8ff', '#ffe0b0', '#d9d9d9']
+// paleta do cursor de texto: linha 1 = tons claros, linha 2 = tons vivos/escuros
+const PALETA_GRIFO = ['#fff3a3', '#c3f0c8', '#bfe3ff', '#ffb3c1', '#e3c8ff', '#ffe0b0', '#facc15', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#f97316']
 /* tonalizações (filtro CSS — puramente visual, não afeta OCR nem seleção) */
 const TONS: { id: string; label: string; icon: string; filter: string }[] = [
   { id: 'cor', label: 'Cor (original)', icon: '🎨', filter: 'none' },
@@ -1643,7 +1645,13 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const [formaW, setFormaW] = useState<number>(() => { try { return Number(localStorage.getItem('pr_forma_w')) || 90 } catch { return 90 } })
   const [formaH, setFormaH] = useState<number>(() => { try { return Number(localStorage.getItem('pr_forma_h')) || 22 } catch { return 22 } })
   useEffect(() => { try { localStorage.setItem('pr_forma_tipo', formaTipo); localStorage.setItem('pr_forma_w', String(formaW)); localStorage.setItem('pr_forma_h', String(formaH)) } catch {} }, [formaTipo, formaW, formaH])
-  const [modo, setModo] = useState<'selecionar' | 'realcar'>('selecionar')  // marquee → editor  ou  marquee → realce
+  const [modo, setModo] = useState<'selecionar' | 'realcar' | 'texto'>('selecionar')  // marquee → editor / marquee → realce / cursor de texto (grifar por teclado)
+  // configuração do cursor de texto (grifo por teclado): tipo, cor e transparência
+  const [grifoCfg, setGrifoCfg] = useState<{ tipo: 'realce' | 'sublinhado'; cor: string; opac: number }>(() => {
+    try { const s = JSON.parse(localStorage.getItem('pr_grifo_cfg') || ''); if (s && s.cor) return s } catch {}
+    return { tipo: 'realce', cor: '#fff3a3', opac: 0.42 }
+  })
+  useEffect(() => { try { localStorage.setItem('pr_grifo_cfg', JSON.stringify(grifoCfg)) } catch {} }, [grifoCfg])
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
   const modoRef = useRef(modo); modoRef.current = modo
   const tipoRef = useRef(tipoMarca); tipoRef.current = tipoMarca
@@ -2074,6 +2082,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   }
   const onDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return
+    if (modo === 'texto') return   // cursor de texto: deixa a seleção nativa (mouse/teclado) agir
     if (!(e.target as HTMLElement).closest('.pr-page')) return   // só inicia sobre uma página
     // os auxílios de leitura (lupa/máscara/régua/foco) têm pointer-events:none, então
     // a seleção de palavras/trechos continua ativa mesmo com eles ligados.
@@ -2173,6 +2182,103 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     if (!anotRef.current[page].length) delete anotRef.current[page]
     pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1)
   }
+  // ── CURSOR DE TEXTO: grifa a seleção nativa (ou a palavra sob o cursor) com um toque no Ctrl ──
+  const grifoCfgRef = useRef(grifoCfg); useEffect(() => { grifoCfgRef.current = grifoCfg }, [grifoCfg])
+  const grifarSelecao = () => {
+    const sel = window.getSelection(); if (!sel || sel.rangeCount === 0) return
+    // a seleção precisa estar dentro da camada de texto do PDF
+    const dentro = (n: Node | null) => !!(n && (n.nodeType === 1 ? (n as HTMLElement) : n.parentElement)?.closest?.('.pr-textlayer'))
+    if (!dentro(sel.anchorNode)) return
+    let range = sel.getRangeAt(0)
+    if (sel.isCollapsed) {
+      // caret sem seleção → expande para a palavra inteira sob o cursor
+      const node = range.startContainer
+      if (node.nodeType === 3) {
+        const txt = node.nodeValue || ''; const eW = (c: string) => /[\p{L}\p{N}]/u.test(c || '')
+        let i = range.startOffset, j = range.startOffset
+        while (i > 0 && eW(txt[i - 1])) i--
+        while (j < txt.length && eW(txt[j])) j++
+        if (i === j) return
+        const r = document.createRange(); r.setStart(node, i); r.setEnd(node, j); range = r
+      }
+    }
+    const rects = Array.from(range.getClientRects()).filter(rc => rc.width > 1 && rc.height > 1)
+    if (!rects.length) { sel.removeAllRanges(); return }
+    // toggle: se já houver grifo sob o início da seleção, remove
+    const rc0 = rects[0]; const cx0 = rc0.left + rc0.width / 2, cy0 = rc0.top + rc0.height / 2
+    const pg0 = (document.elementFromPoint(cx0, cy0) as HTMLElement)?.closest('.pr-page') as HTMLElement
+    if (pg0) {
+      const n = Number(pg0.dataset.page); const pr = pg0.getBoundingClientRect()
+      const fxp = (cx0 - pr.left) / pr.width, fyp = (cy0 - pr.top) / pr.height
+      const hit = (anotRef.current[n] || []).find((a: any) => a.kind !== 'lido' && a.rects.some((r: any) => fxp >= r.fx && fxp <= r.fx + r.fw && fyp >= r.fy && fyp <= r.fy + r.fh))
+      if (hit) { removerAnot(n, hit.id); sel.removeAllRanges(); setPopup(null); return }
+    }
+    // agrupa os retângulos (um por linha) por página e grava a anotação
+    const porPagina: Record<number, any[]> = {}
+    for (const rc of rects) {
+      const cx = rc.left + rc.width / 2, cy = rc.top + rc.height / 2
+      const pg = (document.elementFromPoint(cx, cy) as HTMLElement)?.closest('.pr-page') as HTMLElement
+      if (!pg) continue
+      const n = Number(pg.dataset.page); const pr = pg.getBoundingClientRect()
+      ;(porPagina[n] ||= []).push({ fx: (rc.left - pr.left) / pr.width, fy: (rc.top - pr.top) / pr.height, fw: rc.width / pr.width, fh: rc.height / pr.height })
+    }
+    const cfg = grifoCfgRef.current
+    const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+    let added = false
+    for (const [n, fracs] of Object.entries(porPagina)) {
+      if (!pageElsRef.current[Number(n)]) continue
+      ;(anotRef.current[Number(n)] ||= []).push({ id, kind: cfg.tipo, cor: cfg.cor, opac: cfg.opac, rects: fracs })
+      added = true
+    }
+    sel.removeAllRanges()
+    setPopup(null)
+    if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
+  }
+  // ── modo Texto: seleção nativa (mouse OU teclado) reaproveita o popup de ações do "Selecionar" ──
+  const wordsFromSelection = () => {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null
+    const an = sel.anchorNode
+    const host = an && (an.nodeType === 1 ? (an as HTMLElement) : an.parentElement)
+    if (!host?.closest?.('.pr-textlayer')) return null
+    const range = sel.getRangeAt(0)
+    const linhas = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1)
+    if (!linhas.length) return null
+    const words: any[] = []; const seen = new Set<string>()
+    for (const lr of linhas) {
+      for (const w of collectInRect({ left: lr.left, top: lr.top, right: lr.right, bottom: lr.bottom }, 'center')) {
+        const k = w.page + ':' + Math.round(w.frac.fx * 1000) + ':' + Math.round(w.frac.fy * 1000)
+        if (!seen.has(k)) { seen.add(k); words.push(w) }
+      }
+    }
+    if (!words.length) return null
+    return { words, texto: prNormalize(sel.toString()), rect: linhas[0] }
+  }
+  const mostrarPopupSelecao = () => {
+    const info = wordsFromSelection()
+    if (!info) { setPopup(null); return }
+    lastCapRef.current = { words: info.words }
+    const acc = acumRef.current; const r = info.rect
+    setPopup({ x: (r.left + r.right) / 2, y: Math.max(8, r.top - 8), text: info.texto, shown: acc ? prNormalize(acc + ' ' + info.texto) : info.texto })
+  }
+  // detecta o "toque" no Ctrl (pressionar e soltar sem outra tecla) para grifar — não conflita com Ctrl+F/C/V
+  useEffect(() => {
+    if (modo !== 'texto') return
+    let ctrlDown = false, combinou = false
+    const kd = (e: KeyboardEvent) => {
+      if (e.key === 'Control') { if (!ctrlDown) { ctrlDown = true; combinou = false } }
+      else if (ctrlDown) combinou = true
+    }
+    const ku = (e: KeyboardEvent) => {
+      if (e.key === 'Control') { if (ctrlDown && !combinou) grifarSelecao(); ctrlDown = false }
+    }
+    document.addEventListener('keydown', kd, true)
+    document.addEventListener('keyup', ku, true)
+    // seleção com o mouse abre o popup de ações (enviar ao editor, perguntas, dicionário, realçar, lido…)
+    const mu = (e: MouseEvent) => { const t = e.target as HTMLElement; if (t?.closest?.('.pr-pop')) return; if (!t?.closest?.('.pr-textmode')) return; setTimeout(mostrarPopupSelecao, 0) }
+    document.addEventListener('mouseup', mu, true)
+    return () => { document.removeEventListener('keydown', kd, true); document.removeEventListener('keyup', ku, true); document.removeEventListener('mouseup', mu, true) }
+  }, [modo])
   // (re)desenha os overlays a partir das frações (independe do zoom)
   const pintarPagina = (el: HTMLElement, n: number) => {
     el.querySelector('.pr-annot')?.remove()
@@ -2203,8 +2309,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       for (const r of a.rects) {
         const d = document.createElement('div')
         const x = r.fx * W, y = r.fy * H, w = r.fw * W, h = r.fh * H
-        if (a.kind === 'sublinhado') d.style.cssText = `position:absolute;left:${x}px;top:${y + h - 2}px;width:${w}px;height:2px;background:${a.cor};`
-        else d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${a.cor};opacity:.42;mix-blend-mode:multiply;border-radius:2px;`
+        if (a.kind === 'sublinhado') d.style.cssText = `position:absolute;left:${x}px;top:${y + h - 2}px;width:${w}px;height:2.5px;background:${a.cor};opacity:${a.opac ?? 1};border-radius:2px;`
+        else d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:${a.cor};opacity:${a.opac ?? 0.42};mix-blend-mode:multiply;border-radius:2px;`
         layer.appendChild(d)
       }
     }
@@ -2273,14 +2379,49 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
 
         {/* ── grupos consolidados em menus suspensos (passe o mouse para abrir) ── */}
         {/* Marcar (selecionar / realçar) */}
-        <HoverMenu align="left" width={250} active={modo === 'realcar'} trigger={<><span>🖊</span> Marcar</>}>
+        <HoverMenu align="left" width={300} active={modo !== 'selecionar'} trigger={<><span>🖊</span> Marcar</>}>
           <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
             <button onClick={() => setModo('selecionar')} title="Selecionar palavra(s) → enviar ao editor" style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'selecionar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'selecionar' ? '#fff' : 'var(--text-secondary)' }}>✛ Selecionar</button>
-            <button onClick={() => setModo('realcar')} title="Realçar / sublinhar com o retângulo" style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'realcar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'realcar' ? '#fff' : 'var(--text-secondary)' }}>🖊 Realçar</button>
+            <button onClick={() => setModo('realcar')} title="Realçar / sublinhar com o retângulo (arraste)" style={{ height: 30, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'realcar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'realcar' ? '#fff' : 'var(--text-secondary)' }}>🖊 Realçar</button>
+            <button onClick={() => setModo('texto')} title="Cursor de texto — seleção com mouse/teclado abre o menu de ações (enviar ao editor, etc.) e o toque no Ctrl grifa" style={{ height: 30, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'texto' ? '#5b5bd6' : 'var(--surface)', color: modo === 'texto' ? '#fff' : 'var(--text-secondary)' }}>✏️ Texto</button>
           </div>
-          <button onClick={() => { setModo('realcar'); setTipoMarca('realce') }} title="Realce" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'realce' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'realce' ? '#fff' : 'var(--text-secondary)' }}>✎</button>
-          <button onClick={() => { setModo('realcar'); setTipoMarca('sublinhado') }} title="Sublinhado" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'sublinhado' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'sublinhado' ? '#fff' : 'var(--text-secondary)' }}><u>S</u></button>
-          {PALETA_REALCE.map(c => <button key={c} onClick={() => setCorRealce(c)} title="Cor do realce" style={{ width: 22, height: 22, borderRadius: 5, border: corRealce === c ? '2px solid var(--text-primary)' : '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
+          {modo === 'realcar' && <>
+            <button onClick={() => setTipoMarca('realce')} title="Realce" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'realce' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'realce' ? '#fff' : 'var(--text-secondary)' }}>✎</button>
+            <button onClick={() => setTipoMarca('sublinhado')} title="Sublinhado" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'sublinhado' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'sublinhado' ? '#fff' : 'var(--text-secondary)' }}><u>S</u></button>
+            {PALETA_REALCE.map(c => <button key={c} onClick={() => setCorRealce(c)} title="Cor do realce" style={{ width: 22, height: 22, borderRadius: 5, border: corRealce === c ? '2px solid var(--text-primary)' : '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
+          </>}
+          {modo === 'texto' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
+              <div style={{ fontSize: '.72rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                Selecione com o <b>mouse</b> ou <b>Shift + setas</b>. A seleção abre o menu de ações (enviar ao editor, perguntas, dicionário…). Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra sob o cursor). Tocar o Ctrl sobre um grifo o <b>remove</b>.
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Estilo</span>
+                <div style={{ display: 'flex', borderRadius: 7, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                  <button onClick={() => setGrifoCfg(c => ({ ...c, tipo: 'realce' }))} style={{ height: 28, padding: '0 10px', border: 'none', cursor: 'pointer', fontSize: '.72rem', fontWeight: 700, background: grifoCfg.tipo === 'realce' ? '#5b5bd6' : 'var(--surface)', color: grifoCfg.tipo === 'realce' ? '#fff' : 'var(--text-secondary)' }}>Marca-texto</button>
+                  <button onClick={() => setGrifoCfg(c => ({ ...c, tipo: 'sublinhado' }))} style={{ height: 28, padding: '0 10px', border: 'none', borderLeft: '1px solid var(--border)', cursor: 'pointer', fontSize: '.72rem', fontWeight: 700, background: grifoCfg.tipo === 'sublinhado' ? '#5b5bd6' : 'var(--surface)', color: grifoCfg.tipo === 'sublinhado' ? '#fff' : 'var(--text-secondary)' }}>Linha</button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46, paddingTop: 4 }}>Cor</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 5, flex: 1 }}>
+                  {PALETA_GRIFO.map(c => <button key={c} onClick={() => setGrifoCfg(cfg => ({ ...cfg, cor: c }))} title={c} style={{ width: 24, height: 24, borderRadius: 5, border: grifoCfg.cor === c ? '2px solid var(--text-primary)' : '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Opacidade</span>
+                <input type="range" min={0.12} max={1} step={0.02} value={grifoCfg.opac} onChange={e => setGrifoCfg(c => ({ ...c, opac: Number(e.target.value) }))} style={{ flex: 1 }} />
+                <span style={{ fontSize: '.66rem', color: 'var(--text-muted)', width: 34, textAlign: 'right' }}>{Math.round(grifoCfg.opac * 100)}%</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Amostra</span>
+                <span style={{ position: 'relative', fontSize: '.82rem', color: 'var(--text-primary)', padding: '1px 3px' }}>
+                  <span style={{ position: 'absolute', inset: 0, borderRadius: 2, ...(grifoCfg.tipo === 'sublinhado' ? { top: 'auto', height: 2.5, background: grifoCfg.cor, opacity: grifoCfg.opac } : { background: grifoCfg.cor, opacity: grifoCfg.opac, mixBlendMode: 'multiply' as any }) }} />
+                  <span style={{ position: 'relative' }}>texto de exemplo</span>
+                </span>
+              </div>
+            </div>
+          )}
           <button onClick={limparAnotacoes} title="Limpar realces deste PDF" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🧽 Limpar</button>
         </HoverMenu>
 
@@ -2414,7 +2555,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         {reader && numPages > 0 && (
           <ReaderMode numPages={numPages} startPage={curPageRef.current} getPageText={textoDaPagina} nome={nome} onClose={() => setReader(false)} />
         )}
-        <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll}
+        <div ref={wrapRef} onMouseDown={onDown} onScroll={onScroll} className={modo === 'texto' ? 'pr-textmode' : undefined}
           style={{ position: 'absolute', top: numPages && !foco && !secondary ? barraH : 0, bottom: 0, left: thumbsOpen && numPages ? 120 : 0, right: chat.open && numPages ? 332 : 0, overflow: 'auto', padding: foco ? '40px 8%' : 18, background: foco ? 'var(--card-bg)' : 'var(--bg-subtle, #1112)', transition: 'padding .25s', ['--pr-filter' as any]: tomFilter(tom) }}>
           {!numPages && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18, color: 'var(--text-muted)', fontSize: '0.9rem', padding: 20 }}>
@@ -4284,6 +4425,10 @@ export default function PDFReader() {
         .pr-page canvas{position:relative;z-index:1;display:block;filter:var(--pr-filter,none)}
         .pr-textlayer{position:absolute;top:0;left:0;overflow:hidden;line-height:1;z-index:3;transform-origin:0 0;opacity:1;user-select:none}
         .pr-textlayer span,.pr-textlayer br{color:transparent;position:absolute;white-space:pre;cursor:crosshair;transform-origin:0 0;user-select:none}
+        /* cursor de texto: seleção nativa habilitada para grifar pelo teclado */
+        .pr-textmode .pr-page{cursor:text}
+        .pr-textmode .pr-textlayer span{user-select:text !important;cursor:text}
+        .pr-textmode .pr-textlayer ::selection{background:rgba(91,91,214,.35)}
         .pr-row{display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:7px;font-size:.82rem;color:var(--text-secondary)}
         .pr-row:hover{background:var(--surface)}
         .pr-acts{display:none;gap:1px;flex-shrink:0}
