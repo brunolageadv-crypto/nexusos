@@ -2262,7 +2262,113 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     try { const c = document.createRange(); c.setStart(range.endContainer, range.endOffset); c.collapse(true); sel.removeAllRanges(); sel.addRange(c) } catch { sel.removeAllRanges() }
     if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
   }
-  // ── modo Texto: cursor de texto navegável (setas/Enter) e grifo por Ctrl ──
+  // ── navegação do cursor de texto por GEOMETRIA (setas/Home/End reais, mesmo com texto absoluto) ──
+  const focoRect = () => {
+    const sel = window.getSelection(); if (!sel || sel.focusNode == null) return null
+    const r = document.createRange(); try { r.setStart(sel.focusNode, sel.focusOffset) } catch { return null }
+    r.collapse(true); const rc = r.getClientRects()[0] || r.getBoundingClientRect(); if (!rc) return null
+    return { x: rc.left, top: rc.top, bottom: rc.bottom, mid: (rc.top + rc.bottom) / 2, h: (rc.bottom - rc.top) || 14 }
+  }
+  const posDoPonto = (x: number, y: number) => {
+    const d: any = document; let node: any, offset = 0
+    if (d.caretRangeFromPoint) { const rr = d.caretRangeFromPoint(x, y); if (rr) { node = rr.startContainer; offset = rr.startOffset } }
+    else if (d.caretPositionFromPoint) { const p = d.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; offset = p.offset } }
+    if (!node) return null
+    const host = node.nodeType === 1 ? node : node.parentElement
+    if (!host?.closest?.('.pr-textlayer')) return null
+    return { node, offset }
+  }
+  const aplicarCaret = (pos: any, extend: boolean) => {
+    const sel = window.getSelection(); if (!sel || !pos) return false
+    const tl = ((pos.node.nodeType === 1 ? pos.node : pos.node.parentElement) as HTMLElement)?.closest?.('.pr-textlayer') as HTMLElement
+    try { if (extend) { sel.extend(pos.node, pos.offset) } else { tl?.focus?.({ preventScroll: true }); const r = document.createRange(); r.setStart(pos.node, pos.offset); r.collapse(true); sel.removeAllRanges(); sel.addRange(r) } } catch { return false }
+    return true
+  }
+  const paginaDoFoco = () => {
+    const sel = window.getSelection(); const n = sel?.focusNode; const host = n ? (n.nodeType === 1 ? n as HTMLElement : n.parentElement) : null
+    return (host?.closest?.('.pr-page') as HTMLElement) || null
+  }
+  const linhasDaPagina = (pageEl: HTMLElement) => {
+    const tl = pageEl.querySelector('.pr-textlayer'); if (!tl) return [] as any[]
+    const linhas: any[] = []
+    tl.querySelectorAll('span').forEach((s: any) => {
+      const r = s.getBoundingClientRect(); if (r.height < 1 || r.width < 1) return
+      const mid = (r.top + r.bottom) / 2
+      const L = linhas.find(l => Math.abs(l.mid - mid) < (r.bottom - r.top) * 0.6)
+      if (L) { L.top = Math.min(L.top, r.top); L.bottom = Math.max(L.bottom, r.bottom); L.left = Math.min(L.left, r.left); L.right = Math.max(L.right, r.right); L.mid = (L.top + L.bottom) / 2 }
+      else linhas.push({ top: r.top, bottom: r.bottom, mid, left: r.left, right: r.right })
+    })
+    linhas.sort((a, b) => a.mid - b.mid)
+    return linhas
+  }
+  const rolarParaFoco = () => {
+    const wrap = wrapRef.current; const fr = focoRect(); if (!wrap || !fr) return
+    const wr = wrap.getBoundingClientRect()
+    if (fr.top < wr.top + 50) wrap.scrollTop -= (wr.top + 50 - fr.top)
+    else if (fr.bottom > wr.bottom - 50) wrap.scrollTop += (fr.bottom - (wr.bottom - 50))
+  }
+  const irLinhaVizinhaPagina = (pageEl: HTMLElement, dir: 1 | -1, x: number, extend: boolean) => {
+    const nb = pageElsRef.current[Number(pageEl.dataset.page) + dir]; if (!nb) return false
+    const tenta = () => {
+      const ls = linhasDaPagina(nb); if (!ls.length) return false
+      const l = dir === 1 ? ls[0] : ls[ls.length - 1]
+      const px = Math.max(l.left + 1, Math.min(x, l.right - 1))
+      const pos = posDoPonto(px, l.mid); if (!pos) return false
+      aplicarCaret(pos, extend); rolarParaFoco(); return true
+    }
+    if (tenta()) return true
+    nb.scrollIntoView({ block: dir === 1 ? 'start' : 'end' }); setTimeout(tenta, 150)   // renderiza a página vizinha e tenta de novo
+    return true
+  }
+  const navVertical = (dir: 1 | -1, extend: boolean) => {
+    const fr = focoRect(); const pg = paginaDoFoco(); if (!fr || !pg) return
+    const ls = linhasDaPagina(pg)
+    let idx = ls.findIndex(l => fr.mid >= l.top - 1 && fr.mid <= l.bottom + 1)
+    if (idx < 0) idx = ls.findIndex(l => l.mid > fr.mid)
+    const ni = idx + dir
+    if (idx >= 0 && ni >= 0 && ni < ls.length) {
+      const l = ls[ni]; const px = Math.max(l.left + 1, Math.min(fr.x, l.right - 1))
+      const pos = posDoPonto(px, l.mid); if (pos) { aplicarCaret(pos, extend); rolarParaFoco(); return }
+    }
+    irLinhaVizinhaPagina(pg, dir, fr.x, extend)
+  }
+  const navHorizontal = (dir: 1 | -1, extend: boolean) => {
+    const sel = window.getSelection(); if (!sel) return
+    const antes = focoRect(); const pg = paginaDoFoco()
+    try { (sel as any).modify(extend ? 'extend' : 'move', dir === 1 ? 'forward' : 'backward', 'character') } catch { return }
+    const depois = focoRect()
+    if (!antes || !depois || !pg) { rolarParaFoco(); return }
+    // salto anômalo (ordem DOM ≠ visual) → corrige para início da próxima linha / fim da anterior / próxima página
+    if (Math.abs(depois.mid - antes.mid) > antes.h * 1.6) {
+      const ls = linhasDaPagina(pg)
+      const idx = ls.findIndex(l => antes.mid >= l.top - 1 && antes.mid <= l.bottom + 1)
+      if (idx >= 0) {
+        const alvo = ls[idx + dir]
+        if (alvo) { const px = dir === 1 ? alvo.left + 1 : alvo.right - 1; const pos = posDoPonto(px, alvo.mid); if (pos) { aplicarCaret(pos, extend); rolarParaFoco(); return } }
+        else { irLinhaVizinhaPagina(pg, dir, dir === 1 ? 0 : 99999, extend); return }
+      }
+    }
+    rolarParaFoco()
+  }
+  const navHomeEnd = (fim: boolean, extend: boolean) => {
+    const fr = focoRect(); const pg = paginaDoFoco(); if (!fr || !pg) return
+    const l = linhasDaPagina(pg).find(l => fr.mid >= l.top - 1 && fr.mid <= l.bottom + 1); if (!l) return
+    const pos = posDoPonto(fim ? l.right - 1 : l.left + 1, l.mid); if (pos) { aplicarCaret(pos, extend); rolarParaFoco() }
+  }
+  const navTeclado = (e: KeyboardEvent): boolean => {
+    const ex = e.shiftKey
+    switch (e.key) {
+      case 'ArrowDown': e.preventDefault(); navVertical(1, ex); return true
+      case 'ArrowUp': e.preventDefault(); navVertical(-1, ex); return true
+      case 'ArrowRight': e.preventDefault(); navHorizontal(1, ex); return true
+      case 'ArrowLeft': e.preventDefault(); navHorizontal(-1, ex); return true
+      case 'Home': e.preventDefault(); navHomeEnd(false, ex); return true
+      case 'End': e.preventDefault(); navHomeEnd(true, ex); return true
+      case 'Enter': e.preventDefault(); navVertical(1, false); return true
+      default: return false
+    }
+  }
+  // ── modo Texto: cursor navegável (setas/Home/End/Enter), grifo por Ctrl, cor por Alt ──
   useEffect(() => {
     aplicarEditavelTodas()                         // liga/desliga o cursor de texto nas camadas já renderizadas
     if (modo !== 'texto') { setPopup(null); return }
@@ -2283,7 +2389,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       if (e.key === 'Alt') { e.preventDefault(); if (!altDown) { altDown = true; altCombo = false } if (ctrlDown) ctrlCombo = true; return }
       if (ctrlDown) ctrlCombo = true
       if (altDown) altCombo = true
-      if (e.key === 'Enter') { e.preventDefault(); const sel = window.getSelection(); if (sel && sel.rangeCount) { try { (sel as any).modify('move', 'forward', 'line') } catch {} } }
+      if (!e.ctrlKey && !e.altKey && !e.metaKey && navTeclado(e)) return
     }
     const ku = (e: KeyboardEvent) => {
       if (e.key === 'Control') { if (ctrlDown && !ctrlCombo) grifarSelecao(); ctrlDown = false; return }
