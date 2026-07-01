@@ -1654,6 +1654,15 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   useEffect(() => { try { localStorage.setItem('pr_grifo_cfg', JSON.stringify(grifoCfg)) } catch {} }, [grifoCfg])
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
   const modoRef = useRef(modo); modoRef.current = modo
+  // liga/desliga o cursor de texto: camada de texto vira editável (com edição bloqueada) → cursor nativo + setas
+  const aplicarEditavelTL = (tl: HTMLElement) => {
+    const on = modoRef.current === 'texto'
+    tl.contentEditable = on ? 'true' : 'false'
+    tl.setAttribute('spellcheck', 'false')
+    tl.style.caretColor = on ? '#5b5bd6' : ''
+    tl.style.outline = 'none'
+  }
+  const aplicarEditavelTodas = () => { wrapRef.current?.querySelectorAll('.pr-textlayer').forEach(tl => aplicarEditavelTL(tl as HTMLElement)) }
   const tipoRef = useRef(tipoMarca); tipoRef.current = tipoMarca
   const [corRealce, setCorRealce] = useState('#fff3a3')
   const corRef = useRef(corRealce); corRef.current = corRealce
@@ -1964,6 +1973,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       await page.render({ canvasContext: ctx, viewport: vp }).promise
       let tl = el.querySelector('.pr-textlayer') as HTMLElement
       if (!tl) { tl = document.createElement('div'); tl.className = 'pr-textlayer'; el.appendChild(tl) }
+      aplicarEditavelTL(tl)
       tl.innerHTML = ''; tl.style.width = vp.width + 'px'; tl.style.height = vp.height + 'px'; tl.style.setProperty('--scale-factor', String(sc))
       const tc = tcRef.current[pn] || await page.getTextContent(); tcRef.current[pn] = tc
       try { const t = lib.renderTextLayer({ textContentSource: tc, container: tl, viewport: vp, textDivs: [] }); await (t.promise || t) }
@@ -2261,23 +2271,59 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     const acc = acumRef.current; const r = info.rect
     setPopup({ x: (r.left + r.right) / 2, y: Math.max(8, r.top - 8), text: info.texto, shown: acc ? prNormalize(acc + ' ' + info.texto) : info.texto })
   }
-  // detecta o "toque" no Ctrl (pressionar e soltar sem outra tecla) para grifar — não conflita com Ctrl+F/C/V
+  // ── modo Texto: cursor de texto navegável (setas/Enter), grifo por Ctrl e popup só na seleção com mouse ──
   useEffect(() => {
-    if (modo !== 'texto') return
+    aplicarEditavelTodas()                         // liga/desliga o cursor de texto nas camadas já renderizadas
+    if (modo !== 'texto') { setPopup(null); return }
+    const wrap = wrapRef.current
+
+    // torna a camada de texto "somente leitura": permite navegar/selecionar, bloqueia digitar/apagar/colar
+    const bloquear = (e: Event) => { e.preventDefault() }
+    wrap?.addEventListener('beforeinput', bloquear, true)
+    wrap?.addEventListener('paste', bloquear, true)
+    wrap?.addEventListener('cut', bloquear, true)
+    wrap?.addEventListener('drop', bloquear, true)
+    wrap?.addEventListener('dragstart', bloquear, true)
+
+    // Ctrl (toque, sem combinar com outra tecla) grifa a seleção/palavra; Enter move o cursor uma linha abaixo
     let ctrlDown = false, combinou = false
     const kd = (e: KeyboardEvent) => {
-      if (e.key === 'Control') { if (!ctrlDown) { ctrlDown = true; combinou = false } }
-      else if (ctrlDown) combinou = true
+      if (e.key === 'Control') { if (!ctrlDown) { ctrlDown = true; combinou = false } return }
+      if (ctrlDown) combinou = true
+      if (e.key === 'Enter') { e.preventDefault(); const sel = window.getSelection(); if (sel && sel.rangeCount) { try { (sel as any).modify('move', 'forward', 'line') } catch {} } }
     }
-    const ku = (e: KeyboardEvent) => {
-      if (e.key === 'Control') { if (ctrlDown && !combinou) grifarSelecao(); ctrlDown = false }
-    }
+    const ku = (e: KeyboardEvent) => { if (e.key === 'Control') { if (ctrlDown && !combinou) grifarSelecao(); ctrlDown = false } }
     document.addEventListener('keydown', kd, true)
     document.addEventListener('keyup', ku, true)
-    // seleção com o mouse abre o popup de ações (enviar ao editor, perguntas, dicionário, realçar, lido…)
-    const mu = (e: MouseEvent) => { const t = e.target as HTMLElement; if (t?.closest?.('.pr-pop')) return; if (!t?.closest?.('.pr-textmode')) return; setTimeout(mostrarPopupSelecao, 0) }
-    document.addEventListener('mouseup', mu, true)
-    return () => { document.removeEventListener('keydown', kd, true); document.removeEventListener('keyup', ku, true); document.removeEventListener('mouseup', mu, true) }
+
+    // popup de ações SOMENTE quando a seleção é feita com o mouse (arraste ou duplo-clique)
+    let md: { x: number; y: number; moved: boolean } | null = null
+    const onMd = (e: MouseEvent) => { const t = e.target as HTMLElement; if (t?.closest?.('.pr-pop')) return; md = t?.closest?.('.pr-textmode') ? { x: e.clientX, y: e.clientY, moved: false } : null }
+    const onMm = (e: MouseEvent) => { if (md && (Math.abs(e.clientX - md.x) > 4 || Math.abs(e.clientY - md.y) > 4)) md.moved = true }
+    const onMu = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (t?.closest?.('.pr-pop')) { md = null; return }
+      const info = md; md = null
+      const selecaoMouse = (!!info && info.moved) || e.detail >= 2   // arraste ou duplo-clique
+      if (selecaoMouse && t?.closest?.('.pr-textmode')) setTimeout(mostrarPopupSelecao, 0)
+      else setTimeout(() => { if (window.getSelection()?.isCollapsed) setPopup(null) }, 0)
+    }
+    document.addEventListener('mousedown', onMd, true)
+    document.addEventListener('mousemove', onMm, true)
+    document.addEventListener('mouseup', onMu, true)
+
+    return () => {
+      wrap?.removeEventListener('beforeinput', bloquear, true)
+      wrap?.removeEventListener('paste', bloquear, true)
+      wrap?.removeEventListener('cut', bloquear, true)
+      wrap?.removeEventListener('drop', bloquear, true)
+      wrap?.removeEventListener('dragstart', bloquear, true)
+      document.removeEventListener('keydown', kd, true)
+      document.removeEventListener('keyup', ku, true)
+      document.removeEventListener('mousedown', onMd, true)
+      document.removeEventListener('mousemove', onMm, true)
+      document.removeEventListener('mouseup', onMu, true)
+    }
   }, [modo])
   // (re)desenha os overlays a partir das frações (independe do zoom)
   const pintarPagina = (el: HTMLElement, n: number) => {
@@ -2393,7 +2439,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {modo === 'texto' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
               <div style={{ fontSize: '.72rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                Selecione com o <b>mouse</b> ou <b>Shift + setas</b>. A seleção abre o menu de ações (enviar ao editor, perguntas, dicionário…). Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra sob o cursor). Tocar o Ctrl sobre um grifo o <b>remove</b>.
+                <b>Clique</b> no texto para posicionar o cursor; use as <b>setas</b> e <b>Enter</b> para mover e <b>Shift + setas</b> para selecionar (ou selecione com o <b>mouse</b>). Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor). Tocar o Ctrl sobre um grifo o <b>remove</b>. A seleção com o mouse abre o menu de ações.
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Estilo</span>
@@ -4425,8 +4471,9 @@ export default function PDFReader() {
         .pr-page canvas{position:relative;z-index:1;display:block;filter:var(--pr-filter,none)}
         .pr-textlayer{position:absolute;top:0;left:0;overflow:hidden;line-height:1;z-index:3;transform-origin:0 0;opacity:1;user-select:none}
         .pr-textlayer span,.pr-textlayer br{color:transparent;position:absolute;white-space:pre;cursor:crosshair;transform-origin:0 0;user-select:none}
-        /* cursor de texto: seleção nativa habilitada para grifar pelo teclado */
+        /* cursor de texto: camada editável (edição bloqueada por JS) → cursor nativo navegável + seleção */
         .pr-textmode .pr-page{cursor:text}
+        .pr-textmode .pr-textlayer{caret-color:#5b5bd6;outline:none}
         .pr-textmode .pr-textlayer span{user-select:text !important;cursor:text}
         .pr-textmode .pr-textlayer ::selection{background:rgba(91,91,214,.35)}
         .pr-row{display:flex;align-items:center;gap:4px;padding:5px 6px;border-radius:7px;font-size:.82rem;color:var(--text-secondary)}
