@@ -1652,6 +1652,9 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     return { tipo: 'realce', cor: '#fff3a3', opac: 0.42 }
   })
   useEffect(() => { try { localStorage.setItem('pr_grifo_cfg', JSON.stringify(grifoCfg)) } catch {} }, [grifoCfg])
+  const [corPop, setCorPop] = useState<{ cor: string; tipo: string } | null>(null)   // avisa a cor atual ao trocar com Alt
+  const corPopTmr = useRef<any>(null)
+  const [grifosOpen, setGrifosOpen] = useState(false)                                  // janela com a relação de palavras grifadas
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
   const modoRef = useRef(modo); modoRef.current = modo
   // liga/desliga o cursor de texto: camada de texto vira editável (com edição bloqueada) → cursor nativo + setas
@@ -2174,12 +2177,13 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const aplicarAnotacao = (kind: 'realce' | 'sublinhado' | 'lido', cor?: string) => {
     const cap = lastCapRef.current; if (!cap || !cap.words.length) return
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+    const texto = joinWords(cap.words.map((w: any) => w.word))
     let added = false
     for (const w of cap.words) {
       if (!pageElsRef.current[w.page]) continue
       ;(anotRef.current[w.page] ||= [])
       let a = anotRef.current[w.page].find((x: any) => x.id === id)
-      if (!a) { a = { id, kind, cor: cor || '#fff3a3', rects: [] }; anotRef.current[w.page].push(a) }
+      if (!a) { a = { id, kind, cor: cor || '#fff3a3', texto, rects: [] }; anotRef.current[w.page].push(a) }
       a.rects.push(w.frac); added = true
     }
     if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
@@ -2194,6 +2198,19 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   }
   // ── CURSOR DE TEXTO: grifa a seleção nativa (ou a palavra sob o cursor) com um toque no Ctrl ──
   const grifoCfgRef = useRef(grifoCfg); useEffect(() => { grifoCfgRef.current = grifoCfg }, [grifoCfg])
+  // mostra um pequeno aviso flutuante com a cor atual (some após 2s)
+  const mostrarCorPop = (cor: string) => { clearTimeout(corPopTmr.current); setCorPop({ cor, tipo: grifoCfgRef.current.tipo }); corPopTmr.current = setTimeout(() => setCorPop(null), 2000) }
+  // Alt (toque) alterna a cor DENTRO do grupo atual (claros ↔ claros, vivos ↔ vivos)
+  const ciclarCorGrifo = () => {
+    const cor = grifoCfgRef.current.cor
+    const meio = Math.floor(PALETA_GRIFO.length / 2)
+    const i = PALETA_GRIFO.indexOf(cor)
+    const grupo = i >= meio ? PALETA_GRIFO.slice(meio) : PALETA_GRIFO.slice(0, meio)
+    const gi = Math.max(0, grupo.indexOf(cor))
+    const prox = grupo[(gi + 1) % grupo.length]
+    setGrifoCfg(c => ({ ...c, cor: prox }))
+    mostrarCorPop(prox)
+  }
   const grifarSelecao = () => {
     const sel = window.getSelection(); if (!sel || sel.rangeCount === 0) return
     // a seleção precisa estar dentro da camada de texto do PDF
@@ -2221,7 +2238,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       const n = Number(pg0.dataset.page); const pr = pg0.getBoundingClientRect()
       const fxp = (cx0 - pr.left) / pr.width, fyp = (cy0 - pr.top) / pr.height
       const hit = (anotRef.current[n] || []).find((a: any) => a.kind !== 'lido' && a.rects.some((r: any) => fxp >= r.fx && fxp <= r.fx + r.fw && fyp >= r.fy && fyp <= r.fy + r.fh))
-      if (hit) { removerAnot(n, hit.id); sel.removeAllRanges(); setPopup(null); return }
+      if (hit) { removerAnot(n, hit.id); try { const c = document.createRange(); c.setStart(range.endContainer, range.endOffset); c.collapse(true); sel.removeAllRanges(); sel.addRange(c) } catch { sel.removeAllRanges() }; return }
     }
     // agrupa os retângulos (um por linha) por página e grava a anotação
     const porPagina: Record<number, any[]> = {}
@@ -2233,45 +2250,19 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       ;(porPagina[n] ||= []).push({ fx: (rc.left - pr.left) / pr.width, fy: (rc.top - pr.top) / pr.height, fw: rc.width / pr.width, fh: rc.height / pr.height })
     }
     const cfg = grifoCfgRef.current
+    const texto = prNormalize(range.toString())
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
     let added = false
     for (const [n, fracs] of Object.entries(porPagina)) {
       if (!pageElsRef.current[Number(n)]) continue
-      ;(anotRef.current[Number(n)] ||= []).push({ id, kind: cfg.tipo, cor: cfg.cor, opac: cfg.opac, rects: fracs })
+      ;(anotRef.current[Number(n)] ||= []).push({ id, kind: cfg.tipo, cor: cfg.cor, opac: cfg.opac, texto, rects: fracs })
       added = true
     }
-    sel.removeAllRanges()
-    setPopup(null)
+    // mantém o cursor no FINAL da seleção para continuar movimentando com as setas
+    try { const c = document.createRange(); c.setStart(range.endContainer, range.endOffset); c.collapse(true); sel.removeAllRanges(); sel.addRange(c) } catch { sel.removeAllRanges() }
     if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
   }
-  // ── modo Texto: seleção nativa (mouse OU teclado) reaproveita o popup de ações do "Selecionar" ──
-  const wordsFromSelection = () => {
-    const sel = window.getSelection()
-    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null
-    const an = sel.anchorNode
-    const host = an && (an.nodeType === 1 ? (an as HTMLElement) : an.parentElement)
-    if (!host?.closest?.('.pr-textlayer')) return null
-    const range = sel.getRangeAt(0)
-    const linhas = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1)
-    if (!linhas.length) return null
-    const words: any[] = []; const seen = new Set<string>()
-    for (const lr of linhas) {
-      for (const w of collectInRect({ left: lr.left, top: lr.top, right: lr.right, bottom: lr.bottom }, 'center')) {
-        const k = w.page + ':' + Math.round(w.frac.fx * 1000) + ':' + Math.round(w.frac.fy * 1000)
-        if (!seen.has(k)) { seen.add(k); words.push(w) }
-      }
-    }
-    if (!words.length) return null
-    return { words, texto: prNormalize(sel.toString()), rect: linhas[0] }
-  }
-  const mostrarPopupSelecao = () => {
-    const info = wordsFromSelection()
-    if (!info) { setPopup(null); return }
-    lastCapRef.current = { words: info.words }
-    const acc = acumRef.current; const r = info.rect
-    setPopup({ x: (r.left + r.right) / 2, y: Math.max(8, r.top - 8), text: info.texto, shown: acc ? prNormalize(acc + ' ' + info.texto) : info.texto })
-  }
-  // ── modo Texto: cursor de texto navegável (setas/Enter), grifo por Ctrl e popup só na seleção com mouse ──
+  // ── modo Texto: cursor de texto navegável (setas/Enter) e grifo por Ctrl ──
   useEffect(() => {
     aplicarEditavelTodas()                         // liga/desliga o cursor de texto nas camadas já renderizadas
     if (modo !== 'texto') { setPopup(null); return }
@@ -2285,32 +2276,24 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     wrap?.addEventListener('drop', bloquear, true)
     wrap?.addEventListener('dragstart', bloquear, true)
 
-    // Ctrl (toque, sem combinar com outra tecla) grifa a seleção/palavra; Enter move o cursor uma linha abaixo
-    let ctrlDown = false, combinou = false
+    // Ctrl (toque) grifa a seleção/palavra; Alt (toque) troca a cor no grupo atual; Enter move o cursor uma linha
+    let ctrlDown = false, ctrlCombo = false, altDown = false, altCombo = false
     const kd = (e: KeyboardEvent) => {
-      if (e.key === 'Control') { if (!ctrlDown) { ctrlDown = true; combinou = false } return }
-      if (ctrlDown) combinou = true
+      if (e.key === 'Control') { if (!ctrlDown) { ctrlDown = true; ctrlCombo = false } if (altDown) altCombo = true; return }
+      if (e.key === 'Alt') { e.preventDefault(); if (!altDown) { altDown = true; altCombo = false } if (ctrlDown) ctrlCombo = true; return }
+      if (ctrlDown) ctrlCombo = true
+      if (altDown) altCombo = true
       if (e.key === 'Enter') { e.preventDefault(); const sel = window.getSelection(); if (sel && sel.rangeCount) { try { (sel as any).modify('move', 'forward', 'line') } catch {} } }
     }
-    const ku = (e: KeyboardEvent) => { if (e.key === 'Control') { if (ctrlDown && !combinou) grifarSelecao(); ctrlDown = false } }
+    const ku = (e: KeyboardEvent) => {
+      if (e.key === 'Control') { if (ctrlDown && !ctrlCombo) grifarSelecao(); ctrlDown = false; return }
+      if (e.key === 'Alt') { e.preventDefault(); if (altDown && !altCombo) ciclarCorGrifo(); altDown = false; return }
+    }
     document.addEventListener('keydown', kd, true)
     document.addEventListener('keyup', ku, true)
 
-    // popup de ações SOMENTE quando a seleção é feita com o mouse (arraste ou duplo-clique)
-    let md: { x: number; y: number; moved: boolean } | null = null
-    const onMd = (e: MouseEvent) => { const t = e.target as HTMLElement; if (t?.closest?.('.pr-pop')) return; md = t?.closest?.('.pr-textmode') ? { x: e.clientX, y: e.clientY, moved: false } : null }
-    const onMm = (e: MouseEvent) => { if (md && (Math.abs(e.clientX - md.x) > 4 || Math.abs(e.clientY - md.y) > 4)) md.moved = true }
-    const onMu = (e: MouseEvent) => {
-      const t = e.target as HTMLElement
-      if (t?.closest?.('.pr-pop')) { md = null; return }
-      const info = md; md = null
-      const selecaoMouse = (!!info && info.moved) || e.detail >= 2   // arraste ou duplo-clique
-      if (selecaoMouse && t?.closest?.('.pr-textmode')) setTimeout(mostrarPopupSelecao, 0)
-      else setTimeout(() => { if (window.getSelection()?.isCollapsed) setPopup(null) }, 0)
-    }
-    document.addEventListener('mousedown', onMd, true)
-    document.addEventListener('mousemove', onMm, true)
-    document.addEventListener('mouseup', onMu, true)
+    // no modo Texto o mouse apenas posiciona o cursor (comportamento nativo) — sem popup.
+    // O popup de ações fica no modo "Selecionar".
 
     return () => {
       wrap?.removeEventListener('beforeinput', bloquear, true)
@@ -2320,9 +2303,6 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       wrap?.removeEventListener('dragstart', bloquear, true)
       document.removeEventListener('keydown', kd, true)
       document.removeEventListener('keyup', ku, true)
-      document.removeEventListener('mousedown', onMd, true)
-      document.removeEventListener('mousemove', onMm, true)
-      document.removeEventListener('mouseup', onMu, true)
     }
   }, [modo])
   // (re)desenha os overlays a partir das frações (independe do zoom)
@@ -2439,7 +2419,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {modo === 'texto' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
               <div style={{ fontSize: '.72rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                <b>Clique</b> no texto para posicionar o cursor; use as <b>setas</b> e <b>Enter</b> para mover e <b>Shift + setas</b> para selecionar (ou selecione com o <b>mouse</b>). Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor). Tocar o Ctrl sobre um grifo o <b>remove</b>. A seleção com o mouse abre o menu de ações.
+                <b>Clique</b> para posicionar o cursor; use as <b>setas</b> e o <b>Enter</b> para mover e <b>Shift + setas</b> (ou o mouse) para selecionar. Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor) — o cursor fica no fim para continuar. Tocar o Ctrl sobre um grifo o <b>remove</b>. Para enviar trechos ao editor, use o modo <b>Selecionar</b>.
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Estilo</span>
@@ -2466,6 +2446,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
                   <span style={{ position: 'relative' }}>texto de exemplo</span>
                 </span>
               </div>
+              <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>Dica: um <b>toque no Alt</b> alterna a cor dentro do grupo (claros ou vivos).</div>
+              <button onClick={() => setGrifosOpen(true)} style={{ ...btn, width: '100%', padding: '0 10px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>📑 Palavras grifadas</button>
             </div>
           )}
           <button onClick={limparAnotacoes} title="Limpar realces deste PDF" style={{ ...btn, width: 'auto', padding: '0 8px' }}>🧽 Limpar</button>
@@ -2717,6 +2699,53 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       </div>
 
       {/* POP-UP DE DECISÃO — mostra o texto capturado */}
+      {/* aviso flutuante da cor atual (troca com Alt) — some após 2s */}
+      {corPop && createPortal(
+        <div style={{ position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 9998, display: 'flex', alignItems: 'center', gap: 9, padding: '9px 14px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 999, boxShadow: '0 10px 30px rgba(0,0,0,.32)', pointerEvents: 'none' }}>
+          <span style={{ width: 22, height: 22, borderRadius: corPop.tipo === 'sublinhado' ? 4 : 6, background: corPop.cor, border: '1px solid var(--border)' }} />
+          <span style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{corPop.tipo === 'sublinhado' ? 'Linha' : 'Marca-texto'} · {corPop.cor}</span>
+        </div>, document.body)}
+
+      {/* janela: relação das palavras grifadas (texto + cor) */}
+      {grifosOpen && createPortal(
+        <div onMouseDown={() => setGrifosOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9200, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onMouseDown={e => e.stopPropagation()} style={{ width: 560, maxWidth: '95vw', height: 'min(84vh, 720px)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '1.1rem' }}>📑</span>
+              <b style={{ fontSize: '.95rem', color: 'var(--text-primary)' }}>Palavras grifadas</b>
+              <span style={{ flex: 1 }} />
+              <button onClick={() => setGrifosOpen(false)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer' }}>✕</button>
+            </div>
+            {(() => {
+              const itens: any[] = []; const vistos = new Set<string>()
+              Object.keys(anotRef.current).forEach(k => { const n = Number(k); (anotRef.current[n] || []).forEach((a: any) => { if (a.kind === 'lido' || vistos.has(a.id)) return; vistos.add(a.id); itens.push({ page: n, id: a.id, cor: a.cor, kind: a.kind, texto: a.texto || '' }) }) })
+              itens.sort((a, b) => a.page - b.page)
+              return (
+                <>
+                  <div style={{ padding: '8px 16px', fontSize: '.74rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>{itens.length} destaque(s) neste PDF</div>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {itens.length === 0 && <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '.85rem', padding: 30 }}>Nenhuma palavra grifada ainda. Ative o modo ✏️ Texto e toque no Ctrl para grifar.</div>}
+                    {itens.map(it => (
+                      <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)' }}>
+                        <span title={it.kind === 'sublinhado' ? 'Linha' : 'Marca-texto'} style={{ width: 18, height: 18, flexShrink: 0, borderRadius: it.kind === 'sublinhado' ? 3 : 5, background: it.cor, border: '1px solid var(--border)' }} />
+                        <span style={{ flex: 1, minWidth: 0, fontSize: '.84rem', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.texto || <i style={{ color: 'var(--text-muted)' }}>(trecho sem texto)</i>}</span>
+                        <button onClick={() => { irParaPagina(it.page); setGrifosOpen(false) }} title={`Ir para a página ${it.page}`} style={{ ...btn, width: 'auto', padding: '0 8px', fontSize: '.72rem', flexShrink: 0 }}>p.{it.page}</button>
+                        <button onClick={() => removerAnot(it.page, it.id)} title="Remover este destaque" style={{ ...btn, width: 30, padding: 0, flexShrink: 0 }}>🗑️</button>
+                      </div>
+                    ))}
+                  </div>
+                  {itens.length > 0 && (
+                    <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+                      <button onClick={() => { try { navigator.clipboard?.writeText(itens.map(i => `• ${i.texto} (p.${i.page})`).join('\n')) } catch {} }} style={{ ...btn, width: 'auto', padding: '0 12px' }}>📋 Copiar lista</button>
+                      {onExtract && <button onClick={() => onExtract('Palavras grifadas:\n' + itens.map(i => `• ${i.texto}`).join('\n'))} style={{ ...btn, width: 'auto', padding: '0 12px' }}>➜ Enviar ao editor</button>}
+                    </div>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        </div>, document.body)}
+
       {popup && createPortal(<>
         <div onMouseDown={() => setPopup(null)} style={{ position: 'fixed', inset: 0, zIndex: 6500 }} />
         <div className="pr-pop" style={{ position: 'fixed', left: popupPos.x, top: popupPos.y, zIndex: 6501, display: 'flex', flexDirection: 'column', gap: 10, padding: 14, background: 'color-mix(in srgb, var(--card-bg) 80%, transparent)', backdropFilter: 'blur(16px) saturate(1.3)', WebkitBackdropFilter: 'blur(16px) saturate(1.3)', border: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', borderRadius: 18, boxShadow: '0 20px 60px rgba(0,0,0,0.4)', width: 344 }}>
