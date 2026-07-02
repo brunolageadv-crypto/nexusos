@@ -2198,6 +2198,19 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   }
   // ── CURSOR DE TEXTO: grifa a seleção nativa (ou a palavra sob o cursor) com um toque no Ctrl ──
   const grifoCfgRef = useRef(grifoCfg); useEffect(() => { grifoCfgRef.current = grifoCfg }, [grifoCfg])
+  // histórico dos grifos feitos no modo texto → permite desfazer o último (Z / Tab / Ctrl+Z)
+  const grifoHistRef = useRef<string[]>([])
+  const desfazerGrifo = () => {
+    while (grifoHistRef.current.length) {
+      const id = grifoHistRef.current.pop()!
+      let mudou = false
+      Object.keys(anotRef.current).forEach(k => {
+        const n = Number(k); const list = anotRef.current[n]; const nova = list.filter((a: any) => a.id !== id)
+        if (nova.length !== list.length) { mudou = true; if (nova.length) anotRef.current[n] = nova; else delete anotRef.current[n] }
+      })
+      if (mudou) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1); return }   // removeu um existente
+    }
+  }
   // mostra um pequeno aviso flutuante com a cor atual (some após 2s)
   const mostrarCorPop = (cor: string) => { clearTimeout(corPopTmr.current); setCorPop({ cor, tipo: grifoCfgRef.current.tipo }); corPopTmr.current = setTimeout(() => setCorPop(null), 2000) }
   // Alt (toque) alterna a cor DENTRO do grupo atual (claros ↔ claros, vivos ↔ vivos)
@@ -2238,7 +2251,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       const n = Number(pg0.dataset.page); const pr = pg0.getBoundingClientRect()
       const fxp = (cx0 - pr.left) / pr.width, fyp = (cy0 - pr.top) / pr.height
       const hit = (anotRef.current[n] || []).find((a: any) => a.kind !== 'lido' && a.rects.some((r: any) => fxp >= r.fx && fxp <= r.fx + r.fw && fyp >= r.fy && fyp <= r.fy + r.fh))
-      if (hit) { removerAnot(n, hit.id); try { const c = document.createRange(); c.setStart(range.endContainer, range.endOffset); c.collapse(true); sel.removeAllRanges(); sel.addRange(c) } catch { sel.removeAllRanges() }; return }
+      if (hit) { removerAnot(n, hit.id); grifoHistRef.current = grifoHistRef.current.filter(x => x !== hit.id); try { const c = document.createRange(); c.setStart(range.endContainer, range.endOffset); c.collapse(true); sel.removeAllRanges(); sel.addRange(c) } catch { sel.removeAllRanges() }; return }
     }
     // agrupa os retângulos (um por linha) por página e grava a anotação
     const porPagina: Record<number, any[]> = {}
@@ -2258,6 +2271,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       ;(anotRef.current[Number(n)] ||= []).push({ id, kind: cfg.tipo, cor: cfg.cor, opac: cfg.opac, texto, rects: fracs })
       added = true
     }
+    if (added) grifoHistRef.current.push(id)   // guarda para o "desfazer"
     // mantém o cursor no FINAL da seleção para continuar movimentando com as setas
     try { const c = document.createRange(); c.setStart(range.endContainer, range.endOffset); c.collapse(true); sel.removeAllRanges(); sel.addRange(c) } catch { sel.removeAllRanges() }
     if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
@@ -2389,6 +2403,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       if (e.key === 'Alt') { e.preventDefault(); if (!altDown) { altDown = true; altCombo = false } if (ctrlDown) ctrlCombo = true; return }
       if (ctrlDown) ctrlCombo = true
       if (altDown) altCombo = true
+      if ((e.key === 'z' || e.key === 'Z' || e.key === 'Tab') && !e.altKey && !e.metaKey) { e.preventDefault(); desfazerGrifo(); return }   // desfazer último grifo
       if (!e.ctrlKey && !e.altKey && !e.metaKey && navTeclado(e)) return
     }
     const ku = (e: KeyboardEvent) => {
@@ -2525,7 +2540,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {modo === 'texto' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
               <div style={{ fontSize: '.72rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                <b>Clique</b> para posicionar o cursor; use as <b>setas</b> e o <b>Enter</b> para mover e <b>Shift + setas</b> (ou o mouse) para selecionar. Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor) — o cursor fica no fim para continuar. Tocar o Ctrl sobre um grifo o <b>remove</b>. Para enviar trechos ao editor, use o modo <b>Selecionar</b>.
+                <b>Clique</b> para posicionar o cursor; use as <b>setas</b> e o <b>Enter</b> para mover e <b>Shift + setas</b> (ou o mouse) para selecionar. Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor) — o cursor fica no fim para continuar. <b>Z</b>, <b>Tab</b> ou <b>Ctrl+Z</b> desfazem a última marcação; tocar o Ctrl sobre um grifo também o <b>remove</b>. Para enviar trechos ao editor, use o modo <b>Selecionar</b>.
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Estilo</span>
