@@ -110,7 +110,7 @@ function brData(iso?: string) { return iso ? iso.split('-').reverse().join('/') 
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 interface Pasta { id: string; nome: string; parent: string; cor: string; criadoEm: number }
-interface Bloco { id: string; html: string; nivel: number; aberto: boolean; cor: string; resp?: string; res?: 'a' | 'e'; data?: string; pct?: number; fb?: string }
+interface Bloco { id: string; html: string; nivel: number; aberto: boolean; cor: string; resp?: string; res?: 'a' | 'e'; data?: string; pct?: number; fb?: string; grupo?: boolean }
 interface DocT { id: string; pasta: string; titulo: string; cor: string; blocos: Bloco[]; updatedAt: number; numerado?: boolean }
 
 const PALETA = ['#7c3aed', '#0891b2', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#6366f1', '#64748b']
@@ -132,6 +132,8 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
   const [impBusy, setImpBusy] = useState(false)
   const [estudoAberto, setEstudoAberto] = useState<Record<string, boolean>>({})
   const [conferindo, setConferindo] = useState<Record<string, boolean>>({})
+  // modo flashcard (por grupo): baralho de cartões pergunta/resposta
+  const [flash, setFlash] = useState<{ titulo: string; cards: { p: string; r: string }[]; idx: number; virado: boolean } | null>(null)
   // destino de importação / mover arquivo (escolha de pasta)
   const [destino, setDestino] = useState<{ tipo: 'import'; file: File } | { tipo: 'mover'; docId: string } | null>(null)
 
@@ -273,6 +275,45 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
   function marcarResultado(i: number, res: 'a' | 'e') { setBlocoCampo(i, { res: blocos[i].res === res ? undefined : res, data: blocos[i].res === res ? undefined : hojeISO() }) }
   // limpa a resposta digitada e a correção da IA (mantém o histórico de acerto/erro) — permite reestudar do zero
   function limparResposta(i: number) { setBlocoCampo(i, { resp: '', pct: undefined, fb: undefined }) }
+  // ── grupos de perguntas (títulos que contêm e recolhem as perguntas) ──
+  function listaGrupos(): { id: string; titulo: string; idx: number }[] {
+    return blocos.map((b, i) => ({ b, i })).filter(x => x.b.grupo).map(x => ({ id: x.b.id, titulo: stripHtml(x.b.html) || 'Grupo', idx: x.i }))
+  }
+  function contaPerguntasGrupo(gi: number): number { let n = 0; for (let j = gi + 1; j < blocos.length && !blocos[j].grupo; j++) if (blocos[j].nivel === 0) n++; return n }
+  function novoGrupo() {
+    if (!doc_) return
+    const nome = window.prompt('Nome do grupo:', 'Novo grupo'); if (nome === null) return
+    const bs = blocos.slice(); bs.push({ ...blocoVazio(0), grupo: true, aberto: true, html: `<b>${escapeHtml(nome || 'Novo grupo')}</b>` }); setBlocos(bs)
+  }
+  // move a pergunta i (com suas respostas aninhadas) para o fim do grupo gId
+  function moverParaGrupo(i: number, gId: string) {
+    const bs = blocos.slice(); const fim = fimSubarvore(bs, i); const bloco = bs.slice(i, fim + 1)
+    bs.splice(i, bloco.length)
+    const gIdx = bs.findIndex(b => b.id === gId && b.grupo); if (gIdx < 0) return
+    let ins = gIdx + 1; while (ins < bs.length && !bs[ins].grupo) ins++
+    bs.splice(ins, 0, ...bloco); setBlocos(bs)
+  }
+  // negrito em massa nas perguntas (todas em negrito, ou tirar de todas)
+  function negritoTodas(on: boolean) {
+    const bs = blocos.map(b => {
+      if (b.nivel !== 0 || b.grupo) return b
+      const semB = b.html.replace(/<\/?(b|strong)>/gi, '').replace(/font-weight\s*:\s*(bold|[5-9]00)\s*;?/gi, '')
+      return { ...b, html: on ? `<b>${semB}</b>` : semB }
+    })
+    setBlocos(bs)
+  }
+  // monta os cartões (pergunta/resposta) de um grupo para o modo flashcard
+  function cardsDoGrupo(gi: number): { p: string; r: string }[] {
+    const cards: { p: string; r: string }[] = []
+    for (let j = gi + 1; j < blocos.length && !blocos[j].grupo; j++) {
+      if (blocos[j].nivel !== 0) continue
+      let r = ''
+      for (let k = j + 1; k < blocos.length && !blocos[k].grupo && blocos[k].nivel > 0; k++) r += `<div style="margin:3px 0">${blocos[k].html}</div>`
+      cards.push({ p: blocos[j].html || '(sem pergunta)', r: r || '<i style="opacity:.55">(sem resposta cadastrada)</i>' })
+    }
+    return cards
+  }
+  function abrirFlashcards(gi: number, titulo: string) { const cards = cardsDoGrupo(gi); if (!cards.length) { alert('Este grupo não tem perguntas ainda.'); return } setFlash({ titulo, cards, idx: 0, virado: false }) }
   async function conferirIA(i: number) {
     const minha = (blocos[i].resp || '').trim()
     if (!minha) { alert('Escreva sua resposta primeiro.'); return }
@@ -314,15 +355,21 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
   }
   function focar(id: string) { const el = document.querySelector(`[data-bloco="${id}"]`) as HTMLElement | null; if (el) { el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r) } }
 
-  // visibilidade (collapse): pula descendentes de blocos fechados
+  // visibilidade (collapse): grupos recolhem suas perguntas; blocos fechados pulam descendentes
   const visiveis = useMemo(() => {
-    const out: number[] = []; let corte = -1
-    blocos.forEach((b, i) => { if (corte >= 0) { if (b.nivel > corte) return; corte = -1 } out.push(i); if (!b.aberto && i < blocos.length - 1 && blocos[i + 1].nivel > b.nivel) corte = b.nivel })
+    const out: number[] = []; let corte = -1; let grupoFechado = false
+    blocos.forEach((b, i) => {
+      if (b.grupo) { grupoFechado = b.aberto === false; corte = -1; out.push(i); return }  // título de grupo: sempre visível
+      if (grupoFechado) return                                                               // dentro de grupo recolhido
+      if (corte >= 0) { if (b.nivel > corte) return; corte = -1 }
+      out.push(i)
+      if (!b.aberto && i < blocos.length - 1 && blocos[i + 1].nivel > b.nivel && !blocos[i + 1].grupo) corte = b.nivel
+    })
     return out
   }, [blocos])
   const numerado = doc_?.numerado !== false
-  const numeroDe = useMemo(() => { const m: Record<string, number> = {}; let n = 0; blocos.forEach(b => { if (b.nivel === 0) { n++; m[b.id] = n } }); return m }, [blocos])
-  const stats = useMemo(() => { const qs = blocos.filter(b => b.nivel === 0); const resp = qs.filter(b => b.res); const ac = qs.filter(b => b.res === 'a'); return { total: qs.length, respondidas: resp.length, acertos: ac.length, pct: resp.length ? Math.round(ac.length / resp.length * 100) : 0 } }, [blocos])
+  const numeroDe = useMemo(() => { const m: Record<string, number> = {}; let n = 0; blocos.forEach(b => { if (b.nivel === 0 && !b.grupo) { n++; m[b.id] = n } }); return m }, [blocos])
+  const stats = useMemo(() => { const qs = blocos.filter(b => b.nivel === 0 && !b.grupo); const resp = qs.filter(b => b.res); const ac = qs.filter(b => b.res === 'a'); return { total: qs.length, respondidas: resp.length, acertos: ac.length, pct: resp.length ? Math.round(ac.length / resp.length * 100) : 0 } }, [blocos])
 
   // ── Janela: mover / redimensionar ──
   useEffect(() => {
@@ -466,10 +513,36 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
               <button className="tg-fmt" title="Remover realce" onMouseDown={e => { e.preventDefault(); aplicarFmt('hiliteColor', 'transparent') }} style={{ fontSize: '.7rem' }}>⌫</button>
               <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
               <button className="tg-fmt" title="Limpar formatação" onMouseDown={e => { e.preventDefault(); aplicarFmt('removeFormat') }} style={{ fontSize: '.72rem' }}>✕ limpar</button>
+              <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
+              <span style={{ fontSize: '.62rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>perguntas</span>
+              <button className="tg-fmt" title="Deixar TODAS as perguntas em negrito" onMouseDown={e => { e.preventDefault(); negritoTodas(true) }} style={{ fontWeight: 800, fontSize: '.72rem' }}>B todas</button>
+              <button className="tg-fmt" title="Tirar o negrito de TODAS as perguntas" onMouseDown={e => { e.preventDefault(); negritoTodas(false) }} style={{ fontSize: '.72rem', textDecoration: 'line-through' }}>B nenhuma</button>
+              <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
+              <button className="tg-fmt" title="Criar um grupo (título) — arraste/classifique perguntas dentro dele" onMouseDown={e => { e.preventDefault(); novoGrupo() }} style={{ fontSize: '.72rem', fontWeight: 700 }}>＋ Grupo</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
               {visiveis.map(i => {
                 const b = blocos[i]; const filhos = temFilhos(i)
+                if (b.grupo) {
+                  const qtd = contaPerguntasGrupo(i)
+                  return (
+                    <div key={b.id} className="tg-blk" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, marginBottom: 2, padding: '7px 8px', borderRadius: 9, background: 'var(--accent-bg, rgba(91,91,214,.1))', border: '1px solid var(--border)' }}>
+                      <button onClick={() => alternar(i)} title={b.aberto === false ? 'Expandir grupo' : 'Recolher grupo'} style={{ ...caret, color: 'var(--text-primary)', fontSize: '.9rem' }}>{b.aberto === false ? '▸' : '▾'}</button>
+                      <span style={{ fontSize: '1rem' }}>🗂️</span>
+                      <div
+                        data-bloco={b.id} className="tg-ed" data-ph="Nome do grupo"
+                        contentEditable suppressContentEditableWarning
+                        ref={el => { if (el && el.innerHTML !== b.html && document.activeElement !== el) el.innerHTML = b.html }}
+                        onInput={e => editar(i, (e.currentTarget as HTMLElement).innerHTML)}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLElement).blur() } }}
+                        style={{ flex: 1, outline: 'none', fontSize: '.95rem', fontWeight: 800, color: 'var(--text-primary)', minHeight: 20, padding: '1px 3px', wordBreak: 'break-word' }}
+                      />
+                      <span style={{ fontSize: '.7rem', fontWeight: 700, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{qtd} pergunta(s)</span>
+                      <button onClick={() => abrirFlashcards(i, stripHtml(b.html) || 'Grupo')} title="Estudar este grupo como flashcards" style={{ ...softBtn, padding: '0 10px', height: 28, background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700 }}>🎴 Flashcards</button>
+                      <button onClick={() => apagar(i)} title="Excluir o título do grupo (as perguntas continuam)" style={miniBtn}>🗑️</button>
+                    </div>
+                  )
+                }
                 return (
                   <div key={b.id}>
                   <div className="tg-blk" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginLeft: b.nivel * 22, padding: '2px 4px', borderRadius: 7, background: COR_BLOCO[b.cor] || 'transparent' }}>
@@ -504,7 +577,13 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
                           opacity: (estudoAberto[b.id] || b.res) ? 1 : undefined,
                         }}>📝 Responder</button>
                     )}
-                    <span className="tg-bact" style={{ display: 'flex', gap: 1, marginTop: 2 }}>
+                    <span className="tg-bact" style={{ display: 'flex', gap: 1, marginTop: 2, alignItems: 'center' }}>
+                      {b.nivel === 0 && listaGrupos().length > 0 && (
+                        <select value="" onChange={e => { if (e.target.value) moverParaGrupo(i, e.target.value) }} title="Mover esta pergunta para um grupo" style={{ height: 22, borderRadius: 6, border: '1px solid var(--border-md)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: '.66rem', cursor: 'pointer', maxWidth: 90 }}>
+                          <option value="">🗂️ grupo…</option>
+                          {listaGrupos().map(g => <option key={g.id} value={g.id}>{g.titulo}</option>)}
+                        </select>
+                      )}
                       <button onClick={() => moverBloco(i, -1)} title="Mover para cima" style={miniBtn}>↑</button>
                       <button onClick={() => moverBloco(i, 1)} title="Mover para baixo" style={miniBtn}>↓</button>
                       <button onClick={() => corBloco(i)} title="Cor de fundo do bloco" style={miniBtn}>🎨</button>
@@ -563,6 +642,32 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
               <button onClick={async () => { if (!uid || !db) return; const nome = window.prompt('Nome da nova pasta:'); if (!nome) return; const id = nid(); await setDoc(doc(db, 'users', uid, 'toggle_pastas', id), clean({ id, nome, parent: '', cor: PALETA[pastas.length % PALETA.length], criadoEm: Date.now() })); const dst = destino; setDestino(null); if (dst.tipo === 'import') await importarArquivo(dst.file, id); else await moverDoc(dst.docId, id) }}
                 style={{ ...softBtn, flex: 1 }}>＋ Nova pasta e usar</button>
               {destino.tipo === 'import' && <button onClick={async () => { const dst = destino; setDestino(null); if (dst.tipo === 'import') await importarArquivo(dst.file) }} style={{ ...softBtn }} title="Pasta padrão 'Importados'">Importados</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* modo flashcard: cartões pergunta/resposta do grupo */}
+      {flash && (
+        <div onMouseDown={() => setFlash(null)} style={{ position: 'fixed', inset: 0, zIndex: 9100, background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onMouseDown={e => e.stopPropagation()} style={{ width: 620, maxWidth: '95vw', height: 'min(80vh, 640px)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '1.15rem' }}>🎴</span>
+              <b style={{ fontSize: '.98rem', color: 'var(--text-primary)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{flash.titulo}</b>
+              <span style={{ fontSize: '.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>{flash.idx + 1} / {flash.cards.length}</span>
+              <button onClick={() => setFlash(null)} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer' }}>✕</button>
+            </div>
+            <div onClick={() => setFlash(f => f && { ...f, virado: !f.virado })} title="Clique no cartão para virar" style={{ flex: 1, minHeight: 0, margin: 18, borderRadius: 16, border: `2px solid ${flash.virado ? '#10b98155' : 'var(--border)'}`, background: flash.virado ? 'rgba(16,185,129,.06)' : 'var(--bg-1)', display: 'flex', flexDirection: 'column', cursor: 'pointer', overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', fontSize: '.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.06em', color: flash.virado ? '#10b981' : 'var(--text-accent)' }}>{flash.virado ? 'Resposta' : 'Pergunta'}</div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 22px', fontSize: '1rem', lineHeight: 1.6, color: 'var(--text-primary)' }} dangerouslySetInnerHTML={{ __html: flash.virado ? flash.cards[flash.idx].r : flash.cards[flash.idx].p }} />
+              {!flash.virado && <div style={{ padding: '10px 16px', textAlign: 'center', fontSize: '.74rem', color: 'var(--text-muted)' }}>Clique para ver a resposta</div>}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderTop: '1px solid var(--border)' }}>
+              <button onClick={() => setFlash(f => f && { ...f, idx: Math.max(0, f.idx - 1), virado: false })} disabled={flash.idx === 0} style={{ ...softBtn, opacity: flash.idx === 0 ? 0.4 : 1 }}>← Anterior</button>
+              <button onClick={() => setFlash(f => f && { ...f, virado: !f.virado })} style={{ ...softBtn, flex: 1, background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700 }}>{flash.virado ? 'Ver pergunta' : 'Virar cartão'}</button>
+              {flash.idx < flash.cards.length - 1
+                ? <button onClick={() => setFlash(f => f && { ...f, idx: f.idx + 1, virado: false })} style={{ ...softBtn }}>Próximo →</button>
+                : <button onClick={() => setFlash(null)} style={{ ...softBtn, background: '#10b981', color: '#fff', border: 'none', fontWeight: 700 }}>✓ Concluir</button>}
             </div>
           </div>
         </div>
