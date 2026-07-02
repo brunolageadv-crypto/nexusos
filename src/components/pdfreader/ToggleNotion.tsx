@@ -164,7 +164,7 @@ function blocoVazio(nivel = 0): Bloco { return { id: nid(), html: '', nivel, abe
 function fimSubarvore(arr: Bloco[], i: number): number { const nv = arr[i].nivel; let j = i + 1; while (j < arr.length && arr[j].nivel > nv) j++; return j - 1 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-export default function ToggleNotion({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { open: boolean; onClose: () => void; seed?: { titulo: string; texto: string } | null; onSeedUsado?: () => void }) {
   const uid = useUid()
   const [pastas, setPastas] = useState<Pasta[]>([])
   const [docs, setDocs] = useState<DocT[]>([])
@@ -271,6 +271,26 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
     if (idx >= 0) editar(idx, el.innerHTML)
   }
   // importar Word (.docx) ou PDF → novo arquivo na pasta escolhida (ou "Importados" se não informada)
+  // seed vindo do PDF Reader (ex.: relatório de perguntas) → cria um doc novo na pasta "Relatórios"
+  const seedRef = useRef<string>('')
+  useEffect(() => {
+    if (!open || !seed || !uid || !db) return
+    const chave = seed.titulo + '::' + seed.texto.length
+    if (seedRef.current === chave) return
+    seedRef.current = chave
+    ;(async () => {
+      try {
+        let pastaId = pastas.find(p => p.nome === 'Relatórios' && p.parent === '')?.id
+        if (!pastaId) { pastaId = nid(); await setDoc(doc(db!, 'users', uid, 'toggle_pastas', pastaId), clean({ id: pastaId, nome: 'Relatórios', parent: '', cor: PALETA[4], criadoEm: Date.now() })) }
+        const novos = textoParaBlocos(seed.texto)
+        const id = nid()
+        await setDoc(doc(db!, 'users', uid, 'toggle_docs', id), clean({ id, pasta: pastaId, titulo: seed.titulo, cor: '', blocos: novos, numerado: true, updatedAt: Date.now() }))
+        setAbertas(a => ({ ...a, [pastaId!]: true })); setDocId(id)
+      } catch (e: any) { alert('Falha ao criar no Toggle: ' + (e?.message || e)) }
+      onSeedUsado?.()
+    })()
+  }, [open, seed, uid])
+
   async function importarArquivo(file?: File, pastaAlvo?: string) {
     if (!file || !uid || !db) return
     setImpBusy(true)

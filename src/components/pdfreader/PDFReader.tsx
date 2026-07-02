@@ -1655,6 +1655,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const [corPop, setCorPop] = useState<{ cor: string; tipo: string } | null>(null)   // avisa a cor atual ao trocar com Alt
   const corPopTmr = useRef<any>(null)
   const [grifosOpen, setGrifosOpen] = useState(false)                                  // janela com a relação de palavras grifadas
+  const [relatorioQ, setRelatorioQ] = useState<{ loading: boolean; texto: string; cursor: number; ultimaFeita: number; concluido: boolean; paginas: number[] } | null>(null)  // relatório de perguntas (em lotes)
+  const [toggleSeed, setToggleSeed] = useState<{ titulo: string; texto: string } | null>(null)  // conteúdo para criar um doc novo no Toggle
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
   const modoRef = useRef(modo); modoRef.current = modo
   // liga/desliga o cursor de texto: camada de texto vira editável (com edição bloqueada) → cursor nativo + setas
@@ -2211,6 +2213,60 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       if (mudou) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1); return }   // removeu um existente
     }
   }
+  // coleta todos os destaques (grifos/realces) em ordem de leitura
+  const coletarDestaques = () => {
+    const itens: { page: number; texto: string }[] = []
+    Object.keys(anotRef.current).map(Number).sort((a, b) => a - b).forEach(n => {
+      const list = (anotRef.current[n] || []).filter((a: any) => a.kind !== 'lido' && a.texto && a.texto.trim())
+      list.sort((a: any, b: any) => (a.rects?.[0]?.fy || 0) - (b.rects?.[0]?.fy || 0))
+      list.forEach((a: any) => itens.push({ page: n, texto: a.texto.trim() }))
+    })
+    return itens
+  }
+  const paginasComDestaque = () => [...new Set(coletarDestaques().map(i => i.page))].sort((a, b) => a - b)
+  const LOTE_REL = 25   // páginas com destaque por lote (evita estourar o limite da IA)
+  // processa um lote de páginas destacadas e ACUMULA no relatório (permite "Continuar")
+  const rodarLoteRelatorio = async (cursor: number, textoAcum: string, paginas: number[]) => {
+    setRelatorioQ({ loading: true, texto: textoAcum, cursor, ultimaFeita: cursor > 0 ? paginas[cursor - 1] : 0, concluido: false, paginas })
+    try {
+      const pgs = paginas.slice(cursor, cursor + LOTE_REL)
+      const itens: { page: number; texto: string }[] = []
+      for (const n of pgs) (anotRef.current[n] || []).filter((a: any) => a.kind !== 'lido' && a.texto?.trim()).sort((a: any, b: any) => (a.rects?.[0]?.fy || 0) - (b.rects?.[0]?.fy || 0)).forEach((a: any) => itens.push({ page: n, texto: a.texto.trim() }))
+      let contexto = ''
+      for (const p of pgs) { try { const t = await textoDaPagina(p); if (t) contexto += `\n[Página ${p}]\n${t.slice(0, 3000)}\n` } catch {} }
+      const destaquesTxt = itens.map((i, idx) => `${idx + 1}. (p.${i.page}) ${i.texto}`).join('\n')
+      const continuacao = cursor > 0
+      const prompt = [
+        'Você é um elaborador de questões para concursos públicos brasileiros (foco AGU/CEBRASPE).',
+        `Documento: "${nomeRef.current || 'documento'}". Este lote cobre as páginas ${pgs[0]} a ${pgs[pgs.length - 1]}.`,
+        continuacao ? 'Esta é a CONTINUAÇÃO de um relatório maior — gere apenas as perguntas deste lote (sem repetir introduções).' : '',
+        'Com base nos TRECHOS DESTACADOS pelo usuário e no CONTEXTO das páginas, gere um COMPILADO COMPLETO de perguntas de estudo.',
+        'Diretrizes:',
+        '- As perguntas devem DERIVAR dos trechos destacados; use o contexto apenas para dar precisão e estrutura. NÃO crie perguntas sobre partes que não foram destacadas.',
+        '- Para cada ponto destacado, seja completo: gere perguntas de memorização, de compreensão e de aplicação quando fizer sentido.',
+        '- Organize por tópicos/títulos quando o texto permitir. Numere as perguntas.',
+        '- Após cada pergunta, inclua a resposta objetiva em uma nova linha começando com "R:".',
+        '- Português formal. Não invente fatos fora do documento.',
+        '',
+        'TRECHOS DESTACADOS:', destaquesTxt,
+        '', 'CONTEXTO (estrutura do texto):', '"""', contexto.slice(0, 12000), '"""',
+      ].filter(Boolean).join('\n')
+      const r = (await callLLM(prompt)).trim()
+      const cab = `\n\n═══════════ Páginas ${pgs[0]}–${pgs[pgs.length - 1]} ═══════════\n\n`
+      const novoTexto = textoAcum ? textoAcum + cab + r : r
+      const novoCursor = cursor + pgs.length
+      setRelatorioQ({ loading: false, texto: novoTexto, cursor: novoCursor, ultimaFeita: pgs[pgs.length - 1], concluido: novoCursor >= paginas.length, paginas })
+    } catch (e: any) {
+      setRelatorioQ({ loading: false, texto: textoAcum, cursor, ultimaFeita: cursor > 0 ? paginas[cursor - 1] : 0, concluido: false, paginas })
+      alert('Falha ao gerar o relatório: ' + (e?.message || e))
+    }
+  }
+  const gerarRelatorioDestaques = () => {
+    const paginas = paginasComDestaque()
+    if (!paginas.length) { alert('Nenhum trecho destacado ainda. Grife trechos no modo Texto (ou realce) e tente de novo.'); return }
+    setGrifosOpen(false)
+    rodarLoteRelatorio(0, '', paginas)
+  }
   // mostra um pequeno aviso flutuante com a cor atual (some após 2s)
   const mostrarCorPop = (cor: string) => { clearTimeout(corPopTmr.current); setCorPop({ cor, tipo: grifoCfgRef.current.tipo }); corPopTmr.current = setTimeout(() => setCorPop(null), 2000) }
   // Alt (toque) alterna a cor DENTRO do grupo atual (claros ↔ claros, vivos ↔ vivos)
@@ -2619,6 +2675,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             </span>
             <button onClick={() => setChat(c => ({ ...c, open: !c.open }))} disabled={!numPages} title="Conversar com o documento (IA)" style={{ ...btn, width: 'auto', padding: '0 8px', background: chat.open ? '#5b5bd6' : 'var(--surface)', color: chat.open ? '#fff' : 'var(--text-secondary)', border: chat.open ? 'none' : '1px solid var(--border)' }}>💬 Chat</button>
             <button onClick={() => setToggleOpen(true)} title="Toggle — blocos aninhados estilo Notion (janela redimensionável)" style={{ ...btn, width: 'auto', padding: '0 10px', fontWeight: 800 }}>🔀 Toggle</button>
+            <button onClick={gerarRelatorioDestaques} title="Gerar um compilado de perguntas a partir dos trechos que você destacou" style={{ ...btn, width: 'auto', padding: '0 8px' }}>📋 Relatório (destaques)</button>
           </HoverMenu>
         )}
 
@@ -2856,7 +2913,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
                     ))}
                   </div>
                   {itens.length > 0 && (
-                    <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8 }}>
+                    <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button onClick={gerarRelatorioDestaques} style={{ ...btn, width: 'auto', padding: '0 12px', background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700 }}>🧠 Gerar relatório de perguntas</button>
                       <button onClick={() => { try { navigator.clipboard?.writeText(itens.map(i => `• ${i.texto} (p.${i.page})`).join('\n')) } catch {} }} style={{ ...btn, width: 'auto', padding: '0 12px' }}>📋 Copiar lista</button>
                       {onExtract && <button onClick={() => onExtract('Palavras grifadas:\n' + itens.map(i => `• ${i.texto}`).join('\n'))} style={{ ...btn, width: 'auto', padding: '0 12px' }}>➜ Enviar ao editor</button>}
                     </div>
@@ -2864,6 +2922,41 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
                 </>
               )
             })()}
+          </div>
+        </div>, document.body)}
+
+      {/* relatório de perguntas geradas a partir dos destaques */}
+      {relatorioQ && createPortal(
+        <div onMouseDown={() => { if (!relatorioQ.loading) setRelatorioQ(null) }} style={{ position: 'fixed', inset: 0, zIndex: 9300, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onMouseDown={e => e.stopPropagation()} style={{ width: 720, maxWidth: '96vw', height: 'min(86vh, 800px)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '1.15rem' }}>📋</span>
+              <b style={{ fontSize: '.98rem', color: 'var(--text-primary)', flex: 1 }}>Relatório de perguntas — trechos destacados</b>
+              <button onClick={() => setRelatorioQ(null)} disabled={relatorioQ.loading} style={{ width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: relatorioQ.loading ? 'default' : 'pointer', opacity: relatorioQ.loading ? 0.5 : 1 }}>✕</button>
+            </div>
+            {relatorioQ.loading ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: 'var(--text-muted)' }}>
+                <span className="nx-spin" style={{ fontSize: '2rem' }}>⏳</span>
+                <span style={{ fontSize: '.86rem' }}>Lendo seus destaques e elaborando as perguntas…</span>
+                {relatorioQ.cursor > 0 && <span style={{ fontSize: '.76rem' }}>continuando a partir da página {relatorioQ.paginas[relatorioQ.cursor] || relatorioQ.ultimaFeita}…</span>}
+              </div>
+            ) : (
+              <>
+                <div style={{ padding: '9px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '.8rem' }}>
+                  <span style={{ fontWeight: 700, color: relatorioQ.concluido ? '#10b981' : 'var(--accent)' }}>{relatorioQ.concluido ? '✓ Relatório completo' : `✓ Feito até a página ${relatorioQ.ultimaFeita}`}</span>
+                  <span style={{ color: 'var(--text-muted)' }}>{relatorioQ.cursor}/{relatorioQ.paginas.length} páginas com destaque</span>
+                  {!relatorioQ.concluido && <button onClick={() => rodarLoteRelatorio(relatorioQ.cursor, relatorioQ.texto, relatorioQ.paginas)} style={{ ...btn, width: 'auto', padding: '0 14px', background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700 }}>Continuar (próximas {Math.min(LOTE_REL, relatorioQ.paginas.length - relatorioQ.cursor)} pág.) →</button>}
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', fontSize: '.9rem', lineHeight: 1.6, color: 'var(--text-primary)', whiteSpace: 'pre-wrap' }}>{relatorioQ.texto}</div>
+                <div style={{ padding: 12, borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button onClick={() => { try { navigator.clipboard?.writeText(relatorioQ.texto) } catch {} }} style={{ ...btn, width: 'auto', padding: '0 14px' }}>📋 Copiar</button>
+                  {onExtract && <button onClick={() => { onExtract('📋 Relatório de perguntas (destaques)\n' + relatorioQ.texto) }} style={{ ...btn, width: 'auto', padding: '0 14px' }}>➜ Enviar ao editor</button>}
+                  <button onClick={() => { const t = relatorioQ.texto.replace(/^\s*═+.*?═+\s*$/gm, '').replace(/^\s*\d+\s*[.)]\s*/gm, 'P: ').replace(/^\s*R:\s*/gim, 'R: '); setToggleSeed({ titulo: `Perguntas — ${nomeRef.current || 'documento'}`, texto: t }); setToggleOpen(true) }} style={{ ...btn, width: 'auto', padding: '0 14px', background: 'linear-gradient(135deg,#8b5cf6,#6d28d9)', color: '#fff', border: 'none', fontWeight: 700 }}>🔀 Enviar ao Toggle</button>
+                  <span style={{ flex: 1 }} />
+                  <button onClick={() => setRelatorioQ(null)} style={{ ...btn, width: 'auto', padding: '0 14px' }}>Fechar</button>
+                </div>
+              </>
+            )}
           </div>
         </div>, document.body)}
 
@@ -2913,7 +3006,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         </div>
       </>, document.body)}
 
-      {!secondary && <ToggleNotion open={toggleOpen} onClose={() => setToggleOpen(false)} />}
+      {!secondary && <ToggleNotion open={toggleOpen} onClose={() => setToggleOpen(false)} seed={toggleSeed} onSeedUsado={() => setToggleSeed(null)} />}
 
       {/* painel de resultado: "Não entendi" / Dicionário */}
       {aiPop?.open && createPortal(<>
