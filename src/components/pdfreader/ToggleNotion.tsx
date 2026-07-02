@@ -46,8 +46,47 @@ function blocosDePares(pares: { p: string; r: string }[], nivelBase = 0): Bloco[
   }
   return out
 }
-function promptQA(t: string): string {
-  return `Abaixo há um texto com perguntas e respostas misturadas. Separe-o em pares pergunta/resposta. Responda APENAS com um array JSON válido, sem nenhum texto antes ou depois, no formato [{"p":"pergunta","r":"resposta"}]. Se houver algo que seja claramente só pergunta sem resposta, deixe "r" como string vazia. Preserve o conteúdo, não invente. Texto:\n\n${t}`
+// constrói blocos a partir de grupos (título + perguntas dentro)
+function blocosDeGrupos(grupos: { grupo: string; itens: { p: string; r: string }[] }[]): Bloco[] {
+  const out: Bloco[] = []
+  for (const g of grupos) {
+    if (g.grupo && g.grupo.trim()) out.push({ ...blocoVazio(0), grupo: true, aberto: true, html: `<b>${escapeHtml(g.grupo.trim())}</b>` })
+    for (const par of (g.itens || [])) {
+      if (!par.p?.trim()) continue
+      out.push({ ...blocoVazio(0), html: `<b>${escapeHtml(par.p.trim())}</b>`, aberto: !par.r?.trim() })
+      if (par.r?.trim()) out.push({ ...blocoVazio(1), html: escapeHtml(par.r.trim()) })
+    }
+  }
+  return out.length ? out : [blocoVazio()]
+}
+function promptQAGrupos(t: string): string {
+  return `Abaixo há um documento de estudo com perguntas e respostas, possivelmente organizado em tópicos/títulos/seções (ex.: "Introdução", "Princípios", "Casos concretos").
+Tarefa: (1) identifique os tópicos/títulos que agrupam as perguntas; (2) separe cada pergunta da respectiva resposta, mantendo-as dentro do tópico correto.
+Responda APENAS com um array JSON válido, sem texto antes ou depois, no formato:
+[{"grupo":"Título do tópico","itens":[{"p":"pergunta","r":"resposta"}]}]
+Regras: se uma pergunta não tiver resposta clara, use "r":"". Se o documento não tiver tópicos evidentes, devolva um único grupo com "grupo":"" contendo todos os itens. Preserve o conteúdo — não invente perguntas nem respostas. Texto:\n\n${t}`
+}
+function parseJSONgrupos(raw: string): { grupo: string; itens: { p: string; r: string }[] }[] {
+  let s = raw.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim()
+  const m = s.match(/\[[\s\S]*\]/); if (m) s = m[0]
+  try {
+    const arr = JSON.parse(s); if (!Array.isArray(arr)) return []
+    return arr.map((g: any) => ({
+      grupo: String(g.grupo || g.titulo || g.topico || '').trim(),
+      itens: (Array.isArray(g.itens || g.pares || g.perguntas) ? (g.itens || g.pares || g.perguntas) : []).map((x: any) => ({ p: String(x.p || x.pergunta || '').trim(), r: String(x.r || x.resposta || '').trim() })).filter((x: any) => x.p),
+    })).filter(g => g.itens.length)
+  } catch { return [] }
+}
+// heurística: a linha é um título/tópico? (para PDFs sem marcação)
+function ehTituloTxt(t: string): boolean {
+  const s = t.trim()
+  if (s.length < 3 || s.length > 70) return false
+  if (/[?]/.test(s)) return false
+  if (ehPerguntaTxt(s)) return false
+  if (/^(t[íi]tulo|cap[íi]tulo|se[çc][ãa]o|parte|tema|t[óo]pico|unidade|m[óo]dulo)\b/i.test(s)) return true
+  const letras = s.replace(/[^A-Za-zÀ-ú]/g, '')
+  if (letras.length >= 3 && s === s.toUpperCase() && /[A-ZÀ-Ú]/.test(s) && !/[.;:]$/.test(s)) return true
+  return false
 }
 function parseJSONpares(raw: string): { p: string; r: string }[] {
   let s = raw.trim().replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim()
@@ -72,15 +111,17 @@ function ehPerguntaTxt(t: string) { return QRE.test(t) || /\?\s*$/.test(t) || /^
 // HTML do Word → blocos: mantém TABELAS como blocos próprios e aninha respostas nas perguntas
 function htmlParaBlocos(html: string): Bloco[] {
   const dom = new DOMParser().parseFromString(html, 'text/html')
-  const els: { tipo: 'texto' | 'tabela'; html: string; txt: string }[] = []
+  const els: { tipo: 'texto' | 'tabela' | 'titulo'; html: string; txt: string }[] = []
   Array.from(dom.body.children).forEach(node => {
     const tag = node.tagName.toLowerCase()
-    if (tag === 'table') els.push({ tipo: 'tabela', html: node.outerHTML, txt: '' })
+    if (/^h[1-6]$/.test(tag)) { const t = (node.textContent || '').trim(); if (t) els.push({ tipo: 'titulo', html: node.innerHTML, txt: t }) }
+    else if (tag === 'table') els.push({ tipo: 'tabela', html: node.outerHTML, txt: '' })
     else if (tag === 'ul' || tag === 'ol') Array.from(node.children).forEach(li => { const t = (li.textContent || '').trim(); if (t) els.push({ tipo: 'texto', html: li.innerHTML, txt: t }) })
     else { const t = (node.textContent || '').trim(); if (t) els.push({ tipo: 'texto', html: node.innerHTML, txt: t }) }
   })
   const out: Bloco[] = []; let temPergunta = false
   for (const el of els) {
+    if (el.tipo === 'titulo') { out.push({ ...blocoVazio(0), grupo: true, aberto: true, html: `<b>${escapeHtml(el.txt)}</b>` }); temPergunta = false; continue }
     if (el.tipo === 'tabela') { out.push({ ...blocoVazio(temPergunta ? 1 : 0), html: el.html }); continue }
     if (ehPerguntaTxt(el.txt)) { const h = el.html.replace(/^\s*(\d+\s*[).\-]|p\s*[:.\-)]|pergunta\s*[:.\-)]|quest[ãa]o[^:]*[:.\-)])\s*/i, ''); out.push({ ...blocoVazio(0), html: `<b>${h}</b>`, aberto: false }); temPergunta = true }
     else { const h = el.html.replace(/^\s*(r\s*[:.\-)]|resp(osta)?\s*[:.\-)]|gabarito\s*[:.\-)]|a\s*[:.\-)])\s*/i, ''); out.push({ ...blocoVazio(temPergunta ? 1 : 0), html: h }) }
@@ -90,7 +131,9 @@ function htmlParaBlocos(html: string): Bloco[] {
 function textoParaBlocos(texto: string): Bloco[] {
   const pares = parseQA(texto)
   if (pares.length && pares.some(p => p.r.trim())) return blocosDePares(pares, 0)
-  return texto.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(l => ({ ...blocoVazio(0), html: escapeHtml(l) }))
+  return texto.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(l => ehTituloTxt(l)
+    ? ({ ...blocoVazio(0), grupo: true, aberto: true, html: `<b>${escapeHtml(l)}</b>` })
+    : ({ ...blocoVazio(0), html: escapeHtml(l) }))
 }
 // Correção por IA (estilo prova de concurso)
 function promptCorrecao(pergunta: string, gabarito: string, minha: string): string {
@@ -134,6 +177,9 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
   const [conferindo, setConferindo] = useState<Record<string, boolean>>({})
   // modo flashcard (por grupo): baralho de cartões pergunta/resposta
   const [flash, setFlash] = useState<{ titulo: string; cards: { p: string; r: string }[]; idx: number; virado: boolean } | null>(null)
+  // seleção múltipla de perguntas (para mover várias para um grupo de uma vez)
+  const [selMode, setSelMode] = useState(false)
+  const [sel, setSel] = useState<Record<string, boolean>>({})
   // destino de importação / mover arquivo (escolha de pasta)
   const [destino, setDestino] = useState<{ tipo: 'import'; file: File } | { tipo: 'mover'; docId: string } | null>(null)
 
@@ -293,6 +339,31 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
     let ins = gIdx + 1; while (ins < bs.length && !bs[ins].grupo) ins++
     bs.splice(ins, 0, ...bloco); setBlocos(bs)
   }
+  // extrai as subárvores das perguntas selecionadas (na ordem do documento) e devolve [restantes, movidos]
+  function extrairSelecionadas(ids: Record<string, boolean>): [Bloco[], Bloco[]] {
+    const movidos: Bloco[] = []; const restantes: Bloco[] = []
+    for (let i = 0; i < blocos.length;) {
+      const b = blocos[i]
+      if (b.nivel === 0 && !b.grupo && ids[b.id]) { const fim = fimSubarvore(blocos, i); movidos.push(...blocos.slice(i, fim + 1)); i = fim + 1 }
+      else { restantes.push(b); i++ }
+    }
+    return [restantes, movidos]
+  }
+  // move TODAS as perguntas selecionadas para o fim de um grupo existente
+  function moverVariasParaGrupo(gId: string) {
+    const [restantes, movidos] = extrairSelecionadas(sel); if (!movidos.length) return
+    const gIdx = restantes.findIndex(b => b.id === gId && b.grupo); if (gIdx < 0) return
+    let ins = gIdx + 1; while (ins < restantes.length && !restantes[ins].grupo) ins++
+    restantes.splice(ins, 0, ...movidos); setBlocos(restantes); setSel({})
+  }
+  // cria um grupo novo e move as selecionadas para dentro dele
+  function novoGrupoComSelecionadas() {
+    const [restantes, movidos] = extrairSelecionadas(sel); if (!movidos.length) return
+    const nome = window.prompt('Nome do novo grupo:', 'Novo grupo'); if (nome === null) return
+    const g: Bloco = { ...blocoVazio(0), grupo: true, aberto: true, html: `<b>${escapeHtml(nome || 'Novo grupo')}</b>` }
+    setBlocos([...restantes, g, ...movidos]); setSel({})
+  }
+  const selCount = Object.values(sel).filter(Boolean).length
   // negrito em massa nas perguntas (todas em negrito, ou tirar de todas)
   function negritoTodas(on: boolean) {
     const bs = blocos.map(b => {
@@ -346,10 +417,17 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
     if (!iaConfigurada()) { alert('Configure a IA (Gemini) — a mesma do PDF Reader.'); return }
     setIaBusy(true)
     try {
-      const raw = await callLLM3D(promptQA(texto))
-      const pares = parseJSONpares(raw)
-      if (!pares.length) throw new Error('Não consegui identificar pares pergunta/resposta.')
-      salvarDoc({ ...doc_, blocos: blocosDePares(pares, 0) })
+      const raw = await callLLM3D(promptQAGrupos(texto))
+      const grupos = parseJSONgrupos(raw)
+      if (grupos.length) {
+        // se só houver 1 grupo sem título, cai no formato simples (sem cabeçalho de grupo)
+        const semTitulos = grupos.length === 1 && !grupos[0].grupo
+        salvarDoc({ ...doc_, blocos: semTitulos ? blocosDePares(grupos[0].itens, 0) : blocosDeGrupos(grupos) })
+      } else {
+        const pares = parseJSONpares(raw)
+        if (!pares.length) throw new Error('Não consegui identificar as perguntas/respostas.')
+        salvarDoc({ ...doc_, blocos: blocosDePares(pares, 0) })
+      }
     } catch (e: any) { alert('IA: ' + (e?.message || e)) }
     setIaBusy(false)
   }
@@ -519,6 +597,7 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
               <button className="tg-fmt" title="Tirar o negrito de TODAS as perguntas" onMouseDown={e => { e.preventDefault(); negritoTodas(false) }} style={{ fontSize: '.72rem', textDecoration: 'line-through' }}>B nenhuma</button>
               <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 3px' }} />
               <button className="tg-fmt" title="Criar um grupo (título) — arraste/classifique perguntas dentro dele" onMouseDown={e => { e.preventDefault(); novoGrupo() }} style={{ fontSize: '.72rem', fontWeight: 700 }}>＋ Grupo</button>
+              <button className="tg-fmt" title="Selecionar várias perguntas para mover a um grupo de uma vez" onMouseDown={e => { e.preventDefault(); setSelMode(v => !v); setSel({}) }} style={{ fontSize: '.72rem', fontWeight: 700, background: selMode ? 'var(--accent)' : undefined, color: selMode ? '#fff' : undefined }}>☑️ Selecionar</button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', padding: '14px 18px' }}>
               {visiveis.map(i => {
@@ -545,7 +624,8 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
                 }
                 return (
                   <div key={b.id}>
-                  <div className="tg-blk" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginLeft: b.nivel * 22, padding: '2px 4px', borderRadius: 7, background: COR_BLOCO[b.cor] || 'transparent' }}>
+                  <div className="tg-blk" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginLeft: b.nivel * 22, padding: '2px 4px', borderRadius: 7, background: (selMode && sel[b.id]) ? 'rgba(91,91,214,.14)' : (COR_BLOCO[b.cor] || 'transparent') }}>
+                    {selMode && b.nivel === 0 && <input type="checkbox" checked={!!sel[b.id]} onChange={e => setSel(s => ({ ...s, [b.id]: e.target.checked }))} title="Selecionar esta pergunta" style={{ marginTop: 6, width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }} />}
                     <button className="tg-caret" onClick={() => filhos && alternar(i)} title={filhos ? (b.aberto ? 'Recolher' : 'Expandir') : ''} style={{ ...caret, color: filhos ? 'var(--text-primary)' : 'transparent', cursor: filhos ? 'pointer' : 'default' }}>{b.aberto ? '▾' : '▸'}</button>
                     {numerado && b.nivel === 0
                       ? <span style={{ color: 'var(--text-accent)', fontWeight: 800, fontSize: '.82rem', marginTop: 3, minWidth: 20, textAlign: 'right' }}>{numeroDe[b.id]}.</span>
@@ -644,6 +724,21 @@ export default function ToggleNotion({ open, onClose }: { open: boolean; onClose
               {destino.tipo === 'import' && <button onClick={async () => { const dst = destino; setDestino(null); if (dst.tipo === 'import') await importarArquivo(dst.file) }} style={{ ...softBtn }} title="Pasta padrão 'Importados'">Importados</button>}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* barra de ações da seleção múltipla */}
+      {selMode && selCount > 0 && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 18, transform: 'translateX(-50%)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 13px', background: 'var(--card-bg)', border: '1px solid var(--accent)', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,.35)', flexWrap: 'wrap', maxWidth: '92%' }}>
+          <b style={{ fontSize: '.82rem', color: 'var(--text-primary)' }}>{selCount} selecionada(s)</b>
+          {listaGrupos().length > 0 && (
+            <select value="" onChange={e => { if (e.target.value) moverVariasParaGrupo(e.target.value) }} style={{ height: 30, borderRadius: 8, border: '1px solid var(--border-md)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: '.78rem', cursor: 'pointer' }}>
+              <option value="">🗂️ mover para grupo…</option>
+              {listaGrupos().map(g => <option key={g.id} value={g.id}>{g.titulo}</option>)}
+            </select>
+          )}
+          <button onClick={novoGrupoComSelecionadas} style={{ ...softBtn, background: 'var(--accent)', color: '#fff', border: 'none', fontWeight: 700 }}>＋ Novo grupo com estas</button>
+          <button onClick={() => setSel({})} style={{ ...softBtn }}>Limpar</button>
         </div>
       )}
 
