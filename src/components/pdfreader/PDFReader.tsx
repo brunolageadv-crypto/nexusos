@@ -258,6 +258,32 @@ async function aprimorarTextoIA(texto: string): Promise<string> {
   return (await callLLM(promptAprimorar(texto))).trim()
 }
 
+/* ─────────── IA DO EDITOR — responder / jurisprudência / legislação / exemplo (conteúdo REAL) ─────────── */
+const MARCA_SEM = 'SEM_CORRESPONDENCIA'
+function promptIAEditor(mode: 'responder' | 'juris' | 'legis' | 'exemplo', pergunta: string): string {
+  const base = [
+    'Você é um especialista em Direito Público brasileiro (constitucional, administrativo) e concursos de alto nível (AGU/CEBRASPE).',
+    `Se — e somente se — não houver conteúdo REAL, verificável e consolidado que corresponda ao pedido, responda EXATAMENTE com a palavra ${MARCA_SEM} e nada mais.`,
+    'É proibido inventar. Não fabrique números de processos, súmulas, teses, artigos ou nomes de leis. Só afirme o que for real e consolidado.',
+    `PERGUNTA: "${(pergunta || '').slice(0, 900)}"`,
+  ]
+  if (mode === 'responder') base.push(
+    'TAREFA: responda a pergunta de forma técnica, correta e objetiva (3 a 6 linhas), em português formal. Sem markdown, sem títulos, apenas o texto da resposta.')
+  if (mode === 'juris') base.push(
+    'TAREFA: cite jurisprudência brasileira REAL e consolidada (STF/STJ, e súmulas/temas quando existirem de fato) que se aplique diretamente à pergunta.',
+    'Formato: para cada precedente, "Tribunal — identificação (se tiver certeza absoluta do número; caso contrário omita o número): tese/entendimento em 1 frase". Máx. 3 itens. Sem markdown.',
+    `Se não houver jurisprudência consolidada e verificável para o tema, responda apenas ${MARCA_SEM}.`)
+  if (mode === 'legis') base.push(
+    'TAREFA: indique a legislação brasileira REAL aplicável (Constituição, leis, decretos) com o artigo pertinente, quando couber à pergunta.',
+    'Formato: "Norma, art. X — o que dispõe, em 1 frase". Máx. 4 itens. Só dispositivos reais e vigentes. Sem markdown.',
+    `Se não houver dispositivo legal claramente aplicável, responda apenas ${MARCA_SEM}.`)
+  if (mode === 'exemplo') base.push(
+    'TAREFA: dê 1 a 2 exemplos concretos e plausíveis de aplicação prática do conteúdo da pergunta (situações reais do dia a dia jurídico-administrativo). 2 a 5 linhas. Sem markdown.')
+  return base.join('\n')
+}
+function escaparHtmlLite(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function iaConfiguradaLocal(): boolean { try { const c = JSON.parse(localStorage.getItem('nexus_ai_cfg') || '{}'); return !!(c && c.url && c.key) } catch { return false } }
+
 /* ─────────── "NÃO ENTENDI" (explicação detalhada, didática) ─────────── */
 function promptExplicar(trecho: string, contexto = '') {
   return [
@@ -835,6 +861,7 @@ function RichEditor({ editorRef, onChange }: any) {
   const pitch = Math.max(16, Math.round(baseFont * 1.85))   // espaçamento da pauta acompanha a fonte
   const [autoQ, setAutoQ] = useState(false)                                          // feature 2
   const [aprimora, setAprimora] = useState<{ open: boolean; carregando: boolean; sugestao: string; modo: 'all' | 'sel'; range: Range | null } | null>(null)  // aprimorar texto (IA)
+  const [iaEd, setIaEd] = useState<{ running: boolean; mode: 'responder' | 'juris' | 'legis' | 'exemplo'; done: number; total: number } | null>(null)  // IA em lote no editor (progresso + ampulheta)
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)  // menu suspenso ancorado
   const openMenu = (id: string, e: React.MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setMenu(m => m && m.id === id ? null : { id, x: r.left, y: r.bottom + 4 }) }
   const [tRows, setTRows] = useState(3)
@@ -969,6 +996,53 @@ function RichEditor({ editorRef, onChange }: any) {
     onChange?.()
   }
 
+  // IA em lote: analisa perguntas do editor (seleção ou todas) e insere resposta/juris/legis/exemplo abaixo de cada uma
+  const IA_LABEL: Record<string, { t: string; c: string; ic: string }> = {
+    responder: { t: 'Resposta', c: '#2563eb', ic: '✅' },
+    juris: { t: 'Jurisprudência', c: '#7c3aed', ic: '⚖️' },
+    legis: { t: 'Legislação', c: '#0891b2', ic: '📜' },
+    exemplo: { t: 'Exemplo', c: '#059669', ic: '💡' },
+  }
+  const rodarIAEditor = async (mode: 'responder' | 'juris' | 'legis' | 'exemplo') => {
+    if (iaEd?.running) return
+    const ed = editorRef.current; if (!ed) return
+    if (!iaConfiguradaLocal()) { alert('Configure a IA primeiro (no menu de IA do NexusOS: provedor, URL, chave e modelo).'); return }
+    const selObj = window.getSelection()
+    const temSel = !!(selObj && selObj.rangeCount && !selObj.isCollapsed && ed.contains(selObj.anchorNode) && ed.contains(selObj.focusNode))
+    const range = temSel ? selObj!.getRangeAt(0) : null
+    const blocos = Array.from(ed.querySelectorAll('p, li')).filter((b: any) => !(b.tagName === 'P' && b.closest('li'))) as HTMLElement[]
+    const alvos = blocos.filter(b => {
+      if (b.getAttribute('data-ia')) return false                 // não reprocessa respostas já inseridas
+      const txt = (b.textContent || '').trim()
+      if (!txt || txt.length < 6) return false
+      if (range && !range.intersectsNode(b)) return false
+      return /\?\s*$/.test(txt) || /^\s*\d+\s*[.)\-–º°]\s+\S/.test(txt)   // termina em "?" ou começa com numeração
+    })
+    if (!alvos.length) { alert('Nenhuma pergunta encontrada' + (temSel ? ' na seleção.' : '. Escreva ou gere perguntas primeiro.')); return }
+    const lab = IA_LABEL[mode]
+    setIaEd({ running: true, mode, done: 0, total: alvos.length })
+    try {
+      for (let i = 0; i < alvos.length; i++) {
+        const b = alvos[i]
+        const pergunta = (b.textContent || '').replace(/^\s*\d+\s*[.)\-–º°]\s*/, '').trim()
+        let out = ''
+        try { out = (await callLLM(promptIAEditor(mode, pergunta))).trim() } catch { out = '' }
+        const semCorr = !out || new RegExp(MARCA_SEM, 'i').test(out)
+        const conteudo = semCorr ? 'Não foi possível executar o comando por ausência de correspondência.' : out
+        const p = document.createElement('p')
+        p.setAttribute('data-ia', mode)
+        p.style.cssText = `margin:3px 0 11px 26px;padding:8px 11px;border-left:3px solid ${lab.c};background:var(--surface);border-radius:6px;font-size:.92em`
+        if (semCorr) p.style.opacity = '.7'
+        p.innerHTML = `<b style="color:${lab.c}">${lab.ic} ${lab.t}:</b> ` + escaparHtmlLite(conteudo).replace(/\n/g, '<br>')
+        b.parentNode?.insertBefore(p, b.nextSibling)
+        setIaEd(s => s && { ...s, done: i + 1 })
+      }
+      onChange?.()
+    } finally {
+      setIaEd(null)
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
 
@@ -1002,6 +1076,14 @@ function RichEditor({ editorRef, onChange }: any) {
         {/* aprimorar texto com IA */}
         <button onClick={aprimorarTexto} disabled={!!aprimora?.carregando} title="Aprimorar o texto com IA (seleção, ou tudo) — pede confirmação antes de substituir"
           style={{ height: 30, padding: '0 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4 }}>{aprimora?.carregando ? <><span className="nx-spin">⏳</span> Aprimorando…</> : '✨ Aprimorar'}</button>
+        {/* IA nas perguntas: responder / jurisprudência / legislação / exemplo (seleção ou todas) */}
+        <HoverMenu align="right" width={210} active={!!iaEd?.running} trigger={<span>{iaEd?.running ? <><span className="nx-spin">⏳</span> IA…</> : '🤖 IA'}</span>}>
+          <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', width: '100%', marginBottom: 3, lineHeight: 1.4 }}>Analisa as perguntas <b>selecionadas</b> (ou todas) e insere abaixo de cada uma. Só conteúdo real e verificado — sem correspondência, avisa.</div>
+          <IBtn title="Responder cada pergunta (resposta técnica)" onClick={() => rodarIAEditor('responder')}>✅ Responder</IBtn>
+          <IBtn title="Jurisprudência real aplicável (STF/STJ, súmulas)" onClick={() => rodarIAEditor('juris')}>⚖️ Juris</IBtn>
+          <IBtn title="Legislação aplicável (artigos reais e vigentes)" onClick={() => rodarIAEditor('legis')}>📜 Legis</IBtn>
+          <IBtn title="Exemplo concreto de aplicação" onClick={() => rodarIAEditor('exemplo')}>💡 Exemplo</IBtn>
+        </HoverMenu>
         <Sep />
         <Btn cmd="undo" title="Desfazer (Ctrl+Z)">↩</Btn>
         <Btn cmd="redo" title="Refazer (Ctrl+Y)">↪</Btn>
@@ -1028,6 +1110,20 @@ function RichEditor({ editorRef, onChange }: any) {
           </>)}
         </div>
       </>, document.body)}
+
+      {/* overlay de progresso da IA em lote (ampulheta enquanto processa) */}
+      {iaEd?.running && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9700, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="pr-pop" style={{ width: 'min(340px,92vw)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '26px 22px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)' }}>
+            <span className="nx-spin" style={{ fontSize: '2.1rem' }}>⏳</span>
+            <b style={{ color: 'var(--text-primary)', fontSize: '.95rem' }}>{IA_LABEL[iaEd.mode].ic} {IA_LABEL[iaEd.mode].t} — processando…</b>
+            <div style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>pergunta {Math.min(iaEd.done + 1, iaEd.total)} de {iaEd.total}</div>
+            <div style={{ width: '100%', height: 8, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${iaEd.total ? (iaEd.done / iaEd.total) * 100 : 0}%`, background: IA_LABEL[iaEd.mode].c, transition: 'width .3s ease' }} />
+            </div>
+            <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.4 }}>A IA está pensando. Só inserimos conteúdo real; onde não houver correspondência, avisamos.</div>
+          </div>
+        </div>, document.body)}
 
       {/* ── PAINÉIS DOS MENUS ── */}
       <Painel id="estilo" width={150}>
@@ -1168,6 +1264,9 @@ function RichEditor({ editorRef, onChange }: any) {
 const PALETA_REALCE = ['#fff3a3', '#ffd28a', '#ffb3c1', '#c3f0c8', '#bfe3ff', '#e3c8ff', '#ffe0b0', '#d9d9d9']
 // paleta do cursor de texto: linha 1 = tons claros, linha 2 = tons vivos/escuros
 const PALETA_GRIFO = ['#fff3a3', '#c3f0c8', '#bfe3ff', '#ffb3c1', '#e3c8ff', '#ffe0b0', '#facc15', '#22c55e', '#3b82f6', '#ef4444', '#a855f7', '#f97316']
+// barra de leitura na margem esquerda (parágrafo lido): verde, cinza, amarelo, azul, vermelho
+const PALETA_BARRA = ['#22c55e', '#9ca3af', '#f59e0b', '#3b82f6', '#ef4444']
+const NOME_BARRA: Record<string, string> = { '#22c55e': 'Verde', '#9ca3af': 'Cinza', '#f59e0b': 'Amarelo', '#3b82f6': 'Azul', '#ef4444': 'Vermelho' }
 /* tonalizações (filtro CSS — puramente visual, não afeta OCR nem seleção) */
 const TONS: { id: string; label: string; icon: string; filter: string }[] = [
   { id: 'cor', label: 'Cor (original)', icon: '🎨', filter: 'none' },
@@ -1660,6 +1759,10 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const [relatorioQ, setRelatorioQ] = useState<{ loading: boolean; texto: string; cursor: number; ultimaFeita: number; concluido: boolean; paginas: number[] } | null>(null)  // relatório de perguntas (em lotes)
   const [toggleSeed, setToggleSeed] = useState<{ titulo: string; texto: string } | null>(null)  // conteúdo para criar um doc novo no Toggle
   const [tipoMarca, setTipoMarca] = useState<'realce' | 'sublinhado'>('realce')
+  // barra de leitura (margem esquerda) — cor selecionável e persistida
+  const [barraCor, setBarraCor] = useState<string>(() => { try { return localStorage.getItem('pr_barra_cor') || '#22c55e' } catch { return '#22c55e' } })
+  useEffect(() => { try { localStorage.setItem('pr_barra_cor', barraCor) } catch {} }, [barraCor])
+  const barraCorRef = useRef(barraCor); useEffect(() => { barraCorRef.current = barraCor }, [barraCor])
   const modoRef = useRef(modo); modoRef.current = modo
   // liga/desliga o cursor de texto: camada de texto vira editável (com edição bloqueada) → cursor nativo + setas
   const aplicarEditavelTL = (tl: HTMLElement) => {
@@ -2349,7 +2452,44 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     try { const c = document.createRange(); c.setStart(range.endContainer, range.endOffset); c.collapse(true); sel.removeAllRanges(); sel.addRange(c) } catch { sel.removeAllRanges() }
     if (added) { pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
   }
-  // ── navegação do cursor de texto por GEOMETRIA (setas/Home/End reais, mesmo com texto absoluto) ──
+  // ── BARRA DE LEITURA (margem esquerda): marca um parágrafo lido ──
+  // usa a SELEÇÃO nativa (ideal: selecione o parágrafo); sem seleção, marca a linha do cursor
+  const mostrarBarraPop = (cor: string) => { clearTimeout(corPopTmr.current); setCorPop({ cor, tipo: 'barra' }); corPopTmr.current = setTimeout(() => setCorPop(null), 2000) }
+  const ciclarCorBarra = () => { const i = PALETA_BARRA.indexOf(barraCorRef.current); const prox = PALETA_BARRA[(i + 1) % PALETA_BARRA.length]; setBarraCor(prox); mostrarBarraPop(prox) }
+  const marcarBarra = (cor?: string) => {
+    const sel = window.getSelection()
+    const dentro = (n: Node | null) => !!(n && (n.nodeType === 1 ? (n as HTMLElement) : n.parentElement)?.closest?.('.pr-textlayer'))
+    let rects: DOMRect[] = []
+    if (sel && sel.rangeCount && !sel.isCollapsed && dentro(sel.anchorNode)) {
+      rects = Array.from(sel.getRangeAt(0).getClientRects()).filter(rc => rc.width > 1 && rc.height > 1)
+    } else {
+      const fr = focoRect()
+      if (fr) rects = [{ left: fr.x, right: fr.x + 2, top: fr.top, bottom: fr.bottom, width: 2, height: fr.h } as DOMRect]
+    }
+    if (!rects.length) return
+    // agrupa por página e calcula a extensão vertical (do topo da 1ª linha ao fim da última)
+    const porPagina: Record<number, { minY: number; maxY: number }> = {}
+    for (const rc of rects) {
+      const cx = rc.left + rc.width / 2, cy = rc.top + rc.height / 2
+      const pg = (document.elementFromPoint(cx, cy) as HTMLElement)?.closest('.pr-page') as HTMLElement
+      if (!pg) continue
+      const n = Number(pg.dataset.page); const pr = pg.getBoundingClientRect()
+      const fyTop = (rc.top - pr.top) / pr.height, fyBot = (rc.bottom - pr.top) / pr.height
+      const g = (porPagina[n] ||= { minY: fyTop, maxY: fyBot })
+      g.minY = Math.min(g.minY, fyTop); g.maxY = Math.max(g.maxY, fyBot)
+    }
+    const c = cor || barraCorRef.current
+    const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+    let added = false
+    for (const [n, g] of Object.entries(porPagina)) {
+      if (!pageElsRef.current[Number(n)]) continue
+      ;(anotRef.current[Number(n)] ||= []).push({ id, kind: 'barra', cor: c, rects: [{ fx: 0, fy: g.minY, fw: 0.012, fh: Math.max(0.004, g.maxY - g.minY) }] })
+      added = true
+    }
+    if (added) { grifoHistRef.current.push(id); pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
+    // mantém o cursor no fim para continuar a leitura
+    try { if (sel && sel.rangeCount) { const r = sel.getRangeAt(0); const cc = document.createRange(); cc.setStart(r.endContainer, r.endOffset); cc.collapse(true); sel.removeAllRanges(); sel.addRange(cc) } } catch {}
+  }
   const focoRect = () => {
     const sel = window.getSelection(); if (!sel || sel.focusNode == null) return null
     const r = document.createRange(); try { r.setStart(sel.focusNode, sel.focusOffset) } catch { return null }
@@ -2477,6 +2617,9 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       if (ctrlDown) ctrlCombo = true
       if (altDown) altCombo = true
       if ((e.key === 'z' || e.key === 'Z' || e.key === 'Tab') && !e.altKey && !e.metaKey) { e.preventDefault(); desfazerGrifo(); return }   // desfazer último grifo
+      // barra de leitura: "c" marca o parágrafo (seleção) na margem; "v" troca a cor da barra
+      if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); marcarBarra(); return }
+      if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.altKey && !e.metaKey) { e.preventDefault(); ciclarCorBarra(); return }
       if (!e.ctrlKey && !e.altKey && !e.metaKey && navTeclado(e)) return
     }
     const ku = (e: KeyboardEvent) => {
@@ -2524,6 +2667,19 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         badge.onmousedown = (ev) => { ev.stopPropagation(); ev.preventDefault() }
         badge.onclick = (ev) => { ev.stopPropagation(); ev.preventDefault(); removerAnot(n, a.id) }
         layer.appendChild(badge)
+        continue
+      }
+      if (a.kind === 'barra') {
+        // barra vertical na margem esquerda marcando um parágrafo lido (clique remove)
+        for (const r of a.rects) {
+          const y = r.fy * H, h = r.fh * H
+          const d = document.createElement('div')
+          d.title = 'Barra de leitura — clique para remover'
+          d.style.cssText = `position:absolute;left:2px;top:${y}px;width:5px;height:${Math.max(6, h)}px;background:${a.cor};border-radius:3px;pointer-events:auto;cursor:pointer;box-shadow:0 0 0 1px rgba(0,0,0,.06)`
+          d.onmousedown = (ev) => { ev.stopPropagation(); ev.preventDefault() }
+          d.onclick = (ev) => { ev.stopPropagation(); ev.preventDefault(); removerAnot(n, a.id) }
+          layer.appendChild(d)
+        }
         continue
       }
       for (const r of a.rects) {
@@ -2613,7 +2769,15 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {modo === 'texto' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
               <div style={{ fontSize: '.72rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                <b>Clique</b> para posicionar o cursor; use as <b>setas</b> e o <b>Enter</b> para mover e <b>Shift + setas</b> (ou o mouse) para selecionar. Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor) — o cursor fica no fim para continuar. <b>Z</b>, <b>Tab</b> ou <b>Ctrl+Z</b> desfazem a última marcação; tocar o Ctrl sobre um grifo também o <b>remove</b>. Para enviar trechos ao editor, use o modo <b>Selecionar</b>.
+                <b>Clique</b> para posicionar o cursor; use as <b>setas</b> e o <b>Enter</b> para mover e <b>Shift + setas</b> (ou o mouse) para selecionar. Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor) — o cursor fica no fim para continuar. <b>Z</b>, <b>Tab</b> ou <b>Ctrl+Z</b> desfazem a última marcação; tocar o Ctrl sobre um grifo também o <b>remove</b>. Selecione um parágrafo e tecle <b>C</b> para pôr a <b>barra de leitura</b> na margem (<b>V</b> troca a cor). Para enviar trechos ao editor, use o modo <b>Selecionar</b>.
+              </div>
+              {/* barra de leitura (margem esquerda) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderTop: '1px solid var(--border)', paddingTop: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Barra</span>
+                <div style={{ display: 'flex', gap: 5, flex: 1 }}>
+                  {PALETA_BARRA.map(c => <button key={c} onClick={() => setBarraCor(c)} title={`Barra ${NOME_BARRA[c]}`} style={{ width: 24, height: 24, borderRadius: 5, border: barraCor === c ? '2px solid var(--text-primary)' : '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
+                </div>
+                <button onClick={() => marcarBarra()} title="Marcar o parágrafo selecionado com a barra de leitura na margem esquerda (atalho: C)" style={{ ...btn, width: 'auto', padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ display: 'inline-block', width: 4, height: 13, borderRadius: 2, background: barraCor }} /> Marcar <kbd style={{ fontSize: '.6rem', border: '1px solid currentColor', borderRadius: 3, padding: '0 3px', opacity: .8 }}>C</kbd></button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Estilo</span>
@@ -2897,8 +3061,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       {/* aviso flutuante da cor atual (troca com Alt) — some após 2s */}
       {corPop && createPortal(
         <div style={{ position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 9998, display: 'flex', alignItems: 'center', gap: 9, padding: '9px 14px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 999, boxShadow: '0 10px 30px rgba(0,0,0,.32)', pointerEvents: 'none' }}>
-          <span style={{ width: 22, height: 22, borderRadius: corPop.tipo === 'sublinhado' ? 4 : 6, background: corPop.cor, border: '1px solid var(--border)' }} />
-          <span style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{corPop.tipo === 'sublinhado' ? 'Linha' : 'Marca-texto'} · {corPop.cor}</span>
+          <span style={{ width: 22, height: 22, borderRadius: corPop.tipo === 'sublinhado' ? 4 : corPop.tipo === 'barra' ? 3 : 6, background: corPop.cor, border: '1px solid var(--border)' }} />
+          <span style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{corPop.tipo === 'sublinhado' ? 'Linha' : corPop.tipo === 'barra' ? 'Barra · ' + (NOME_BARRA[corPop.cor] || '') : 'Marca-texto'} {corPop.tipo !== 'barra' && ('· ' + corPop.cor)}</span>
         </div>, document.body)}
 
       {/* aviso transitório de troca de modo por atalho (teclas 1 e 2) */}
@@ -2911,7 +3075,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       {/* janela: relação das palavras grifadas (texto + cor) */}
       {grifosOpen && createPortal(
         <div onMouseDown={() => setGrifosOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9200, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onMouseDown={e => e.stopPropagation()} style={{ width: 560, maxWidth: '95vw', height: 'min(84vh, 720px)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+          <div onMouseDown={e => e.stopPropagation()} className="pr-pop" style={{ width: 560, maxWidth: '95vw', height: 'min(84vh, 720px)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', borderBottom: '1px solid var(--border)' }}>
               <span style={{ fontSize: '1.1rem' }}>📑</span>
               <b style={{ fontSize: '.95rem', color: 'var(--text-primary)' }}>Palavras grifadas</b>
@@ -2920,7 +3084,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             </div>
             {(() => {
               const itens: any[] = []; const vistos = new Set<string>()
-              Object.keys(anotRef.current).forEach(k => { const n = Number(k); (anotRef.current[n] || []).forEach((a: any) => { if (a.kind === 'lido' || vistos.has(a.id)) return; vistos.add(a.id); itens.push({ page: n, id: a.id, cor: a.cor, kind: a.kind, texto: a.texto || '' }) }) })
+              Object.keys(anotRef.current).forEach(k => { const n = Number(k); (anotRef.current[n] || []).forEach((a: any) => { if (a.kind === 'lido' || a.kind === 'barra' || vistos.has(a.id)) return; vistos.add(a.id); itens.push({ page: n, id: a.id, cor: a.cor, kind: a.kind, texto: a.texto || '' }) }) })
               itens.sort((a, b) => a.page - b.page)
               return (
                 <>
@@ -2952,7 +3116,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       {/* relatório de perguntas geradas a partir dos destaques */}
       {relatorioQ && createPortal(
         <div onMouseDown={() => { if (!relatorioQ.loading) setRelatorioQ(null) }} style={{ position: 'fixed', inset: 0, zIndex: 9300, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onMouseDown={e => e.stopPropagation()} style={{ width: 720, maxWidth: '96vw', height: 'min(86vh, 800px)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)', overflow: 'hidden' }}>
+          <div onMouseDown={e => e.stopPropagation()} className="pr-pop" style={{ width: 720, maxWidth: '96vw', height: 'min(86vh, 800px)', display: 'flex', flexDirection: 'column', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: '0 24px 70px rgba(0,0,0,.45)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 18px', borderBottom: '1px solid var(--border)' }}>
               <span style={{ fontSize: '1.15rem' }}>📋</span>
               <b style={{ fontSize: '.98rem', color: 'var(--text-primary)', flex: 1 }}>Relatório de perguntas — trechos destacados</b>
@@ -3042,7 +3206,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           </div>
           <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontStyle: 'italic', marginBottom: 10, maxHeight: 54, overflow: 'auto', borderLeft: '3px solid var(--border)', paddingLeft: 8 }}>"{aiPop.origem.slice(0, 220)}{aiPop.origem.length > 220 ? '…' : ''}"</div>
           {aiPop.carregando ? (
-            <div style={{ padding: '34px 0', textAlign: 'center', color: 'var(--text-muted)' }}>Consultando a IA…</div>
+            <div style={{ padding: '34px 0', textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}><span className="nx-spin" style={{ fontSize: '1.9rem' }}>⏳</span><span>Consultando a IA…</span></div>
           ) : (<>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', fontSize: '0.9rem', lineHeight: 1.6, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', marginBottom: 12 }}>{aiPop.texto}</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -3061,7 +3225,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
             <span style={{ fontSize: '1.05rem' }}>✦</span><b style={{ color: 'var(--text-primary)' }}>Palavras-chave</b>
             <span style={{ flex: 1 }} /><button onMouseDown={e => { e.preventDefault(); setKw(null) }} style={btn}>✕</button>
           </div>
-          {kw.loading && <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.88rem' }}>Extraindo palavras-chave…</div>}
+          {kw.loading && <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.88rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}><span className="nx-spin" style={{ fontSize: '1.7rem' }}>⏳</span><span>Extraindo palavras-chave…</span></div>}
           {kw.erro && <div style={{ padding: '12px', color: '#DC2626', fontSize: '0.82rem' }}>⚠ {kw.erro}</div>}
           {!kw.loading && !kw.erro && (<>
             <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 8 }}>Revise, edite ou desmarque. As marcadas vão para o editor (uma por linha).</div>

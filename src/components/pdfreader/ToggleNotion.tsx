@@ -716,6 +716,7 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
         .tg-card.rev{border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
         .tg-card.esc{border-color:color-mix(in srgb,#7c3aed 38%,var(--border))}
         .tg-cardhead{display:flex;align-items:flex-start;gap:13px;padding:15px 17px;transition:background .14s}
+        .tg-cardhead:hover{background:var(--surface)}
         .tg-num{flex-shrink:0;width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.86rem;font-family:var(--font-display);border:1.5px solid transparent}
         .tg-cardbody{animation:tgReveal .22s ease}
         @keyframes tgReveal{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
@@ -881,13 +882,13 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
                           const numCor = q.res === 'a' ? { color: '#fff', background: '#10b981', borderColor: '#10b981' } : q.res === 'e' ? { color: '#fff', background: '#ef4444', borderColor: '#ef4444' } : { color: 'var(--accent)', background: 'var(--accent-bg)', borderColor: 'transparent' }
                           return (
                             <div key={q.id} className={`tg-card${rev ? ' rev' : ''}${esc ? ' esc' : ''}`}>
-                              <div className="tg-cardhead">
+                              <div className="tg-cardhead" onClick={() => setReveladas(r => ({ ...r, [q.id]: !r[q.id] }))} title="Clique para ver / ocultar a resposta" style={{ cursor: 'pointer' }}>
                                 <span className="tg-num" style={numCor}>{q.numero}</span>
-                                <div onClick={() => setReveladas(r => ({ ...r, [q.id]: !r[q.id] }))} title="Clique para ver a resposta / gabarito" style={{ flex: 1, minWidth: 0, fontSize: '.96rem', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer' }} dangerouslySetInnerHTML={{ __html: q.perguntaHtml }} />
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                                <div style={{ flex: 1, minWidth: 0, fontSize: '.96rem', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }} dangerouslySetInnerHTML={{ __html: q.perguntaHtml }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                                   {q.res && <span title={b.data ? (q.res === 'a' ? 'Acertou' : 'Errou') + ' em ' + brData(b.data) : ''} style={{ fontSize: '.72rem', fontWeight: 800, color: q.res === 'a' ? '#10b981' : '#ef4444' }}>{q.res === 'a' ? '✓' : '✗'}</span>}
                                   <button onClick={e => { e.stopPropagation(); setEstudoAberto(x => ({ ...x, [q.id]: !x[q.id] })) }} className={`tg-headbtn${esc ? ' on' : ''}`} title="Responder de memória, sem ver o gabarito">✎ Responder</button>
-                                  <button onClick={() => setReveladas(r => ({ ...r, [q.id]: !r[q.id] }))} className="tg-headbtn" title="Ver a resposta / gabarito">{rev ? '▾ ocultar' : '▸ resposta'}</button>
+                                  <span style={{ fontSize: '.8rem', color: 'var(--text-muted)', fontWeight: 700, width: 14, textAlign: 'center' }}>{rev ? '▾' : '▸'}</span>
                                 </div>
                               </div>
                               {/* painel: RESPONDER por escrito (não mostra o gabarito) */}
@@ -1010,7 +1011,7 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
                               else if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) { e.preventDefault(); document.execCommand(e.key.toLowerCase() === 'b' ? 'bold' : e.key.toLowerCase() === 'i' ? 'italic' : 'underline'); editar(i, (e.currentTarget as HTMLElement).innerHTML) }
                             }}
                             onPaste={e => { const t = e.clipboardData.getData('text/plain'); if (t && t.includes('\n')) { e.preventDefault(); colarInteligente(i, t) } }}
-                            style={{ flex: 1, outline: 'none', fontSize: '.9rem', lineHeight: 1.55, color: 'var(--text-primary)', minHeight: 22, padding: '2px 4px', wordBreak: 'break-word', fontWeight: b.nivel === 0 ? 600 : 400, cursor: (selMode && b.nivel === 0) ? 'pointer' : 'text', userSelect: (selMode && b.nivel === 0) ? 'none' : 'auto' }} />
+                            style={{ flex: 1, outline: 'none', fontSize: '.9rem', lineHeight: 1.55, color: 'var(--text-primary)', minHeight: 22, padding: '2px 4px', wordBreak: 'break-word', fontWeight: 400, cursor: (selMode && b.nivel === 0) ? 'pointer' : 'text', userSelect: (selMode && b.nivel === 0) ? 'none' : 'auto' }} />
                           <span className="tg-bact" style={{ display: 'flex', gap: 1, marginTop: 2, alignItems: 'center' }}>
                             {b.nivel === 0 && listaGrupos().length > 0 && (
                               <select value="" onChange={e => { if (e.target.value) moverParaGrupo(i, e.target.value) }} title="Mover esta pergunta para um grupo" style={{ height: 22, borderRadius: 6, border: '1px solid var(--border-md)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: '.66rem', cursor: 'pointer', maxWidth: 90 }}>
