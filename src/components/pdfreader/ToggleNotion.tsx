@@ -10,6 +10,8 @@ function clean<T extends object>(o: T): T { return Object.fromEntries(Object.ent
 function nid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4) }
 function escapeHtml(s: string) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 function stripHtml(h: string): string { const d = document.createElement('div'); d.innerHTML = h; return (d.textContent || '').replace(/\s+/g, ' ').trim() }
+// Remove numeração no início da pergunta ("1 - ", "01) ", "1. ", "1 – ", "1: ") — inclusive dentro de um <b>/<strong> de abertura, preservando a tag
+function stripNumInicial(s: string): string { return s.replace(/^(\s*<(?:b|strong)\b[^>]*>)?\s*\d{1,3}\s*[).\-–—:]\s+/i, '$1') }
 
 // Detecção local de pergunta/resposta (vários formatos comuns)
 const QRE = /^\s*(perguntas?|quest(ão|ao|ion)?|p|q)\s*[:.)\-]\s+/i
@@ -41,7 +43,7 @@ function parseQA(text: string): { p: string; r: string }[] {
 function blocosDePares(pares: { p: string; r: string }[], nivelBase = 0): Bloco[] {
   const out: Bloco[] = []
   for (const par of pares) {
-    out.push({ ...blocoVazio(nivelBase), html: `<b>${escapeHtml(par.p.trim())}</b>`, aberto: !par.r.trim() })
+    out.push({ ...blocoVazio(nivelBase), html: `<b>${escapeHtml(stripNumInicial(par.p.trim()))}</b>`, aberto: !par.r.trim() })
     if (par.r.trim()) out.push({ ...blocoVazio(nivelBase + 1), html: escapeHtml(par.r.trim()) })
   }
   return out
@@ -53,7 +55,7 @@ function blocosDeGrupos(grupos: { grupo: string; itens: { p: string; r: string }
     if (g.grupo && g.grupo.trim()) out.push({ ...blocoVazio(0), grupo: true, aberto: true, html: `<b>${escapeHtml(g.grupo.trim())}</b>` })
     for (const par of (g.itens || [])) {
       if (!par.p?.trim()) continue
-      out.push({ ...blocoVazio(0), html: `<b>${escapeHtml(par.p.trim())}</b>`, aberto: !par.r?.trim() })
+      out.push({ ...blocoVazio(0), html: `<b>${escapeHtml(stripNumInicial(par.p.trim()))}</b>`, aberto: !par.r?.trim() })
       if (par.r?.trim()) out.push({ ...blocoVazio(1), html: escapeHtml(par.r.trim()) })
     }
   }
@@ -133,7 +135,7 @@ function textoParaBlocos(texto: string): Bloco[] {
   if (pares.length && pares.some(p => p.r.trim())) return blocosDePares(pares, 0)
   return texto.split(/\r?\n/).map(s => s.trim()).filter(Boolean).map(l => ehTituloTxt(l)
     ? ({ ...blocoVazio(0), grupo: true, aberto: true, html: `<b>${escapeHtml(l)}</b>` })
-    : ({ ...blocoVazio(0), html: escapeHtml(l) }))
+    : ({ ...blocoVazio(0), html: escapeHtml(stripNumInicial(l)) }))
 }
 // Correção por IA (estilo prova de concurso)
 function promptCorrecao(pergunta: string, gabarito: string, minha: string): string {
@@ -199,6 +201,7 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
   const [filtro, setFiltro] = useState<Filtro>('todas')
   const [busca, setBusca] = useState('')
   const [sidebar, setSidebar] = useState(true)
+  const [painelAberto, setPainelAberto] = useState(true)
 
   // janela
   const [pos, setPos] = useState({ x: 70, y: 48 })
@@ -402,6 +405,37 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
     setBlocos([...restantes, g, ...movidos]); setSel({})
   }
   const selCount = Object.values(sel).filter(Boolean).length
+  // seleciona / limpa todas as perguntas de nível 0
+  function selecionarTodas() {
+    const todas: Record<string, boolean> = {}; blocos.forEach(b => { if (b.nivel === 0 && !b.grupo) todas[b.id] = true }); setSel(todas)
+  }
+  // aplica uma cor de fundo às perguntas selecionadas (e às respostas aninhadas)
+  function corSelecionadas(cor: string) {
+    const bs = blocos.slice()
+    for (let i = 0; i < bs.length; i++) {
+      if (bs[i].nivel === 0 && !bs[i].grupo && sel[bs[i].id]) { const fim = fimSubarvore(bs, i); for (let k = i; k <= fim; k++) bs[k] = { ...bs[k], cor } }
+    }
+    setBlocos(bs)
+  }
+  // negrito on/off apenas nas perguntas selecionadas
+  function negritoSelecionadas(on: boolean) {
+    const bs = blocos.map(b => {
+      if (b.nivel !== 0 || b.grupo || !sel[b.id]) return b
+      const semB = b.html.replace(/<\/?(b|strong)>/gi, '').replace(/font-weight\s*:\s*(bold|[5-9]00)\s*;?/gi, '')
+      return { ...b, html: on ? `<b>${semB}</b>` : semB }
+    })
+    setBlocos(bs)
+  }
+  // remove numeração inicial só das perguntas selecionadas
+  function stripNumSelecionadas() {
+    const bs = blocos.map(b => (b.nivel === 0 && !b.grupo && sel[b.id]) ? { ...b, html: stripNumInicial(b.html) } : b); setBlocos(bs)
+  }
+  // exclui as perguntas selecionadas (com respostas aninhadas)
+  function excluirSelecionadas() {
+    const [restantes] = extrairSelecionadas(sel)
+    if (!window.confirm(`Excluir ${selCount} pergunta(s) selecionada(s) e suas respostas?`)) return
+    setBlocos(restantes.length ? restantes : [blocoVazio()]); setSel({})
+  }
   // negrito em massa nas perguntas (todas em negrito, ou tirar de todas)
   function negritoTodas(on: boolean) {
     const bs = blocos.map(b => {
@@ -409,6 +443,18 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
       const semB = b.html.replace(/<\/?(b|strong)>/gi, '').replace(/font-weight\s*:\s*(bold|[5-9]00)\s*;?/gi, '')
       return { ...b, html: on ? `<b>${semB}</b>` : semB }
     })
+    setBlocos(bs)
+  }
+  // remove a numeração que já veio embutida no texto das perguntas (evita "1 - 1")
+  function removerNumeracaoTexto() {
+    let n = 0
+    const bs = blocos.map(b => {
+      if (b.nivel !== 0 || b.grupo) return b
+      const novo = stripNumInicial(b.html)
+      if (novo !== b.html) n++
+      return { ...b, html: novo }
+    })
+    if (!n) { window.alert('Nenhuma numeração no início das perguntas foi encontrada.'); return }
     setBlocos(bs)
   }
   // monta os cartões (pergunta/resposta) de um grupo para o modo flashcard
@@ -642,6 +688,12 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
         .tg-row:hover .tg-act{opacity:1}
         .tg-row:hover{background:var(--surface)}
         .tg-ed:empty:before{content:attr(data-ph);color:var(--text-muted);opacity:.55}
+        .tg-ed{font-weight:400}
+        .tg-ed b,.tg-ed strong{font-weight:800;color:var(--text-primary)}
+        .tg-card b,.tg-card strong{font-weight:800}
+        .tg-headbtn{border:1px solid var(--border-md);background:var(--card-bg);color:var(--text-secondary);cursor:pointer;font-size:.72rem;font-weight:700;padding:5px 10px;border-radius:8px;white-space:nowrap;transition:all .13s;display:inline-flex;align-items:center;gap:4px;font-family:var(--font-display)}
+        .tg-headbtn:hover{border-color:var(--accent);color:var(--text-primary)}
+        .tg-headbtn.on{background:var(--accent);color:#fff;border-color:transparent}
         .tg-ed table{border-collapse:collapse;margin:5px 0;font-size:.82rem;max-width:100%}
         .tg-ed td,.tg-ed th{border:1px solid var(--border-md);padding:4px 8px;vertical-align:top}
         .tg-ed th{background:var(--surface)}
@@ -662,8 +714,8 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
         .tg-card{border:1px solid var(--border);border-radius:14px;background:var(--card-bg);margin-bottom:11px;transition:box-shadow .18s,border-color .18s,transform .12s;overflow:hidden}
         .tg-card:hover{border-color:var(--border-md);box-shadow:0 6px 22px rgba(0,0,0,.08)}
         .tg-card.rev{border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
-        .tg-cardhead{display:flex;align-items:flex-start;gap:13px;padding:15px 17px;cursor:pointer;transition:background .14s}
-        .tg-cardhead:hover{background:var(--surface)}
+        .tg-card.esc{border-color:color-mix(in srgb,#7c3aed 38%,var(--border))}
+        .tg-cardhead{display:flex;align-items:flex-start;gap:13px;padding:15px 17px;transition:background .14s}
         .tg-num{flex-shrink:0;width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:.86rem;font-family:var(--font-display);border:1.5px solid transparent}
         .tg-cardbody{animation:tgReveal .22s ease}
         @keyframes tgReveal{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
@@ -719,6 +771,9 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
             {/* cabeçalho do documento: título + alternância Estudar/Editar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--border)' }}>
               <input value={doc_.titulo} onChange={e => salvarDoc({ ...doc_, titulo: e.target.value })} placeholder="Título do arquivo" style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', outline: 'none', fontSize: '1.22rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-display)' }} />
+              {vista === 'estudar' && desempenho.total > 0 && (
+                <button className={`tg-headbtn${painelAberto ? '' : ' on'}`} onClick={() => setPainelAberto(v => !v)} title={painelAberto ? 'Ocultar painel de desempenho e filtros (visão limpa só com as perguntas)' : 'Mostrar painel de desempenho e filtros'}>{painelAberto ? '▴ Ocultar painel' : '▾ Painel'}</button>
+              )}
               <div className="tg-seg">
                 <button className={vista === 'estudar' ? 'on' : ''} onClick={() => setVista('estudar')}>🎯 Estudar</button>
                 <button className={vista === 'editar' ? 'on' : ''} onClick={() => setVista('editar')}>✏️ Editar</button>
@@ -729,7 +784,7 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
               /* ═══════════════ MODO ESTUDAR ═══════════════ */
               <>
                 {/* Painel de desempenho */}
-                {desempenho.total > 0 && (
+                {painelAberto && desempenho.total > 0 && (
                   <div style={{ padding: '15px 20px 13px', borderBottom: '1px solid var(--border)', background: 'linear-gradient(160deg,var(--surface),transparent)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
                       {/* anel de aproveitamento */}
@@ -773,17 +828,19 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
                 )}
 
                 {/* Filtros + busca */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-                  {([['todas', 'Todas', '📋'], ['pendentes', 'Pendentes', '⚪'], ['revisar', 'Erros', '🔴'], ['acertos', 'Dominadas', '🟢']] as [Filtro, string, string][]).map(([f, lbl, ic]) => (
-                    <button key={f} className={`tg-chip${filtro === f ? ' on' : ''}`} onClick={() => setFiltro(f)}>{ic} {lbl}</button>
-                  ))}
-                  <span style={{ flex: 1 }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-1)', border: '1px solid var(--border-md)', borderRadius: 9, padding: '0 10px', height: 32 }}>
-                    <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>🔍</span>
-                    <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.8rem', color: 'var(--text-primary)', width: 130 }} />
-                    {busca && <button onClick={() => setBusca('')} style={{ ...miniBtn, fontSize: '.7rem' }}>✕</button>}
+                {painelAberto && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+                    {([['todas', 'Todas', '📋'], ['pendentes', 'Pendentes', '⚪'], ['revisar', 'Erros', '🔴'], ['acertos', 'Dominadas', '🟢']] as [Filtro, string, string][]).map(([f, lbl, ic]) => (
+                      <button key={f} className={`tg-chip${filtro === f ? ' on' : ''}`} onClick={() => setFiltro(f)}>{ic} {lbl}</button>
+                    ))}
+                    <span style={{ flex: 1 }} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-1)', border: '1px solid var(--border-md)', borderRadius: 9, padding: '0 10px', height: 32 }}>
+                      <span style={{ fontSize: '.8rem', color: 'var(--text-muted)' }}>🔍</span>
+                      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar…" style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '.8rem', color: 'var(--text-primary)', width: 130 }} />
+                      {busca && <button onClick={() => setBusca('')} style={{ ...miniBtn, fontSize: '.7rem' }}>✕</button>}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Lista de questões por seção */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
@@ -823,47 +880,55 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
                           const b = blocos[q.qi] || ({} as Bloco)
                           const numCor = q.res === 'a' ? { color: '#fff', background: '#10b981', borderColor: '#10b981' } : q.res === 'e' ? { color: '#fff', background: '#ef4444', borderColor: '#ef4444' } : { color: 'var(--accent)', background: 'var(--accent-bg)', borderColor: 'transparent' }
                           return (
-                            <div key={q.id} className={`tg-card${rev ? ' rev' : ''}`}>
-                              <div className="tg-cardhead" onClick={() => setReveladas(r => ({ ...r, [q.id]: !r[q.id] }))}>
+                            <div key={q.id} className={`tg-card${rev ? ' rev' : ''}${esc ? ' esc' : ''}`}>
+                              <div className="tg-cardhead">
                                 <span className="tg-num" style={numCor}>{q.numero}</span>
-                                <div style={{ flex: 1, minWidth: 0, fontSize: '.96rem', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600 }} dangerouslySetInnerHTML={{ __html: q.perguntaHtml }} />
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                                <div onClick={() => setReveladas(r => ({ ...r, [q.id]: !r[q.id] }))} title="Clique para ver a resposta / gabarito" style={{ flex: 1, minWidth: 0, fontSize: '.96rem', lineHeight: 1.55, color: 'var(--text-primary)', fontWeight: 600, cursor: 'pointer' }} dangerouslySetInnerHTML={{ __html: q.perguntaHtml }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                                   {q.res && <span title={b.data ? (q.res === 'a' ? 'Acertou' : 'Errou') + ' em ' + brData(b.data) : ''} style={{ fontSize: '.72rem', fontWeight: 800, color: q.res === 'a' ? '#10b981' : '#ef4444' }}>{q.res === 'a' ? '✓' : '✗'}</span>}
-                                  <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>{rev ? '▾ ocultar' : '▸ resposta'}</span>
+                                  <button onClick={e => { e.stopPropagation(); setEstudoAberto(x => ({ ...x, [q.id]: !x[q.id] })) }} className={`tg-headbtn${esc ? ' on' : ''}`} title="Responder de memória, sem ver o gabarito">✎ Responder</button>
+                                  <button onClick={() => setReveladas(r => ({ ...r, [q.id]: !r[q.id] }))} className="tg-headbtn" title="Ver a resposta / gabarito">{rev ? '▾ ocultar' : '▸ resposta'}</button>
                                 </div>
                               </div>
+                              {/* painel: RESPONDER por escrito (não mostra o gabarito) */}
+                              {esc && (
+                                <div className="tg-cardbody" style={{ padding: '0 17px 15px', borderTop: '1px solid var(--border)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '12px 0 7px' }}>
+                                    <span style={{ fontSize: '.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text-accent)' }}>✎ Sua resposta</span>
+                                    <span style={{ fontSize: '.66rem', color: 'var(--text-muted)' }}>— de memória; o gabarito fica oculto até você pedir</span>
+                                  </div>
+                                  <textarea autoFocus value={b.resp || ''} onChange={e => setBlocoCampo(q.qi, { resp: e.target.value })} placeholder="Escreva aqui a sua resposta, testando o seu conhecimento…" style={{ width: '100%', boxSizing: 'border-box', minHeight: 90, resize: 'vertical', border: '1px solid var(--border-md)', borderRadius: 9, background: 'var(--bg-1)', color: 'var(--text-primary)', padding: 11, fontSize: '.88rem', outline: 'none', lineHeight: 1.55 }} />
+                                  <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
+                                    <button onClick={() => conferirIA(q.qi)} disabled={conferindo[q.id]} style={{ ...softBtn, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', border: 'none', opacity: conferindo[q.id] ? 0.6 : 1 }}>{conferindo[q.id] ? <><span className="nx-spin">⏳</span> Conferindo…</> : '✓ Conferir com IA'}</button>
+                                    {(b.resp || typeof b.pct === 'number' || b.fb) && <button onClick={() => limparResposta(q.qi)} title="Apagar a resposta e a correção da IA (mantém o histórico de acerto/erro)" style={{ ...softBtn }}>🧹 Limpar</button>}
+                                    <span style={{ flex: 1 }} />
+                                    <button onClick={() => setReveladas(r => ({ ...r, [q.id]: true }))} style={{ ...softBtn }} title="Revelar o gabarito para comparar">👁 Ver gabarito</button>
+                                  </div>
+                                  {typeof b.pct === 'number' && (b.pct > 0 || !!b.fb) && (
+                                    <div style={{ marginTop: 10, padding: 11, borderRadius: 10, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+                                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                                        <strong style={{ color: b.pct >= 60 ? '#10b981' : b.pct >= 40 ? '#f59e0b' : '#ef4444', fontSize: '1.2rem', fontFamily: 'var(--font-display)' }}>{b.pct}%</strong>
+                                        <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>de adequação ao gabarito (estimativa da IA)</span>
+                                      </div>
+                                      {b.fb && <div style={{ marginTop: 6, fontSize: '.83rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{b.fb}</div>}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              {/* painel: RESPOSTA / gabarito + auto-avaliação */}
                               {rev && (
-                                <div className="tg-cardbody" style={{ padding: '2px 17px 15px', borderTop: '1px solid var(--border)' }}>
-                                  <div style={{ fontSize: '.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text-accent)', margin: '11px 0 6px' }}>Resposta / gabarito</div>
-                                  <div style={{ fontSize: '.9rem', lineHeight: 1.6, color: 'var(--text-secondary)', padding: '10px 13px', borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--border)' }} dangerouslySetInnerHTML={{ __html: q.temResposta ? q.respostaHtml : '<i style="opacity:.55">Sem resposta cadastrada — avalie sozinho ou escreva a sua abaixo.</i>' }} />
+                                <div className="tg-cardbody" style={{ padding: '0 17px 15px', borderTop: '1px solid var(--border)' }}>
+                                  <div style={{ fontSize: '.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--text-accent)', margin: '12px 0 6px' }}>Resposta / gabarito</div>
+                                  <div style={{ fontSize: '.9rem', lineHeight: 1.6, color: 'var(--text-secondary)', padding: '10px 13px', borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--border)' }} dangerouslySetInnerHTML={{ __html: q.temResposta ? q.respostaHtml : '<i style="opacity:.55">Sem resposta cadastrada — avalie sozinho ou use ✎ Responder para escrever a sua.</i>' }} />
                                   {/* auto-avaliação */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
                                     <span style={{ fontSize: '.76rem', fontWeight: 700, color: 'var(--text-muted)' }}>Como você foi?</span>
                                     <button onClick={() => marcarResultado(q.qi, 'a')} className="tg-gbtn" style={{ color: q.res === 'a' ? '#fff' : '#10b981', background: q.res === 'a' ? '#10b981' : 'var(--card-bg)', border: q.res === 'a' ? 'none' : '1px solid #10b98155' }}>✓ Acertei</button>
                                     <button onClick={() => marcarResultado(q.qi, 'e')} className="tg-gbtn" style={{ color: q.res === 'e' ? '#fff' : '#ef4444', background: q.res === 'e' ? '#ef4444' : 'var(--card-bg)', border: q.res === 'e' ? 'none' : '1px solid #ef444455' }}>✗ Errei</button>
                                     <span style={{ flex: 1 }} />
-                                    <button onClick={() => setEstudoAberto(x => ({ ...x, [q.id]: !x[q.id] }))} className="tg-gbtn" style={{ color: esc ? '#fff' : 'var(--text-secondary)', background: esc ? 'var(--accent)' : 'var(--card-bg)', border: esc ? 'none' : '1px solid var(--border-md)' }}>✎ Responder por escrito</button>
+                                    {!esc && <button onClick={() => setEstudoAberto(x => ({ ...x, [q.id]: true }))} className="tg-gbtn" style={{ color: 'var(--text-secondary)', border: '1px solid var(--border-md)' }}>✎ Responder por escrito</button>}
                                     <button onClick={() => editarBloco(q.id)} title="Editar esta pergunta/resposta" className="tg-gbtn" style={{ color: 'var(--text-muted)', border: '1px solid var(--border-md)' }}>✏️</button>
                                   </div>
-                                  {/* escrever resposta + conferir IA */}
-                                  {esc && (
-                                    <div style={{ marginTop: 11, padding: 13, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--border)' }}>
-                                      <textarea value={b.resp || ''} onChange={e => setBlocoCampo(q.qi, { resp: e.target.value })} placeholder="Escreva aqui a sua resposta para comparar com o gabarito…" style={{ width: '100%', boxSizing: 'border-box', minHeight: 84, resize: 'vertical', border: '1px solid var(--border-md)', borderRadius: 9, background: 'var(--card-bg)', color: 'var(--text-primary)', padding: 10, fontSize: '.86rem', outline: 'none', lineHeight: 1.55 }} />
-                                      <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
-                                        <button onClick={() => conferirIA(q.qi)} disabled={conferindo[q.id]} style={{ ...softBtn, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', border: 'none', opacity: conferindo[q.id] ? 0.6 : 1 }}>{conferindo[q.id] ? <><span className="nx-spin">⏳</span> Conferindo…</> : '✓ Conferir com IA'}</button>
-                                        {(b.resp || typeof b.pct === 'number' || b.fb) && <button onClick={() => limparResposta(q.qi)} title="Apagar a resposta e a correção da IA (mantém o histórico de acerto/erro)" style={{ ...softBtn }}>🧹 Limpar</button>}
-                                      </div>
-                                      {typeof b.pct === 'number' && (b.pct > 0 || !!b.fb) && (
-                                        <div style={{ marginTop: 10, padding: 11, borderRadius: 10, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
-                                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                                            <strong style={{ color: b.pct >= 60 ? '#10b981' : b.pct >= 40 ? '#f59e0b' : '#ef4444', fontSize: '1.2rem', fontFamily: 'var(--font-display)' }}>{b.pct}%</strong>
-                                            <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>de adequação ao gabarito (estimativa da IA)</span>
-                                          </div>
-                                          {b.fb && <div style={{ marginTop: 6, fontSize: '.83rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{b.fb}</div>}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
                                 </div>
                               )}
                             </div>
@@ -880,10 +945,11 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
               <>
                 {/* ações do documento */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', background: 'var(--bg-1)' }}>
-                  <button onClick={() => salvarDoc({ ...doc_, numerado: !numerado })} title={numerado ? 'Numeração ativa — clicar troca para marcador' : 'Marcador ativo — clicar troca para numeração'} style={{ ...softBtn, minWidth: 40 }}>{numerado ? '1.' : '•'}</button>
+                  <button onClick={() => salvarDoc({ ...doc_, numerado: !numerado })} title={numerado ? 'Numeração automática ATIVA (badge azul) — clicar troca para marcador •' : 'Marcador • ativo — clicar troca para numeração automática'} style={{ ...softBtn, minWidth: 40, background: numerado ? 'var(--accent-bg)' : undefined, color: numerado ? 'var(--accent)' : undefined, fontWeight: 800 }}>{numerado ? '1.' : '•'}</button>
+                  <button onClick={removerNumeracaoTexto} title="Remover a numeração que veio junto no texto das perguntas (ex.: '1 - ', '2) '), deixando só a numeração automática do Toggle" style={{ ...softBtn }}>🔢⌫ Remover nº do texto</button>
                   <button onClick={() => { const bs = blocos.concat(blocoVazio(0)); setBlocos(bs); setTimeout(() => focar(bs[bs.length - 1].id), 30) }} style={softBtn}>＋ Bloco</button>
                   <button onClick={novoGrupo} title="Criar um grupo (título) para classificar perguntas" style={softBtn}>🗂️ Grupo</button>
-                  <button onClick={() => { setSelMode(v => !v); setSel({}) }} title="Selecionar várias perguntas para mover a um grupo de uma vez" style={{ ...softBtn, background: selMode ? 'var(--accent)' : undefined, color: selMode ? '#fff' : undefined, border: selMode ? 'none' : undefined }}>☑️ Selecionar</button>
+                  <button onClick={() => { setSelMode(v => !v); setSel({}) }} title="Selecionar várias perguntas de uma vez para editar em massa (negrito, cor, numeração), agrupar ou excluir" style={{ ...softBtn, background: selMode ? 'var(--accent)' : undefined, color: selMode ? '#fff' : undefined, border: selMode ? 'none' : undefined }}>☑️ Selecionar</button>
                   <span style={{ flex: 1 }} />
                   <button onClick={organizarIA} disabled={iaBusy} title="Identifica perguntas e respostas e aninha as respostas (ocultas) dentro de cada pergunta" style={{ ...softBtn, background: 'linear-gradient(135deg,#7c3aed,#5b5bd6)', color: '#fff', border: 'none', opacity: iaBusy ? 0.6 : 1 }}>{iaBusy ? <><span className="nx-spin">⏳</span> Organizando…</> : '✨ Organizar P/R com IA'}</button>
                 </div>
@@ -900,8 +966,8 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
                   <button className="tg-fmt" title="Remover realce" onMouseDown={e => { e.preventDefault(); aplicarFmt('hiliteColor', 'transparent') }} style={{ fontSize: '.7rem' }}>⌫</button>
                   <button className="tg-fmt" title="Limpar formatação" onMouseDown={e => { e.preventDefault(); aplicarFmt('removeFormat') }} style={{ fontSize: '.72rem' }}>✕</button>
                   <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 4px' }} />
-                  <button className="tg-fmt" title="Deixar TODAS as perguntas em negrito" onMouseDown={e => { e.preventDefault(); negritoTodas(true) }} style={{ fontWeight: 800, fontSize: '.7rem', minWidth: 'auto', padding: '0 8px' }}>B todas</button>
-                  <button className="tg-fmt" title="Tirar o negrito de TODAS as perguntas" onMouseDown={e => { e.preventDefault(); negritoTodas(false) }} style={{ fontSize: '.7rem', textDecoration: 'line-through', minWidth: 'auto', padding: '0 8px' }}>B nenhuma</button>
+                  <button className="tg-fmt" title="Deixar TODAS as perguntas em negrito" onMouseDown={e => { e.preventDefault(); negritoTodas(true) }} style={{ fontSize: '.68rem', fontWeight: 800, minWidth: 'auto', padding: '0 10px', background: 'var(--text-primary)', color: 'var(--card-bg)', border: 'none' }}>Perguntas em <b style={{ fontWeight: 900, marginLeft: 3 }}>negrito</b></button>
+                  <button className="tg-fmt" title="Tirar o negrito de TODAS as perguntas" onMouseDown={e => { e.preventDefault(); negritoTodas(false) }} style={{ fontSize: '.68rem', fontWeight: 400, minWidth: 'auto', padding: '0 10px' }}>Perguntas sem negrito</button>
                 </div>
                 {/* editor de blocos */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px' }}>
@@ -927,22 +993,24 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
                     return (
                       <div key={b.id}>
                         <div className="tg-blk" style={{ display: 'flex', alignItems: 'flex-start', gap: 4, marginLeft: b.nivel * 22, padding: '3px 5px', borderRadius: 8, background: (selMode && sel[b.id]) ? 'var(--accent-bg)' : (COR_BLOCO[b.cor] || 'transparent') }}>
-                          {selMode && b.nivel === 0 && <input type="checkbox" checked={!!sel[b.id]} onChange={e => setSel(s => ({ ...s, [b.id]: e.target.checked }))} title="Selecionar esta pergunta" style={{ marginTop: 7, width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }} />}
+                          {selMode && b.nivel === 0 && <input type="checkbox" checked={!!sel[b.id]} onChange={e => setSel(s => ({ ...s, [b.id]: e.target.checked }))} title="Selecionar esta pergunta" style={{ marginTop: 5, width: 18, height: 18, cursor: 'pointer', accentColor: 'var(--accent)', flexShrink: 0 }} />}
                           <button className="tg-caret" onClick={() => filhos && alternar(i)} title={filhos ? (b.aberto ? 'Recolher' : 'Expandir') : ''} style={{ ...caret, color: filhos ? 'var(--text-primary)' : 'transparent', cursor: filhos ? 'pointer' : 'default' }}>{b.aberto ? '▾' : '▸'}</button>
                           {numerado && b.nivel === 0
                             ? <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 22, height: 22, marginTop: 2, borderRadius: 7, background: 'var(--accent-bg)', color: 'var(--accent)', fontWeight: 800, fontSize: '.74rem', flexShrink: 0 }}>{numeroDe[b.id]}</span>
                             : <span style={{ color: 'var(--text-muted)', fontSize: '.5rem', marginTop: 9, minWidth: 12, textAlign: 'center' }}>•</span>}
-                          <div data-bloco={b.id} className="tg-ed" data-ph="Escreva… (Tab aninha, Enter novo)" contentEditable suppressContentEditableWarning
+                          <div data-bloco={b.id} className="tg-ed" data-ph="Escreva… (Tab aninha, Enter novo)" contentEditable={!(selMode && b.nivel === 0)} suppressContentEditableWarning
                             ref={el => { if (el && el.innerHTML !== b.html && document.activeElement !== el) el.innerHTML = b.html }}
+                            onClick={selMode && b.nivel === 0 ? () => setSel(s => ({ ...s, [b.id]: !s[b.id] })) : undefined}
                             onInput={e => editar(i, (e.currentTarget as HTMLElement).innerHTML)}
                             onKeyDown={e => {
+                              if (selMode && b.nivel === 0) return
                               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); novoApos(i) }
                               else if (e.key === 'Tab') { e.preventDefault(); indentar(i, e.shiftKey ? -1 : 1) }
                               else if (e.key === 'Backspace' && (e.currentTarget as HTMLElement).innerHTML === '') { e.preventDefault(); apagar(i) }
                               else if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) { e.preventDefault(); document.execCommand(e.key.toLowerCase() === 'b' ? 'bold' : e.key.toLowerCase() === 'i' ? 'italic' : 'underline'); editar(i, (e.currentTarget as HTMLElement).innerHTML) }
                             }}
                             onPaste={e => { const t = e.clipboardData.getData('text/plain'); if (t && t.includes('\n')) { e.preventDefault(); colarInteligente(i, t) } }}
-                            style={{ flex: 1, outline: 'none', fontSize: '.9rem', lineHeight: 1.55, color: 'var(--text-primary)', minHeight: 22, padding: '2px 4px', wordBreak: 'break-word', fontWeight: b.nivel === 0 ? 600 : 400 }} />
+                            style={{ flex: 1, outline: 'none', fontSize: '.9rem', lineHeight: 1.55, color: 'var(--text-primary)', minHeight: 22, padding: '2px 4px', wordBreak: 'break-word', fontWeight: b.nivel === 0 ? 600 : 400, cursor: (selMode && b.nivel === 0) ? 'pointer' : 'text', userSelect: (selMode && b.nivel === 0) ? 'none' : 'auto' }} />
                           <span className="tg-bact" style={{ display: 'flex', gap: 1, marginTop: 2, alignItems: 'center' }}>
                             {b.nivel === 0 && listaGrupos().length > 0 && (
                               <select value="" onChange={e => { if (e.target.value) moverParaGrupo(i, e.target.value) }} title="Mover esta pergunta para um grupo" style={{ height: 22, borderRadius: 6, border: '1px solid var(--border-md)', background: 'var(--card-bg)', color: 'var(--text-secondary)', fontSize: '.66rem', cursor: 'pointer', maxWidth: 90 }}>
@@ -996,17 +1064,32 @@ export default function ToggleNotion({ open, onClose, seed, onSeedUsado }: { ope
       )}
 
       {/* barra de ações da seleção múltipla */}
-      {vista === 'editar' && selMode && selCount > 0 && (
-        <div style={{ position: 'absolute', left: '50%', bottom: 18, transform: 'translateX(-50%)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 8, padding: '9px 13px', background: 'var(--card-bg)', border: '1px solid var(--accent)', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,.35)', flexWrap: 'wrap', maxWidth: '92%' }}>
-          <b style={{ fontSize: '.82rem', color: 'var(--text-primary)' }}>{selCount} selecionada(s)</b>
-          {listaGrupos().length > 0 && (
-            <select value="" onChange={e => { if (e.target.value) moverVariasParaGrupo(e.target.value) }} style={{ height: 30, borderRadius: 8, border: '1px solid var(--border-md)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: '.78rem', cursor: 'pointer' }}>
-              <option value="">🗂️ mover para grupo…</option>
-              {listaGrupos().map(g => <option key={g.id} value={g.id}>{g.titulo}</option>)}
-            </select>
-          )}
-          <button onClick={novoGrupoComSelecionadas} style={{ ...softBtn, background: 'var(--accent)', color: '#fff', border: 'none' }}>＋ Novo grupo com estas</button>
-          <button onClick={() => setSel({})} style={{ ...softBtn }}>Limpar</button>
+      {vista === 'editar' && selMode && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 18, transform: 'translateX(-50%)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 7, padding: '9px 13px', background: 'var(--card-bg)', border: '1px solid var(--accent)', borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,.35)', flexWrap: 'wrap', maxWidth: '94%' }}>
+          <b style={{ fontSize: '.82rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{selCount} selecionada(s)</b>
+          <button onClick={selecionarTodas} title="Selecionar todas as perguntas" style={{ ...softBtn }}>Tudo</button>
+          {selCount > 0 && <button onClick={() => setSel({})} style={{ ...softBtn }}>Nenhuma</button>}
+          {selCount > 0 && <>
+            <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px' }} />
+            {/* edição em massa */}
+            <button onClick={() => negritoSelecionadas(true)} title="Negrito nas selecionadas" style={{ ...softBtn, fontWeight: 800 }}>N</button>
+            <button onClick={() => negritoSelecionadas(false)} title="Tirar negrito das selecionadas" style={{ ...softBtn, fontWeight: 400, textDecoration: 'line-through' }}>N</button>
+            <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+              {CORES_BLOCO.map(c => <button key={c || 'none'} onClick={() => corSelecionadas(c)} title={c ? 'Cor de fundo' : 'Sem cor'} style={{ width: 20, height: 20, borderRadius: 5, cursor: 'pointer', border: '1px solid var(--border-md)', background: c ? COR_BLOCO[c] : 'var(--card-bg)', position: 'relative' }}>{!c && <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.6rem', color: 'var(--text-muted)' }}>⌀</span>}</button>)}
+            </span>
+            <button onClick={stripNumSelecionadas} title="Remover numeração do texto das selecionadas" style={{ ...softBtn }}>🔢⌫</button>
+            <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 2px' }} />
+            {/* agrupar */}
+            {listaGrupos().length > 0 && (
+              <select value="" onChange={e => { if (e.target.value) moverVariasParaGrupo(e.target.value) }} style={{ height: 30, borderRadius: 8, border: '1px solid var(--border-md)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: '.78rem', cursor: 'pointer' }}>
+                <option value="">🗂️ mover para grupo…</option>
+                {listaGrupos().map(g => <option key={g.id} value={g.id}>{g.titulo}</option>)}
+              </select>
+            )}
+            <button onClick={novoGrupoComSelecionadas} style={{ ...softBtn, background: 'var(--accent)', color: '#fff', border: 'none' }}>＋ Grupo</button>
+            <button onClick={excluirSelecionadas} title="Excluir as perguntas selecionadas" style={{ ...softBtn, color: '#ef4444', borderColor: '#ef444455' }}>🗑️ Excluir</button>
+          </>}
+          <button onClick={() => { setSelMode(false); setSel({}) }} title="Sair do modo seleção" style={{ ...softBtn }}>✕ Fechar</button>
         </div>
       )}
 
