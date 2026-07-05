@@ -3,15 +3,18 @@ name: Deploy NexusOS → GitHub Pages
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# Um deploy de Pages por vez. NÃO cancelar em progresso (recomendação oficial do
+# GitHub p/ Pages): cancelar no meio deixa o deployment em estado de falha.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -54,3 +57,6 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 600000
+          error_count: 15
