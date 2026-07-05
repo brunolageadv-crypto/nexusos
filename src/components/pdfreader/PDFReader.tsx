@@ -1654,6 +1654,8 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   useEffect(() => { try { localStorage.setItem('pr_grifo_cfg', JSON.stringify(grifoCfg)) } catch {} }, [grifoCfg])
   const [corPop, setCorPop] = useState<{ cor: string; tipo: string } | null>(null)   // avisa a cor atual ao trocar com Alt
   const corPopTmr = useRef<any>(null)
+  const [modoAviso, setModoAviso] = useState<'selecionar' | 'texto' | null>(null)    // aviso transitório ao trocar de modo por atalho (1/2)
+  const modoAvisoTmr = useRef<any>(null)
   const [grifosOpen, setGrifosOpen] = useState(false)                                  // janela com a relação de palavras grifadas
   const [relatorioQ, setRelatorioQ] = useState<{ loading: boolean; texto: string; cursor: number; ultimaFeita: number; concluido: boolean; paginas: number[] } | null>(null)  // relatório de perguntas (em lotes)
   const [toggleSeed, setToggleSeed] = useState<{ titulo: string; texto: string } | null>(null)  // conteúdo para criar um doc novo no Toggle
@@ -1925,10 +1927,25 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   // feature 3: Ctrl+F abre a busca (só no visualizador principal com PDF carregado)
   useEffect(() => {
     if (secondary) return
+    const trocarModo = (m: 'selecionar' | 'texto') => {
+      setModo(m)
+      clearTimeout(modoAvisoTmr.current); setModoAviso(m)
+      modoAvisoTmr.current = setTimeout(() => setModoAviso(null), 1400)
+    }
     const h = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F') && pdfRef.current) { e.preventDefault(); setBusca(b => ({ ...b, open: true })) }
+      // atalhos 1/2 → alterna entre "Selecionar" e "Texto" (só quando há PDF e não se está digitando em outro campo)
+      if ((e.key === '1' || e.key === '2') && !e.ctrlKey && !e.metaKey && !e.altKey && pdfRef.current) {
+        const alvo = e.target as HTMLElement | null
+        const tag = alvo?.tagName
+        // não intercepta enquanto o usuário digita num input/textarea ou num editor que não seja a camada de texto do PDF
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        if (alvo?.isContentEditable && !alvo.closest('.pr-textlayer')) return
+        e.preventDefault()
+        trocarModo(e.key === '1' ? 'selecionar' : 'texto')
+      }
     }
-    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h)
+    window.addEventListener('keydown', h); return () => { window.removeEventListener('keydown', h); clearTimeout(modoAvisoTmr.current) }
   }, [secondary])
   // feature 8: grava a sessão quando a aba perde visibilidade (sem perder tempo de leitura)
   useEffect(() => {
@@ -2584,9 +2601,9 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         {/* Marcar (selecionar / realçar) */}
         <HoverMenu align="left" width={300} active={modo !== 'selecionar'} trigger={<><span>🖊</span> Marcar</>}>
           <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
-            <button onClick={() => setModo('selecionar')} title="Selecionar palavra(s) → enviar ao editor" style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'selecionar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'selecionar' ? '#fff' : 'var(--text-secondary)' }}>✛ Selecionar</button>
+            <button onClick={() => setModo('selecionar')} title="Selecionar palavra(s) → enviar ao editor · atalho: tecla 1" style={{ height: 30, padding: '0 9px', border: 'none', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'selecionar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'selecionar' ? '#fff' : 'var(--text-secondary)' }}>✛ Selecionar <kbd style={{ marginLeft: 3, fontSize: '.62rem', opacity: .8, border: '1px solid currentColor', borderRadius: 4, padding: '0 3px' }}>1</kbd></button>
             <button onClick={() => setModo('realcar')} title="Realçar / sublinhar com o retângulo (arraste)" style={{ height: 30, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'realcar' ? '#5b5bd6' : 'var(--surface)', color: modo === 'realcar' ? '#fff' : 'var(--text-secondary)' }}>🖊 Realçar</button>
-            <button onClick={() => setModo('texto')} title="Cursor de texto — seleção com mouse/teclado abre o menu de ações (enviar ao editor, etc.) e o toque no Ctrl grifa" style={{ height: 30, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'texto' ? '#5b5bd6' : 'var(--surface)', color: modo === 'texto' ? '#fff' : 'var(--text-secondary)' }}>✏️ Texto</button>
+            <button onClick={() => setModo('texto')} title="Cursor de texto — seleção com mouse/teclado abre o menu de ações (enviar ao editor, etc.) e o toque no Ctrl grifa · atalho: tecla 2" style={{ height: 30, padding: '0 9px', border: 'none', borderLeft: '1px solid var(--border)', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 700, background: modo === 'texto' ? '#5b5bd6' : 'var(--surface)', color: modo === 'texto' ? '#fff' : 'var(--text-secondary)' }}>✏️ Texto <kbd style={{ marginLeft: 3, fontSize: '.62rem', opacity: .8, border: '1px solid currentColor', borderRadius: 4, padding: '0 3px' }}>2</kbd></button>
           </div>
           {modo === 'realcar' && <>
             <button onClick={() => setTipoMarca('realce')} title="Realce" style={{ ...btn, width: 'auto', padding: '0 7px', background: tipoMarca === 'realce' ? '#5b5bd6' : 'var(--surface)', color: tipoMarca === 'realce' ? '#fff' : 'var(--text-secondary)' }}>✎</button>
@@ -2882,6 +2899,13 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         <div style={{ position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 9998, display: 'flex', alignItems: 'center', gap: 9, padding: '9px 14px', background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 999, boxShadow: '0 10px 30px rgba(0,0,0,.32)', pointerEvents: 'none' }}>
           <span style={{ width: 22, height: 22, borderRadius: corPop.tipo === 'sublinhado' ? 4 : 6, background: corPop.cor, border: '1px solid var(--border)' }} />
           <span style={{ fontSize: '.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{corPop.tipo === 'sublinhado' ? 'Linha' : 'Marca-texto'} · {corPop.cor}</span>
+        </div>, document.body)}
+
+      {/* aviso transitório de troca de modo por atalho (teclas 1 e 2) */}
+      {modoAviso && createPortal(
+        <div style={{ position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 9998, display: 'flex', alignItems: 'center', gap: 9, padding: '9px 16px', background: 'var(--card-bg)', border: '1px solid #5b5bd6', borderRadius: 999, boxShadow: '0 10px 30px rgba(0,0,0,.32)', pointerEvents: 'none' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 22, height: 22, borderRadius: 6, background: '#5b5bd6', color: '#fff', fontSize: '.72rem', fontWeight: 800 }}>{modoAviso === 'selecionar' ? '1' : '2'}</span>
+          <span style={{ fontSize: '.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>{modoAviso === 'selecionar' ? '✛ Selecionar' : '✏️ Texto'}</span>
         </div>, document.body)}
 
       {/* janela: relação das palavras grifadas (texto + cor) */}
