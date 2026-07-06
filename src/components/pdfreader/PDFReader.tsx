@@ -2217,7 +2217,45 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   }
   const onDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return
-    if (modo === 'texto') return   // cursor de texto: deixa a seleção nativa (mouse/teclado) agir
+    if (modo === 'texto') {
+      // Seleção PRÓPRIA (precisa): a nativa é imprecisa sobre os spans absolutos do PDF.js
+      // e "escapa" para outros parágrafos. Aqui ancoramos no ponto exato e o foco segue o
+      // ponteiro via caretRangeFromPoint, travado na mesma camada de texto (mesma página).
+      const anchor = posDoPonto(e.clientX, e.clientY)
+      if (!anchor) return   // clique fora do texto: deixa o comportamento padrão
+      const anchorTL = ((anchor.node.nodeType === 1 ? anchor.node : anchor.node.parentElement) as HTMLElement)?.closest('.pr-textlayer') as HTMLElement
+      if (!anchorTL) return
+      e.preventDefault()
+      const sel = window.getSelection(); if (!sel) return
+      try { anchorTL.focus({ preventScroll: true }) } catch {}
+      // duplo-clique: seleciona a palavra sob o cursor
+      if (e.detail >= 2 && anchor.node.nodeType === 3) {
+        const txt = anchor.node.textContent || ''; const ehW = (ch: string) => /[\p{L}\p{N}_]/u.test(ch || '')
+        let s = anchor.offset, f = anchor.offset
+        while (s > 0 && ehW(txt[s - 1])) s--
+        while (f < txt.length && ehW(txt[f])) f++
+        if (s === f) { if (f < txt.length) f++; else if (s > 0) s-- }
+        try { const rw = document.createRange(); rw.setStart(anchor.node, s); rw.setEnd(anchor.node, f); sel.removeAllRanges(); sel.addRange(rw) } catch {}
+        return
+      }
+      try { const r0 = document.createRange(); r0.setStart(anchor.node, anchor.offset); r0.collapse(true); sel.removeAllRanges(); sel.addRange(r0) } catch {}
+      const move = (ev: MouseEvent) => {
+        const foco = posDoPonto(ev.clientX, ev.clientY); if (!foco) return
+        const focoTL = ((foco.node.nodeType === 1 ? foco.node : foco.node.parentElement) as HTMLElement)?.closest('.pr-textlayer')
+        if (focoTL !== anchorTL) return   // não deixa a seleção pular para outra página/coluna
+        try {
+          const r = document.createRange()
+          const cmp = anchor.node.compareDocumentPosition(foco.node)
+          const focoAntes = !!(cmp & Node.DOCUMENT_POSITION_PRECEDING) || (anchor.node === foco.node && foco.offset < anchor.offset)
+          if (focoAntes) { r.setStart(foco.node, foco.offset); r.setEnd(anchor.node, anchor.offset) }
+          else { r.setStart(anchor.node, anchor.offset); r.setEnd(foco.node, foco.offset) }
+          sel.removeAllRanges(); sel.addRange(r)
+        } catch {}
+      }
+      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+      window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+      return
+    }
     if (!(e.target as HTMLElement).closest('.pr-page')) return   // só inicia sobre uma página
     // os auxílios de leitura (lupa/máscara/régua/foco) têm pointer-events:none, então
     // a seleção de palavras/trechos continua ativa mesmo com eles ligados.
@@ -2459,25 +2497,25 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const marcarBarra = (cor?: string) => {
     const sel = window.getSelection()
     const dentro = (n: Node | null) => !!(n && (n.nodeType === 1 ? (n as HTMLElement) : n.parentElement)?.closest?.('.pr-textlayer'))
-    let rects: DOMRect[] = []
-    if (sel && sel.rangeCount && !sel.isCollapsed && dentro(sel.anchorNode)) {
-      rects = Array.from(sel.getRangeAt(0).getClientRects()).filter(rc => rc.width > 1 && rc.height > 1)
-    } else {
-      const fr = focoRect()
-      if (fr) rects = [{ left: fr.x, right: fr.x + 2, top: fr.top, bottom: fr.bottom, width: 2, height: fr.h } as DOMRect]
-    }
-    if (!rects.length) return
-    // agrupa por página e calcula a extensão vertical (do topo da 1ª linha ao fim da última)
     const porPagina: Record<number, { minY: number; maxY: number }> = {}
-    for (const rc of rects) {
-      const cx = rc.left + rc.width / 2, cy = rc.top + rc.height / 2
-      const pg = (document.elementFromPoint(cx, cy) as HTMLElement)?.closest('.pr-page') as HTMLElement
-      if (!pg) continue
-      const n = Number(pg.dataset.page); const pr = pg.getBoundingClientRect()
-      const fyTop = (rc.top - pr.top) / pr.height, fyBot = (rc.bottom - pr.top) / pr.height
-      const g = (porPagina[n] ||= { minY: fyTop, maxY: fyBot })
-      g.minY = Math.min(g.minY, fyTop); g.maxY = Math.max(g.maxY, fyBot)
+    if (sel && sel.rangeCount && !sel.isCollapsed && dentro(sel.anchorNode)) {
+      // há seleção: usa a extensão vertical dos retângulos da seleção
+      const rects = Array.from(sel.getRangeAt(0).getClientRects()).filter(rc => rc.width > 1 && rc.height > 1)
+      for (const rc of rects) {
+        const pg = (document.elementFromPoint(rc.left + rc.width / 2, rc.top + rc.height / 2) as HTMLElement)?.closest('.pr-page') as HTMLElement
+        if (!pg) continue
+        const n = Number(pg.dataset.page); const pr = pg.getBoundingClientRect()
+        const g = (porPagina[n] ||= { minY: (rc.top - pr.top) / pr.height, maxY: (rc.bottom - pr.top) / pr.height })
+        g.minY = Math.min(g.minY, (rc.top - pr.top) / pr.height); g.maxY = Math.max(g.maxY, (rc.bottom - pr.top) / pr.height)
+      }
+    } else {
+      // sem seleção: com o cursor DENTRO do parágrafo, marca o parágrafo inteiro
+      const par = paragrafoDoFoco()
+      if (!par) return
+      const pr = par.pageEl.getBoundingClientRect(); const n = Number(par.pageEl.dataset.page)
+      porPagina[n] = { minY: (par.top - pr.top) / pr.height, maxY: (par.bottom - pr.top) / pr.height }
     }
+    if (!Object.keys(porPagina).length) return
     const c = cor || barraCorRef.current
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
     let added = false
@@ -2527,6 +2565,24 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
     })
     linhas.sort((a, b) => a.mid - b.mid)
     return linhas
+  }
+  // detecta o parágrafo que contém o cursor: parte da linha do cursor e expande p/ cima e p/ baixo
+  // enquanto o espaçamento entre linhas for "normal" (quebra quando o vão vertical cresce = novo parágrafo)
+  const paragrafoDoFoco = (): { pageEl: HTMLElement; top: number; bottom: number } | null => {
+    const pg = paginaDoFoco(); const fr = focoRect(); if (!pg || !fr) return null
+    const linhas = linhasDaPagina(pg); if (!linhas.length) return null
+    // linha do cursor = a de mid mais próximo do cursor
+    let idx = 0, best = Infinity
+    linhas.forEach((l, i) => { const d = Math.abs(l.mid - fr.mid); if (d < best) { best = d; idx = i } })
+    // passo típico entre linhas (mediana das distâncias entre mids consecutivos)
+    const gaps: number[] = []
+    for (let i = 1; i < linhas.length; i++) gaps.push(linhas[i].mid - linhas[i - 1].mid)
+    const ordenados = gaps.slice().sort((a, b) => a - b)
+    const passo = ordenados.length ? ordenados[Math.floor(ordenados.length / 2)] : fr.h * 1.4
+    const limite = Math.max(passo * 1.5, fr.h * 1.8)   // acima disso = quebra de parágrafo
+    let a = idx; while (a > 0 && (linhas[a].mid - linhas[a - 1].mid) <= limite) a--
+    let b = idx; while (b < linhas.length - 1 && (linhas[b + 1].mid - linhas[b].mid) <= limite) b++
+    return { pageEl: pg, top: linhas[a].top, bottom: linhas[b].bottom }
   }
   const rolarParaFoco = () => {
     const wrap = wrapRef.current; const fr = focoRect(); if (!wrap || !fr) return
@@ -2769,7 +2825,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
           {modo === 'texto' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', borderTop: '1px solid var(--border)', paddingTop: 8, marginTop: 2 }}>
               <div style={{ fontSize: '.72rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                <b>Clique</b> para posicionar o cursor; use as <b>setas</b> e o <b>Enter</b> para mover e <b>Shift + setas</b> (ou o mouse) para selecionar. Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor) — o cursor fica no fim para continuar. <b>Z</b>, <b>Tab</b> ou <b>Ctrl+Z</b> desfazem a última marcação; tocar o Ctrl sobre um grifo também o <b>remove</b>. Selecione um parágrafo e tecle <b>C</b> para pôr a <b>barra de leitura</b> na margem (<b>V</b> troca a cor). Para enviar trechos ao editor, use o modo <b>Selecionar</b>.
+                <b>Clique</b> para posicionar o cursor; use as <b>setas</b> e o <b>Enter</b> para mover e <b>Shift + setas</b> (ou o mouse) para selecionar. Dê um <b>toque no Ctrl</b> para <b>grifar</b> a seleção (sem seleção, grifa a palavra do cursor) — o cursor fica no fim para continuar. <b>Z</b>, <b>Tab</b> ou <b>Ctrl+Z</b> desfazem a última marcação; tocar o Ctrl sobre um grifo também o <b>remove</b>. Com o <b>cursor dentro de um parágrafo</b> (em qualquer ponto), tecle <b>C</b> para pôr a <b>barra de leitura</b> naquele parágrafo inteiro na margem (<b>V</b> troca a cor). Para enviar trechos ao editor, use o modo <b>Selecionar</b>.
               </div>
               {/* barra de leitura (margem esquerda) */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderTop: '1px solid var(--border)', paddingTop: 8, flexWrap: 'wrap' }}>
@@ -2777,7 +2833,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
                 <div style={{ display: 'flex', gap: 5, flex: 1 }}>
                   {PALETA_BARRA.map(c => <button key={c} onClick={() => setBarraCor(c)} title={`Barra ${NOME_BARRA[c]}`} style={{ width: 24, height: 24, borderRadius: 5, border: barraCor === c ? '2px solid var(--text-primary)' : '1px solid var(--border)', background: c, cursor: 'pointer' }} />)}
                 </div>
-                <button onClick={() => marcarBarra()} title="Marcar o parágrafo selecionado com a barra de leitura na margem esquerda (atalho: C)" style={{ ...btn, width: 'auto', padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ display: 'inline-block', width: 4, height: 13, borderRadius: 2, background: barraCor }} /> Marcar <kbd style={{ fontSize: '.6rem', border: '1px solid currentColor', borderRadius: 3, padding: '0 3px', opacity: .8 }}>C</kbd></button>
+                <button onClick={() => marcarBarra()} title="Barra de leitura na margem: com o cursor dentro de um parágrafo, marca o parágrafo inteiro (atalho: C)" style={{ ...btn, width: 'auto', padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}><span style={{ display: 'inline-block', width: 4, height: 13, borderRadius: 2, background: barraCor }} /> Marcar <kbd style={{ fontSize: '.6rem', border: '1px solid currentColor', borderRadius: 3, padding: '0 3px', opacity: .8 }}>C</kbd></button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', width: 46 }}>Estilo</span>
