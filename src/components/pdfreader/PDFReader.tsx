@@ -2218,41 +2218,45 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const onDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return
     if (modo === 'texto') {
-      // Seleção PRÓPRIA (precisa): a nativa é imprecisa sobre os spans absolutos do PDF.js
-      // e "escapa" para outros parágrafos. Aqui ancoramos no ponto exato e o foco segue o
-      // ponteiro via caretRangeFromPoint, travado na mesma camada de texto (mesma página).
-      const anchor = posDoPonto(e.clientX, e.clientY)
-      if (!anchor) return   // clique fora do texto: deixa o comportamento padrão
-      const anchorTL = ((anchor.node.nodeType === 1 ? anchor.node : anchor.node.parentElement) as HTMLElement)?.closest('.pr-textlayer') as HTMLElement
-      if (!anchorTL) return
+      // Seleção PRÓPRIA e precisa. A nativa é errática sobre os spans absolutos do PDF.js
+      // (pega vários parágrafos). Aqui bloqueamos a seleção nativa e controlamos a nossa:
+      // âncora no ponto do clique e foco seguindo o ponteiro, travado na mesma camada/página.
+      const tl0 = (e.target as HTMLElement).closest('.pr-textlayer') as HTMLElement
+      if (!tl0) return   // clicou fora do texto: comportamento padrão
       e.preventDefault()
       const sel = window.getSelection(); if (!sel) return
-      try { anchorTL.focus({ preventScroll: true }) } catch {}
+      try { tl0.focus({ preventScroll: true }) } catch {}
+      const anchor = posDoPonto(e.clientX, e.clientY)
+      // impede a seleção nativa de iniciar/estender enquanto arrastamos
+      const blockSel = (ev: Event) => ev.preventDefault()
+      document.addEventListener('selectstart', blockSel, true)
+      const encerrar = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); setTimeout(() => document.removeEventListener('selectstart', blockSel, true), 0) }
       // duplo-clique: seleciona a palavra sob o cursor
-      if (e.detail >= 2 && anchor.node.nodeType === 3) {
+      if (e.detail >= 2 && anchor && anchor.node.nodeType === 3) {
         const txt = anchor.node.textContent || ''; const ehW = (ch: string) => /[\p{L}\p{N}_]/u.test(ch || '')
         let s = anchor.offset, f = anchor.offset
         while (s > 0 && ehW(txt[s - 1])) s--
         while (f < txt.length && ehW(txt[f])) f++
         if (s === f) { if (f < txt.length) f++; else if (s > 0) s-- }
         try { const rw = document.createRange(); rw.setStart(anchor.node, s); rw.setEnd(anchor.node, f); sel.removeAllRanges(); sel.addRange(rw) } catch {}
-        return
+        const up2 = () => encerrar(); window.addEventListener('mouseup', up2, { once: true }); return
       }
-      try { const r0 = document.createRange(); r0.setStart(anchor.node, anchor.offset); r0.collapse(true); sel.removeAllRanges(); sel.addRange(r0) } catch {}
+      if (anchor) { try { const r0 = document.createRange(); r0.setStart(anchor.node, anchor.offset); r0.collapse(true); sel.removeAllRanges(); sel.addRange(r0) } catch {} }
       const move = (ev: MouseEvent) => {
         const foco = posDoPonto(ev.clientX, ev.clientY); if (!foco) return
         const focoTL = ((foco.node.nodeType === 1 ? foco.node : foco.node.parentElement) as HTMLElement)?.closest('.pr-textlayer')
-        if (focoTL !== anchorTL) return   // não deixa a seleção pular para outra página/coluna
+        if (focoTL !== tl0) return   // não deixa escapar para outra página/coluna
+        const base = anchor || foco
         try {
           const r = document.createRange()
-          const cmp = anchor.node.compareDocumentPosition(foco.node)
-          const focoAntes = !!(cmp & Node.DOCUMENT_POSITION_PRECEDING) || (anchor.node === foco.node && foco.offset < anchor.offset)
-          if (focoAntes) { r.setStart(foco.node, foco.offset); r.setEnd(anchor.node, anchor.offset) }
-          else { r.setStart(anchor.node, anchor.offset); r.setEnd(foco.node, foco.offset) }
+          const cmp = base.node.compareDocumentPosition(foco.node)
+          const focoAntes = !!(cmp & Node.DOCUMENT_POSITION_PRECEDING) || (base.node === foco.node && foco.offset < base.offset)
+          if (focoAntes) { r.setStart(foco.node, foco.offset); r.setEnd(base.node, base.offset) }
+          else { r.setStart(base.node, base.offset); r.setEnd(foco.node, foco.offset) }
           sel.removeAllRanges(); sel.addRange(r)
         } catch {}
       }
-      const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+      const up = () => encerrar()
       window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
       return
     }
@@ -2495,38 +2499,18 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   const mostrarBarraPop = (cor: string) => { clearTimeout(corPopTmr.current); setCorPop({ cor, tipo: 'barra' }); corPopTmr.current = setTimeout(() => setCorPop(null), 2000) }
   const ciclarCorBarra = () => { const i = PALETA_BARRA.indexOf(barraCorRef.current); const prox = PALETA_BARRA[(i + 1) % PALETA_BARRA.length]; setBarraCor(prox); mostrarBarraPop(prox) }
   const marcarBarra = (cor?: string) => {
-    const sel = window.getSelection()
-    const dentro = (n: Node | null) => !!(n && (n.nodeType === 1 ? (n as HTMLElement) : n.parentElement)?.closest?.('.pr-textlayer'))
-    const porPagina: Record<number, { minY: number; maxY: number }> = {}
-    if (sel && sel.rangeCount && !sel.isCollapsed && dentro(sel.anchorNode)) {
-      // há seleção: usa a extensão vertical dos retângulos da seleção
-      const rects = Array.from(sel.getRangeAt(0).getClientRects()).filter(rc => rc.width > 1 && rc.height > 1)
-      for (const rc of rects) {
-        const pg = (document.elementFromPoint(rc.left + rc.width / 2, rc.top + rc.height / 2) as HTMLElement)?.closest('.pr-page') as HTMLElement
-        if (!pg) continue
-        const n = Number(pg.dataset.page); const pr = pg.getBoundingClientRect()
-        const g = (porPagina[n] ||= { minY: (rc.top - pr.top) / pr.height, maxY: (rc.bottom - pr.top) / pr.height })
-        g.minY = Math.min(g.minY, (rc.top - pr.top) / pr.height); g.maxY = Math.max(g.maxY, (rc.bottom - pr.top) / pr.height)
-      }
-    } else {
-      // sem seleção: com o cursor DENTRO do parágrafo, marca o parágrafo inteiro
-      const par = paragrafoDoFoco()
-      if (!par) return
-      const pr = par.pageEl.getBoundingClientRect(); const n = Number(par.pageEl.dataset.page)
-      porPagina[n] = { minY: (par.top - pr.top) / pr.height, maxY: (par.bottom - pr.top) / pr.height }
-    }
-    if (!Object.keys(porPagina).length) return
+    // marca SEMPRE o parágrafo que contém o cursor (independe de haver seleção)
+    const par = paragrafoDoFoco()
+    if (!par) return
+    const pr = par.pageEl.getBoundingClientRect(); const n = Number(par.pageEl.dataset.page)
+    if (!pageElsRef.current[n]) return
+    const minY = (par.top - pr.top) / pr.height, maxY = (par.bottom - pr.top) / pr.height
     const c = cor || barraCorRef.current
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 6)
-    let added = false
-    for (const [n, g] of Object.entries(porPagina)) {
-      if (!pageElsRef.current[Number(n)]) continue
-      ;(anotRef.current[Number(n)] ||= []).push({ id, kind: 'barra', cor: c, rects: [{ fx: 0, fy: g.minY, fw: 0.012, fh: Math.max(0.004, g.maxY - g.minY) }] })
-      added = true
-    }
-    if (added) { grifoHistRef.current.push(id); pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1) }
-    // mantém o cursor no fim para continuar a leitura
-    try { if (sel && sel.rangeCount) { const r = sel.getRangeAt(0); const cc = document.createRange(); cc.setStart(r.endContainer, r.endOffset); cc.collapse(true); sel.removeAllRanges(); sel.addRange(cc) } } catch {}
+    ;(anotRef.current[n] ||= []).push({ id, kind: 'barra', cor: c, rects: [{ fx: 0, fy: minY, fw: 0.012, fh: Math.max(0.004, maxY - minY) }] })
+    grifoHistRef.current.push(id); pintarAnotacoes(); salvarAnot(); forceAnot(x => x + 1)
+    // colapsa o cursor no fim para continuar a leitura
+    try { const sel = window.getSelection(); if (sel && sel.rangeCount) { const r = sel.getRangeAt(0); const cc = document.createRange(); cc.setStart(r.endContainer, r.endOffset); cc.collapse(true); sel.removeAllRanges(); sel.addRange(cc) } } catch {}
   }
   const focoRect = () => {
     const sel = window.getSelection(); if (!sel || sel.focusNode == null) return null
