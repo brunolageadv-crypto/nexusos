@@ -2242,10 +2242,30 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
         const up2 = () => encerrar(); window.addEventListener('mouseup', up2, { once: true }); return
       }
       if (anchor) { try { const r0 = document.createRange(); r0.setStart(anchor.node, anchor.offset); r0.collapse(true); sel.removeAllRanges(); sel.addRange(r0) } catch {} }
+      // limites horizontais da COLUNA do corpo onde está a âncora (para o arrasto não
+      // "pular" para o texto girado da margem / rodapé): amarramos o X à coluna e usamos
+      // só a posição vertical do ponteiro.
+      let colL = -Infinity, colR = Infinity
+      try {
+        const pgEl = ((anchor?.node.nodeType === 1 ? anchor.node : anchor?.node.parentElement) as HTMLElement)?.closest('.pr-page') as HTMLElement
+        if (pgEl && anchor) {
+          const ra = document.createRange(); ra.setStart(anchor.node, anchor.offset); ra.collapse(true)
+          const ar = ra.getClientRects()[0]
+          const linhas = linhasDaPagina(pgEl)
+          if (ar && linhas.length) {
+            const amid = (ar.top + ar.bottom) / 2
+            const cur = linhas.find(l => amid >= l.top - 2 && amid <= l.bottom + 2) || linhas.reduce((p, c) => Math.abs(c.mid - amid) < Math.abs(p.mid - amid) ? c : p)
+            const curW = Math.max(1, cur.right - cur.left)
+            const col = linhas.filter(l => { const ov = Math.min(l.right, cur.right) - Math.max(l.left, cur.left); const w = Math.max(1, l.right - l.left); return ov > 0 && ov / Math.min(curW, w) > 0.25 })
+            if (col.length) { colL = Math.min(...col.map(l => l.left)); colR = Math.max(...col.map(l => l.right)) }
+          }
+        }
+      } catch {}
       const move = (ev: MouseEvent) => {
-        const foco = posDoPonto(ev.clientX, ev.clientY); if (!foco) return
+        const cx = (colR > colL) ? Math.max(colL + 1, Math.min(ev.clientX, colR - 1)) : ev.clientX
+        const foco = posDoPonto(cx, ev.clientY); if (!foco) return
         const focoTL = ((foco.node.nodeType === 1 ? foco.node : foco.node.parentElement) as HTMLElement)?.closest('.pr-textlayer')
-        if (focoTL !== tl0) return   // não deixa escapar para outra página/coluna
+        if (focoTL !== tl0) return   // não deixa escapar para outra página
         const base = anchor || foco
         try {
           const r = document.createRange()
@@ -2554,10 +2574,22 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
   // enquanto o espaçamento entre linhas for "normal" (quebra quando o vão vertical cresce = novo parágrafo)
   const paragrafoDoFoco = (): { pageEl: HTMLElement; top: number; bottom: number } | null => {
     const pg = paginaDoFoco(); const fr = focoRect(); if (!pg || !fr) return null
-    const linhas = linhasDaPagina(pg); if (!linhas.length) return null
-    // linha do cursor = a de mid mais próximo do cursor
-    let idx = 0, best = Infinity
-    linhas.forEach((l, i) => { const d = Math.abs(l.mid - fr.mid); if (d < best) { best = d; idx = i } })
+    const todas = linhasDaPagina(pg); if (!todas.length) return null
+    // linha do cursor
+    let iCur = 0, best = Infinity
+    todas.forEach((l, i) => { const d = Math.abs(l.mid - fr.mid); if (d < best) { best = d; iCur = i } })
+    const cur = todas[iCur]; const curW = Math.max(1, cur.right - cur.left)
+    // mantém só as linhas da MESMA COLUNA do cursor (remove o texto girado da margem,
+    // cabeçalho, rodapé e número de página, que quebram o cálculo de espaçamento)
+    const linhas = todas.filter(l => {
+      const ov = Math.min(l.right, cur.right) - Math.max(l.left, cur.left)
+      const w = Math.max(1, l.right - l.left)
+      return ov > 0 && ov / Math.min(curW, w) > 0.25
+    })
+    if (!linhas.length) return { pageEl: pg, top: cur.top, bottom: cur.bottom }
+    // reencontra o cursor dentro da coluna filtrada
+    let idx = 0, b2 = Infinity
+    linhas.forEach((l, i) => { const d = Math.abs(l.mid - fr.mid); if (d < b2) { b2 = d; idx = i } })
     // passo típico entre linhas (mediana das distâncias entre mids consecutivos)
     const gaps: number[] = []
     for (let i = 1; i < linhas.length; i++) gaps.push(linhas[i].mid - linhas[i - 1].mid)
