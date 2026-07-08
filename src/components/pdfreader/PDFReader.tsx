@@ -23,6 +23,7 @@ import { db } from '../../lib/firebase'
 import { useUid } from '../../hooks/useUid'
 import ToggleNotion from './ToggleNotion'
 import Revisao from './Revisao'
+import { useWikiLinks, ConexoesPanel, GrafoConectores, WIKILINK_CSS } from './NexusLinks'
 
 /* Menu suspenso que abre ao passar o mouse (consolida vários botões em uma linha).
    O dropdown é renderizado em portal com posição fixa para nunca ficar atrás de outro painel. */
@@ -4861,6 +4862,21 @@ export default function PDFReader() {
 
   const abrirPrevia = () => setPrevia(editorRef.current?.innerHTML || '')
 
+  // ── Nexus Links (conexões estilo Obsidian: [[wiki-links]], backlinks, grafo) ──
+  const [grafoOpen, setGrafoOpen] = useState(false)
+  const [conexoesOpen, setConexoesOpen] = useState(false)
+  const abrirDocPorId = useCallback((id: string) => { const d = store.docs.find((x: any) => x.id === id); if (d) abrirDoc(d) }, [store.docs, abrirDoc])
+  const wiki = useWikiLinks({ editorRef, docs: store.docs, onOpenDoc: abrirDocPorId, onGotoPage: (n: number) => viewerApi.current?.gotoPage?.(n), onChange: onEditorChange })
+  // atalhos globais: Ctrl+G (grafo) · Ctrl+L (inserir link) — Ctrl+M vive no painel de conexões
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); setGrafoOpen(o => !o) }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'l' || e.key === 'L')) { e.preventDefault(); wiki.inserirLink() }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [wiki])
+
   return (
     <div className="pr-app" style={{ display: 'flex', height: '100%', minHeight: 0, background: 'var(--card-bg)' }}>
       <style>{`
@@ -4952,6 +4968,12 @@ export default function PDFReader() {
             <button onClick={() => setRevisaoOpen(true)} title="Revisão espaçada — acompanhe 48h, 7, 17 e 30 dias" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>🔁 Revisão</button>
             <button onClick={() => setDiario(true)} title="Diário de Leitura" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>📖 Diário</button>
           </HoverMenu>
+          {/* Conexões (links [[wiki]], backlinks, grafo) — menu suspenso */}
+          <HoverMenu align="right" width={230} active={conexoesOpen || grafoOpen} trigger={<><span>🔗</span> Conexões</>}>
+            <button onClick={() => wiki.inserirLink()} title="Inserir link [[...]] no cursor (Ctrl+L)" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>🔗 Inserir link</button>
+            <button onClick={() => setConexoesOpen(o => !o)} title="Painel de conexões e backlinks" style={{ ...btn, width: 'auto', padding: '0 8px', background: conexoesOpen ? '#5b5bd6' : 'var(--surface)', color: conexoesOpen ? '#fff' : 'var(--text-secondary)', border: conexoesOpen ? 'none' : '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>📎 Backlinks</button>
+            <button onClick={() => setGrafoOpen(true)} title="Grafo de conectores (Ctrl+G)" style={{ ...btn, width: 'auto', padding: '0 8px', display: 'inline-flex', alignItems: 'center', gap: 4 }}>🕸 Grafo</button>
+          </HoverMenu>
           <button onClick={onSalvar} disabled={!store.uid} title="Salvar (Firestore)" style={{ ...btn, width: 32, padding: 0, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><Icon e="💾" size={16} /></button>
           <button onClick={abrirPrevia} title="Exportar / Imprimir" style={{ ...btn, width: 'auto', padding: '0 11px', fontSize: '0.78rem', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon e="🖨️" size={14} /> Exportar</button>
         </div>
@@ -4968,6 +4990,11 @@ export default function PDFReader() {
       {fcGerar && <FlashcardGerarModal trecho={fcGerar.trecho} fonte={fcGerar.fonte} store={fcStore} onClose={(n: number) => { setFcGerar(null); if (n) { /* salvo */ } }} />}
       {fcRevisar && <FlashcardRevisarModal store={fcStore} onClose={() => setFcRevisar(false)} />}
       {hubMapas && <MapaMentalHub store={mapStore} insumos={insumos} onLimparInsumos={() => setInsumos([])} api={viewerApi} onClose={() => setHubMapas(false)} />}
+      {/* ── Nexus Links: autocomplete [[...]], painel de conexões e grafo ── */}
+      <style>{WIKILINK_CSS}</style>
+      {wiki.overlay}
+      {conexoesOpen && <ConexoesPanel docs={store.docs} pastas={store.pastas} docId={docId} onOpenDoc={abrirDocPorId} onAbrirGrafo={() => setGrafoOpen(true)} onClose={() => setConexoesOpen(false)} />}
+      {grafoOpen && <GrafoConectores docs={store.docs} pastas={store.pastas} docId={docId} onOpenDoc={abrirDocPorId} onClose={() => setGrafoOpen(false)} />}
       <style>{`
         .pr-page{position:relative;margin:0 auto 16px;background:#fff;border-radius:4px;box-shadow:0 2px 14px rgba(0,0,0,.18);overflow:hidden;cursor:crosshair}
         .pr-num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#c4c4c4;font:600 22px/1 system-ui;z-index:0}
