@@ -38,6 +38,11 @@ export const NEXUS_EDITOR_CSS = `
   .nx-embed{ background:rgba(245,158,11,.12) !important; border-color:rgba(245,158,11,.30) !important; color:#b45309 !important; }
   .nx-win-body{ outline:none; }
   .nx-win-body:empty:before{ content:'Escreva aqui…'; color:var(--text-muted); }
+  /* Dobras: qualquer linha vira "chave mãe" que guarda conteúdo dentro dela */
+  .nx-fold{ cursor:pointer; }
+  .nx-fold:hover{ color:#5b5bd6; }
+  .nx-fold-body{ margin-left:18px; }
+  .nx-drop-target{ outline:2px solid #5b5bd6 !important; outline-offset:2px; border-radius:4px; background:rgba(91,91,214,.06); }
 `
 
 /* ───────── helpers de DOM (marcadores) ───────── */
@@ -307,6 +312,128 @@ function JanelaDoc({ docId, docs, salvarDoc, onOpenDocFull, onClose }) {
         style={{ padding: '10px 12px', outline: 'none', color: 'var(--text-primary)', fontSize: '.86rem', lineHeight: 1.6, minHeight: '100%' }} />
     </Janela>
   )
+}
+
+/* ═══════════════════════════ C) DOBRAS · aninhar qualquer bloco dentro de outro ═══════════════════════════
+   · Arrastar a seleção e SOLTAR em cima de uma linha → o trecho entra dentro dela (vira "chave mãe").
+   · Alt+Seta-para-cima → dobra a linha atual para dentro da linha imediatamente acima.
+   · Passar o mouse numa chave mãe → texto fica AZUL; clicar → abre/fecha (sem seta indicadora).
+   · Clicar na chave mãe FECHA recursivamente tudo que está aninhado abaixo dela.
+   Estrutura no HTML (persiste na nota): a linha vira <p class="nx-fold" data-fold="id"> e o conteúdo
+   dobrado mora no irmão seguinte <div class="nx-fold-body" data-fold-body="id"> (que pode conter
+   outras dobras aninhadas). Recolhido = data-collapsed="1" + display:none no corpo.               */
+function ownerBlock(node, ed) {
+  let n = node && node.nodeType === 3 ? node.parentElement : node
+  while (n && n !== ed) {
+    const p = n.parentElement
+    if (p === ed || (p && p.classList && p.classList.contains('nx-fold-body'))) return n
+    n = p
+  }
+  return null
+}
+function corpoDaDobra(host) {
+  const b = host.nextElementSibling
+  return b && b.classList && b.classList.contains('nx-fold-body') && b.getAttribute('data-fold-body') === host.getAttribute('data-fold') ? b : null
+}
+function recolherDobra(host, recolher) {
+  const body = corpoDaDobra(host); if (!body) return
+  host.setAttribute('data-collapsed', recolher ? '1' : '0')
+  body.style.display = recolher ? 'none' : ''
+  if (recolher) body.querySelectorAll('.nx-fold').forEach((h) => {       // fecha tudo aninhado abaixo (recursivo)
+    h.setAttribute('data-collapsed', '1')
+    const b2 = h.nextElementSibling
+    if (b2 && b2.classList && b2.classList.contains('nx-fold-body')) b2.style.display = 'none'
+  })
+}
+function garantirDobra(host) {
+  const existente = host.classList.contains('nx-fold') && corpoDaDobra(host)
+  if (existente) return existente
+  const id = nid()
+  host.classList.add('nx-fold'); host.setAttribute('data-fold', id); host.setAttribute('data-collapsed', '0')
+  const body = document.createElement('div'); body.className = 'nx-fold-body'; body.setAttribute('data-fold-body', id)
+  host.after(body); return body
+}
+function moverComCorpo(el, destino) {
+  const body = el.classList && el.classList.contains('nx-fold') ? corpoDaDobra(el) : null
+  destino.appendChild(el); if (body) destino.appendChild(body)
+}
+function dobrarEm(host, fontes) {
+  fontes = (fontes || []).filter((s) => s && s !== host && !s.contains(host))
+  if (!host || !fontes.length) return false
+  const body = garantirDobra(host)
+  fontes.forEach((s) => moverComCorpo(s, body))
+  recolherDobra(host, true)
+  return true
+}
+function blocosNaSelecao(ed) {
+  const sel = window.getSelection(); if (!sel || !sel.rangeCount) return []
+  const r = sel.getRangeAt(0)
+  const a = ownerBlock(r.startContainer, ed); if (!a) return []
+  const b = ownerBlock(r.endContainer, ed)
+  if (!b || a === b || a.parentElement !== b.parentElement) return [a]
+  const out = []; let cur = a
+  while (cur) { if (!(cur.classList && cur.classList.contains('nx-fold-body'))) out.push(cur); if (cur === b) break; cur = cur.nextElementSibling }
+  return out
+}
+
+export function useFolds({ editorRef, onChange }) {
+  useEffect(() => {
+    const ed = editorRef.current; if (!ed) return
+    let arrast = null
+
+    const dobrarAcima = () => {
+      const fontes = blocosNaSelecao(ed); if (!fontes.length) return
+      let host = fontes[0].previousElementSibling
+      if (host && host.classList && host.classList.contains('nx-fold-body')) host = host.previousElementSibling
+      if (!host) return
+      if (dobrarEm(host, fontes)) onChange?.()
+    }
+    const onKey = (e) => {
+      if (e.altKey && e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); dobrarAcima() }
+    }
+    const onClick = (e) => {
+      if (e.target.closest?.('a, input, button, textarea, .nx-marker-txt, .nx-marker-ico')) return
+      const host = e.target.closest?.('.nx-fold'); if (!host || !ed.contains(host)) return
+      const sel = window.getSelection(); if (sel && !sel.isCollapsed) return   // deixa selecionar texto sem alternar
+      recolherDobra(host, host.getAttribute('data-collapsed') !== '1'); onChange?.()
+    }
+    // — arrastar e soltar: solta a seleção DENTRO de outra linha —
+    const limpar = () => ed.querySelectorAll('.nx-drop-target').forEach((x) => x.classList.remove('nx-drop-target'))
+    const onDragStart = (e) => {
+      const sel = window.getSelection(); if (!sel || sel.isCollapsed) return   // só arrasta a partir de texto selecionado
+      const fontes = blocosNaSelecao(ed); if (!fontes.length) return
+      arrast = fontes
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', sel.toString()) } catch {}
+    }
+    const onDragOver = (e) => {
+      if (!arrast) return
+      e.preventDefault(); try { e.dataTransfer.dropEffect = 'move' } catch {}
+      const host = ownerBlock(e.target, ed); limpar()
+      if (host && !arrast.includes(host) && !arrast.some((s) => s.contains(host))) host.classList.add('nx-drop-target')
+    }
+    const onDrop = (e) => {
+      if (!arrast) return
+      e.preventDefault(); e.stopPropagation()
+      const host = ownerBlock(e.target, ed); const fontes = arrast; arrast = null; limpar()
+      if (dobrarEm(host, fontes)) onChange?.()
+    }
+    const onDragEnd = () => { arrast = null; limpar() }
+
+    ed.addEventListener('keydown', onKey)
+    ed.addEventListener('click', onClick)
+    ed.addEventListener('dragstart', onDragStart)
+    ed.addEventListener('dragover', onDragOver)
+    ed.addEventListener('drop', onDrop)
+    ed.addEventListener('dragend', onDragEnd)
+    return () => {
+      ed.removeEventListener('keydown', onKey)
+      ed.removeEventListener('click', onClick)
+      ed.removeEventListener('dragstart', onDragStart)
+      ed.removeEventListener('dragover', onDragOver)
+      ed.removeEventListener('drop', onDrop)
+      ed.removeEventListener('dragend', onDragEnd)
+    }
+  }, [editorRef, onChange])
 }
 
 /* janela flutuante de NOTA ADESIVA (embed) — conteúdo vive no HTML da nota principal */

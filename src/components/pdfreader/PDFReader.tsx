@@ -24,7 +24,7 @@ import { useUid } from '../../hooks/useUid'
 import ToggleNotion from './ToggleNotion'
 import Revisao from './Revisao'
 import { useWikiLinks, ConexoesPanel, GrafoConectores, WIKILINK_CSS } from './NexusLinks'
-import { useMarkerKeys, useConnectors, NEXUS_EDITOR_CSS } from './NexusEditor'
+import { useMarkerKeys, useConnectors, useFolds, NEXUS_EDITOR_CSS } from './NexusEditor'
 
 /* Menu suspenso que abre ao passar o mouse (consolida vários botões em uma linha).
    O dropdown é renderizado em portal com posição fixa para nunca ficar atrás de outro painel. */
@@ -858,6 +858,7 @@ function aplicarTamanho(ed: HTMLElement, px: number) {
 
 function RichEditor({ editorRef, onChange, docs = [], onOpenDoc, salvarNota, onGotoPage }: any) {
   useMarkerKeys({ editorRef, onChange })
+  useFolds({ editorRef, onChange })
   const quick = useConnectors({ editorRef, docs, salvarDoc: salvarNota, onOpenDocFull: onOpenDoc, onGotoPage, onChange })
   const [bulletSet, setBulletSet] = useState(DEFAULT_SET)
   const [pageStyle, setPageStyle] = useState<'blank' | 'lined' | 'grid'>('blank')   // feature 1
