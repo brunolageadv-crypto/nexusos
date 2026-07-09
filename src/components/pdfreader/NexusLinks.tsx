@@ -43,7 +43,7 @@ export const WIKILINK_CSS = `
 `
 
 export function extrairLinks(html = '') {
-  const out = { docIds: new Set(), titulos: new Set(), pages: [], urls: [] }
+  const out = { docIds: new Set(), titulos: new Set(), pages: [], urls: [], embeds: [] }
   if (!html) return out
   const d = document.createElement('div'); d.innerHTML = html
   d.querySelectorAll('a.nx-wikilink').forEach((a) => {
@@ -53,6 +53,7 @@ export function extrairLinks(html = '') {
     else if (url) out.urls.push(url)
     else { const t = (a.textContent || '').replace(/^\[\[|\]\]$/g, '').trim(); if (t) out.titulos.add(norm(t)) }
   })
+  d.querySelectorAll('.nx-embed-store').forEach((s) => { const id = s.getAttribute('data-embed'); const t = s.getAttribute('data-title') || 'Nota'; if (id) out.embeds.push({ id, title: t }) })
   const texto = stripHtml(html)
   let m; const re = /\[\[([^\]]+)\]\]/g
   while ((m = re.exec(texto))) {
@@ -93,6 +94,16 @@ export function construirGrafo(docs = [], pastas = []) {
     if (!nf || !nt) return
     nf.grau++; nt.grau++
     edges.push({ from, to, peso, cross: (nf.folderId ?? null) !== (nt.folderId ?? null) })
+  })
+  // nós de notas adesivas (embeds) — cada uma vira um nó ligado ao seu documento
+  docs.forEach((d) => {
+    const L = extrairLinks(d.html || '')
+    ;(L.embeds || []).forEach((em) => {
+      const eid = 'emb:' + em.id
+      let ne = nodeMap.get(eid)
+      if (!ne) { ne = { id: eid, title: em.title || 'Nota', folderId: d.folderId ?? null, cor: corPasta(d.folderId), grau: 0, kind: 'embed', parent: d.id }; nodes.push(ne); nodeMap.set(eid, ne) }
+      const nd = nodeMap.get(d.id); if (nd) { nd.grau++; ne.grau++; edges.push({ from: d.id, to: eid, peso: 1, cross: false, embed: true }) }
+    })
   })
   return { nodes, edges, nodeMap }
 }
@@ -175,18 +186,9 @@ export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange 
   useEffect(() => {
     const ed = editorRef.current; if (!ed) return
     const onInput = () => detectar()
-    const onClick = (e) => {
-      const a = e.target.closest?.('a.nx-wikilink'); if (!a) return
-      e.preventDefault(); e.stopPropagation()
-      const id = a.getAttribute('data-doc'); const pg = a.getAttribute('data-page'); const url = a.getAttribute('data-url')
-      if (id) onOpenDoc?.(id)
-      else if (pg) onGotoPage?.(Number(pg))
-      else if (url) window.open(url, '_blank', 'noopener')
-    }
     ed.addEventListener('input', onInput)
-    ed.addEventListener('click', onClick)
-    return () => { ed.removeEventListener('input', onInput); ed.removeEventListener('click', onClick) }
-  }, [editorRef, detectar, onOpenDoc, onGotoPage])
+    return () => { ed.removeEventListener('input', onInput) }
+  }, [editorRef, detectar])
 
   useEffect(() => {
     if (!pop) return
@@ -479,9 +481,9 @@ export function GrafoConectores({ docs, pastas, docId, onClose, onOpenDoc }) {
                 <g key={n.id} transform={`translate(${a.x},${a.y})`} style={{ cursor: 'pointer' }} opacity={op}
                   onMouseDown={(e) => { e.stopPropagation(); onDown(e, n.id) }}
                   onClick={(e) => { e.stopPropagation(); setFoco((f) => f === n.id ? null : n.id) }}
-                  onDoubleClick={(e) => { e.stopPropagation(); onOpenDoc?.(n.id); onClose?.() }}>
+                  onDoubleClick={(e) => { e.stopPropagation(); onOpenDoc?.(n.kind === 'embed' ? n.parent : n.id); onClose?.() }}>
                   <title>{`${n.title} — ${n.grau} conexão(ões)`}</title>
-                  <circle r={r} fill={n.cor} stroke={n.id === docId ? '#fff' : (foco === n.id ? '#fde047' : 'rgba(255,255,255,.35)')} strokeWidth={n.id === docId || foco === n.id ? 2.5 : 1} />
+                  <circle r={r} fill={n.kind === 'embed' ? '#f59e0b' : n.cor} strokeDasharray={n.kind === 'embed' ? '3 2' : undefined} stroke={n.id === docId ? '#fff' : (foco === n.id ? '#fde047' : 'rgba(255,255,255,.35)')} strokeWidth={n.id === docId || foco === n.id ? 2.5 : 1} />
                   <text x={0} y={r + 12} textAnchor="middle" fontSize={11} fill="#dbe2f5" style={{ pointerEvents: 'none', userSelect: 'none' }}>{n.title.length > 22 ? n.title.slice(0, 21) + '…' : n.title}</text>
                 </g>
               )

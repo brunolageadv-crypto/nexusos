@@ -24,7 +24,7 @@ import { useUid } from '../../hooks/useUid'
 import ToggleNotion from './ToggleNotion'
 import Revisao from './Revisao'
 import { useWikiLinks, ConexoesPanel, GrafoConectores, WIKILINK_CSS } from './NexusLinks'
-import { useMarkerKeys, useQuickLink, NEXUS_EDITOR_CSS } from './NexusEditor'
+import { useMarkerKeys, useConnectors, NEXUS_EDITOR_CSS } from './NexusEditor'
 
 /* Menu suspenso que abre ao passar o mouse (consolida vários botões em uma linha).
    O dropdown é renderizado em portal com posição fixa para nunca ficar atrás de outro painel. */
@@ -856,9 +856,9 @@ function aplicarTamanho(ed: HTMLElement, px: number) {
   ed.focus()
 }
 
-function RichEditor({ editorRef, onChange, docs = [], onOpenDoc, criarNota, salvarNota }: any) {
+function RichEditor({ editorRef, onChange, docs = [], onOpenDoc, salvarNota, onGotoPage }: any) {
   useMarkerKeys({ editorRef, onChange })
-  const quick = useQuickLink({ editorRef, docs, onOpenDoc, criarNota, salvarNota, onChange })
+  const quick = useConnectors({ editorRef, docs, salvarDoc: salvarNota, onOpenDocFull: onOpenDoc, onGotoPage, onChange })
   const [bulletSet, setBulletSet] = useState(DEFAULT_SET)
   const [pageStyle, setPageStyle] = useState<'blank' | 'lined' | 'grid'>('blank')   // feature 1
   const [baseFont, setBaseFont] = useState(15)   // tamanho-base da página (px) — comanda texto, altura de linha e passo da pauta
@@ -4989,7 +4989,7 @@ export default function PDFReader() {
         </div>
         {!store.uid && <div style={{ padding: '6px 12px', fontSize: '0.7rem', color: '#EA580C', background: 'var(--surface)' }}>Faça login para salvar documentos no Firestore.</div>}
         <div style={{ flex: 1, minHeight: 0 }}>
-          <RichEditor editorRef={editorRef} onChange={onEditorChange} docs={store.docs} onOpenDoc={abrirDocPorId} criarNota={criarNotaRapida} salvarNota={salvarNotaRapida} />
+          <RichEditor editorRef={editorRef} onChange={onEditorChange} docs={store.docs} onOpenDoc={abrirDocPorId} salvarNota={salvarNotaRapida} onGotoPage={(n: number) => viewerApi.current?.gotoPage?.(n)} />
         </div>
       </div>
       </div>
