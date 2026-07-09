@@ -24,7 +24,7 @@
         · Compacto / Detalhado / Completo · Expandir todos / Recolher todos
         · Estado lembrado por sessão (localStorage) · atalho Ctrl+M
 
-   Uso: import { useWikiLinks, ConexoesPanel, GrafoConectores } from './NexusLinks'
+   Uso: import { useWikiLinks, ConexoesPanel, GrafoConectores, WIKILINK_CSS } from './NexusLinks'
    ════════════════════════════════════════════════════════════════════════════ */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
@@ -34,11 +34,6 @@ const escapeHtml = (s = '') => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<':
 const stripHtml = (h = '') => { const d = document.createElement('div'); d.innerHTML = h; return (d.textContent || '').replace(/\s+/g, ' ').trim() }
 const norm = (s = '') => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
 
-/* Um link é serializado no HTML como:
-     <a class="nx-wikilink" data-doc="ID"  ...>[[Título]]</a>
-     <a class="nx-wikilink" data-page="42" ...>[[página 42]]</a>
-     <a class="nx-wikilink" data-url="http..." ...>[[link]]</a>
-   Também reconhecemos [[Título]] em texto puro (digitado à mão) para o grafo. */
 export const WIKILINK_CSS = `
   .nx-wikilink{color:#5b5bd6;background:rgba(91,91,214,.10);border-radius:5px;padding:0 4px;
     text-decoration:none;font-weight:600;cursor:pointer;white-space:nowrap;border:1px solid rgba(91,91,214,.22)}
@@ -47,7 +42,6 @@ export const WIKILINK_CSS = `
   .nx-wikilink[data-url]{color:#16a34a;background:rgba(22,163,74,.10);border-color:rgba(22,163,74,.22)}
 `
 
-/* extrai alvos de um HTML de documento. Retorna { docIds:Set, titulos:Set, pages:number[], urls:string[] } */
 export function extrairLinks(html = '') {
   const out = { docIds: new Set(), titulos: new Set(), pages: [], urls: [] }
   if (!html) return out
@@ -59,7 +53,6 @@ export function extrairLinks(html = '') {
     else if (url) out.urls.push(url)
     else { const t = (a.textContent || '').replace(/^\[\[|\]\]$/g, '').trim(); if (t) out.titulos.add(norm(t)) }
   })
-  // links [[...]] em texto puro (fora de <a>)
   const texto = stripHtml(html)
   let m; const re = /\[\[([^\]]+)\]\]/g
   while ((m = re.exec(texto))) {
@@ -71,7 +64,6 @@ export function extrairLinks(html = '') {
   return out
 }
 
-/* constrói o grafo dirigido de documentos: nós + arestas (from→to, peso=nº citações) */
 export function construirGrafo(docs = [], pastas = []) {
   const porId = new Map(docs.map((d) => [d.id, d]))
   const porTitulo = new Map()
@@ -80,7 +72,7 @@ export function construirGrafo(docs = [], pastas = []) {
 
   const nodes = docs.map((d) => ({ id: d.id, title: d.title || 'Sem título', folderId: d.folderId ?? null, cor: corPasta(d.folderId), grau: 0 }))
   const nodeMap = new Map(nodes.map((n) => [n.id, n]))
-  const edgeKey = new Map() // "from|to" -> peso
+  const edgeKey = new Map()
 
   docs.forEach((d) => {
     const L = extrairLinks(d.html || '')
@@ -105,7 +97,6 @@ export function construirGrafo(docs = [], pastas = []) {
   return { nodes, edges, nodeMap }
 }
 
-/* backlinks: docs que citam `docId` */
 export function calcularBacklinks(docId, docs = []) {
   if (!docId) return []
   const alvo = docs.find((d) => d.id === docId); const alvoTit = norm(alvo?.title || '')
@@ -118,9 +109,9 @@ export function calcularBacklinks(docId, docs = []) {
 
 /* ═══════════════════════════ 1) HOOK: wiki-links no editor ═══════════════════════════ */
 export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange }) {
-  const [pop, setPop] = useState(null) // { x, y, query, sel }
+  const [pop, setPop] = useState(null)
   const docsRef = useRef(docs); useEffect(() => { docsRef.current = docs }, [docs])
-  const rangeRef = useRef(null)        // Range que abrange "[[query" a ser substituído
+  const rangeRef = useRef(null)
 
   const sugestoes = useMemo(() => {
     if (!pop) return []
@@ -136,7 +127,6 @@ export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange 
     return [...extras, ...filtrados].slice(0, 8)
   }, [pop])
 
-  /* insere o <a> substituindo o texto "[[query" que o usuário digitou */
   const inserirLink = useCallback((s) => {
     const ed = editorRef.current; if (!ed) return
     const r = rangeRef.current
@@ -156,7 +146,6 @@ export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange 
     ed.focus(); onChange?.()
   }, [editorRef, onChange])
 
-  /* detecta se o cursor está logo após "[[..." e abre/atualiza o popup */
   const detectar = useCallback(() => {
     const ed = editorRef.current; if (!ed) return
     const sel = window.getSelection(); if (!sel || !sel.rangeCount) { setPop(null); return }
@@ -165,7 +154,6 @@ export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange 
     const texto = node.textContent.slice(0, r.startOffset)
     const m = texto.match(/\[\[([^\[\]]*)$/)
     if (!m) { setPop(null); return }
-    // constrói o range que cobre "[[query"
     const start = r.startOffset - m[0].length
     const rr = document.createRange(); rr.setStart(node, start); rr.setEnd(node, r.startOffset)
     rangeRef.current = rr
@@ -173,7 +161,6 @@ export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange 
     setPop({ x: rect.left, y: rect.bottom + 4, query: m[1], sel: 0 })
   }, [editorRef])
 
-  /* insere link a partir de um botão (Ctrl+L) — insere "[[" e abre o popup no cursor */
   const abrirInsercao = useCallback(() => {
     const ed = editorRef.current; if (!ed) return
     ed.focus()
@@ -185,7 +172,6 @@ export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange 
     detectar()
   }, [editorRef, detectar])
 
-  /* eventos do editor: input (detectar) + click (navegar) */
   useEffect(() => {
     const ed = editorRef.current; if (!ed) return
     const onInput = () => detectar()
@@ -202,7 +188,6 @@ export function useWikiLinks({ editorRef, docs, onOpenDoc, onGotoPage, onChange 
     return () => { ed.removeEventListener('input', onInput); ed.removeEventListener('click', onClick) }
   }, [editorRef, detectar, onOpenDoc, onGotoPage])
 
-  /* teclado do popup: ↑ ↓ Enter Tab Esc */
   useEffect(() => {
     if (!pop) return
     const onKey = (e) => {
@@ -238,10 +223,9 @@ const preview = (html, linhas = 3) => { const t = stripHtml(html); return t.leng
 
 export function ConexoesPanel({ docs, pastas, docId, onClose, onOpenDoc, onAbrirGrafo }) {
   const [modo, setModo] = useState(() => { try { return localStorage.getItem(VIEWKEY) || 'detalhado' } catch { return 'detalhado' } })
-  const [exp, setExp] = useState({}) // folderId -> aberto (default aberto)
+  const [exp, setExp] = useState({})
   const setModoP = (m) => { setModo(m); try { localStorage.setItem(VIEWKEY, m) } catch {} }
 
-  // Ctrl+M cicla os modos
   useEffect(() => {
     const onKey = (e) => { if ((e.ctrlKey || e.metaKey) && (e.key === 'm' || e.key === 'M')) { e.preventDefault(); const ordem = ['compacto', 'detalhado', 'completo']; setModoP(ordem[(ordem.indexOf(modo) + 1) % 3]) } }
     document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey)
@@ -259,7 +243,6 @@ export function ConexoesPanel({ docs, pastas, docId, onClose, onOpenDoc, onAbrir
     return { docs: [...alvo.values()], pages: [...new Set(L.pages)], urls: [...new Set(L.urls)] }
   }, [docAtual, docs, docId])
 
-  // árvore de notas por pasta (para os modos de visualização)
   const arvore = useMemo(() => {
     const grupos = [{ id: null, name: '(Raiz)', cor: '#94a3b8' }, ...pastas]
     return grupos.map((g) => ({ pasta: g, docs: docs.filter((d) => (d.folderId ?? null) === (g.id ?? null)) })).filter((x) => x.docs.length)
@@ -293,7 +276,6 @@ export function ConexoesPanel({ docs, pastas, docId, onClose, onOpenDoc, onAbrir
         <button onClick={onClose} title="Fechar" style={btnMini}>✕</button>
       </div>
 
-      {/* modos de visualização */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '7px 10px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', gap: 2, background: 'var(--surface)', borderRadius: 8, padding: 2 }}>
           {[['compacto', 'Compacto'], ['detalhado', 'Detalhado'], ['completo', 'Completo']].map(([m, l]) => (
@@ -306,7 +288,6 @@ export function ConexoesPanel({ docs, pastas, docId, onClose, onOpenDoc, onAbrir
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 8 }}>
-        {/* documento atual: saídas e backlinks */}
         {docAtual && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: '.64rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', margin: '4px 6px' }}>Documento atual · {docAtual.title || 'Sem título'}</div>
@@ -322,7 +303,6 @@ export function ConexoesPanel({ docs, pastas, docId, onClose, onOpenDoc, onAbrir
           </div>
         )}
 
-        {/* todas as notas por pasta (modos de visualização) */}
         <div style={{ fontSize: '.64rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.05em', color: 'var(--text-muted)', margin: '4px 6px' }}>Todas as notas ({docs.length})</div>
         {arvore.map((g) => {
           const open = exp[g.pasta.id ?? '__root'] ?? true
@@ -345,18 +325,17 @@ export function ConexoesPanel({ docs, pastas, docId, onClose, onOpenDoc, onAbrir
 /* ═══════════════════════════ 3) GRAFO DE CONECTORES (SVG force-directed) ═══════════════════════════ */
 export function GrafoConectores({ docs, pastas, docId, onClose, onOpenDoc }) {
   const { nodes, edges } = useMemo(() => construirGrafo(docs, pastas), [docs, pastas])
-  const [escopo, setEscopo] = useState('global') // global | local
+  const [escopo, setEscopo] = useState('global')
   const [filtro, setFiltro] = useState('')
-  const [foco, setFoco] = useState(null)          // id do nó em foco
+  const [foco, setFoco] = useState(null)
   const svgRef = useRef(null)
-  const posRef = useRef(new Map())                 // id -> {x,y,vx,vy,fx?}
-  const [, force] = useState(0)                    // re-render tick
-  const viewRef = useRef({ k: 1, x: 0, y: 0 })     // zoom/pan
+  const posRef = useRef(new Map())
+  const [, force] = useState(0)
+  const viewRef = useRef({ k: 1, x: 0, y: 0 })
   const [view, setView] = useState({ k: 1, x: 0, y: 0 })
-  const dragRef = useRef(null)                      // { id } ou { pan:true }
+  const dragRef = useRef(null)
   const W = 900, H = 620
 
-  // conjunto de nós/arestas conforme escopo local
   const { vnodes, vedges } = useMemo(() => {
     if (escopo === 'local' && docId) {
       const viz = new Set([docId])
@@ -366,13 +345,11 @@ export function GrafoConectores({ docs, pastas, docId, onClose, onOpenDoc }) {
     return { vnodes: nodes, vedges: edges }
   }, [escopo, docId, nodes, edges])
 
-  // inicializa posições
   useEffect(() => {
     const p = posRef.current
     vnodes.forEach((n, i) => { if (!p.has(n.id)) { const a = (i / Math.max(1, vnodes.length)) * Math.PI * 2; p.set(n.id, { x: W / 2 + Math.cos(a) * 180 + (Math.random() - .5) * 40, y: H / 2 + Math.sin(a) * 180 + (Math.random() - .5) * 40, vx: 0, vy: 0 }) } })
   }, [vnodes])
 
-  // simulação force-directed
   useEffect(() => {
     let raf, iter = 0
     const step = () => {
@@ -409,7 +386,6 @@ export function GrafoConectores({ docs, pastas, docId, onClose, onOpenDoc }) {
     return () => cancelAnimationFrame(raf)
   }, [vnodes, vedges])
 
-  // zoom com scroll
   const onWheel = (e) => {
     e.preventDefault()
     const v = viewRef.current
