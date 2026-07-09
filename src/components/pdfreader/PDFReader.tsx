@@ -2689,7 +2689,19 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
 
     // Ctrl (toque) grifa a seleção/palavra; Alt (toque) troca a cor no grupo atual; Enter move o cursor uma linha
     let ctrlDown = false, ctrlCombo = false, altDown = false, altCombo = false
+    // estes atalhos de tecla única (z/c/v, setas, Enter, Ctrl/Alt) só valem sobre a camada de texto do PDF.
+    // Quando o foco está num campo de escrita (editor de notas, inputs, post-its), devem ser ignorados para
+    // não engolir as letras nem sequestrar a navegação enquanto o usuário digita.
+    const emCampoDeEscrita = (e: KeyboardEvent): boolean => {
+      const alvo = (e.target as HTMLElement | null) || (document.activeElement as HTMLElement | null)
+      if (!alvo || !alvo.closest) return false
+      const tag = alvo.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+      if (alvo.isContentEditable && !alvo.closest('.pr-textlayer')) return true
+      return false
+    }
     const kd = (e: KeyboardEvent) => {
+      if (emCampoDeEscrita(e)) { ctrlDown = false; altDown = false; return }   // deixa digitar normalmente no editor
       if (e.key === 'Control') { if (!ctrlDown) { ctrlDown = true; ctrlCombo = false } if (altDown) altCombo = true; return }
       if (e.key === 'Alt') { e.preventDefault(); if (!altDown) { altDown = true; altCombo = false } if (ctrlDown) ctrlCombo = true; return }
       if (ctrlDown) ctrlCombo = true
@@ -2701,6 +2713,7 @@ function PdfViewer({ onExtract, viewMode, setViewMode, secondary = false, viewer
       if (!e.ctrlKey && !e.altKey && !e.metaKey && navTeclado(e)) return
     }
     const ku = (e: KeyboardEvent) => {
+      if (emCampoDeEscrita(e)) { ctrlDown = false; altDown = false; return }   // deixa digitar normalmente no editor
       if (e.key === 'Control') { if (ctrlDown && !ctrlCombo) grifarSelecao(); ctrlDown = false; return }
       if (e.key === 'Alt') { e.preventDefault(); if (altDown && !altCombo) ciclarCorGrifo(); altDown = false; return }
     }
