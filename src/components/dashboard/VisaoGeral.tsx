@@ -24,6 +24,7 @@ import { useEdital, useEditaisCadastrados } from '../../hooks/useEdital'
 import { EDITAIS_BUILTIN, EDITAIS_FIXOS_IDS } from '../editais/GestorEditais'
 import { PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, ComposedChart, BarChart, Bar, ReferenceLine, LabelList, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import PainelArcade from './Arcade'
+import ControlePeso from './ControlePeso'
 
 /* ───────────────────────── helpers de data ───────────────────────── */
 const hojeISO = () => new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10)
@@ -1051,6 +1052,7 @@ const REGISTRY: Record<string, any> = {
   'agenda-hoje-lista': { label: 'Agenda · Hoje',       icon: '📅', kind: 'detail', w: 4, h: 3, render: (p: any) => <AgendaHojeLista {...p} /> },
   'agenda-semana':     { label: 'Próximos 7 dias',     icon: '🗓', kind: 'detail', w: 4, h: 3, render: (p: any) => <AgendaSemana {...p} /> },
   'saude-hoje':        { label: 'Saúde · Hoje',        icon: '✚', kind: 'detail', w: 4, h: 2, render: (p: any) => <SaudeHoje {...p} /> },
+  'peso':              { label: 'Controle de Peso',    icon: '⚖', kind: 'detail', w: 4, h: 4, render: (p: any) => <ControlePeso {...p} /> },
   'wishlist-lista':    { label: 'Wishlist · Lista',    icon: '🛒', kind: 'detail', w: 4, h: 3, render: (p: any) => <WishlistLista {...p} /> },
   'gaming-lista':      { label: 'Jogando agora',       icon: '🎮', kind: 'detail', w: 4, h: 2, render: (p: any) => <GamingLista {...p} /> },
   'media-lista':       { label: 'Assistindo / Lendo',  icon: '▶', kind: 'detail', w: 4, h: 2, render: (p: any) => <MediaLista {...p} /> },
@@ -1080,7 +1082,7 @@ const DEFAULT_LAYOUT = [
   { id: 'prazos-adm-kpi', w: 3, h: 1 }, { id: 'concursos-kpi', w: 3, h: 1 }, { id: 'agenda-hoje-kpi', w: 3, h: 1 }, { id: 'pdf-kpi', w: 3, h: 1 },
   { id: 'agu-disciplinas', w: 4, h: 3 }, { id: 'prontuario-prazos', w: 4, h: 3 }, { id: 'agenda-hoje-lista', w: 4, h: 3 },
   { id: 'agu-revisoes', w: 4, h: 3 }, { id: 'concursos-lista', w: 4, h: 2 }, { id: 'agenda-semana', w: 4, h: 2 },
-  { id: 'pdf-recentes', w: 4, h: 2 }, { id: 'notas-recentes', w: 4, h: 2 }, { id: 'saude-hoje', w: 4, h: 2 },
+  { id: 'pdf-recentes', w: 4, h: 2 }, { id: 'notas-recentes', w: 4, h: 2 }, { id: 'peso', w: 4, h: 4 },
   { id: 'arcade', w: 6, h: 4 },
 ]
 
