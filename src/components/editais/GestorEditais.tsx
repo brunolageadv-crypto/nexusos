@@ -7,6 +7,7 @@ import type { EditalCadastrado, DisciplinaEdital, SubtopicoEdital } from '../../
 import { AGU_DISCIPLINAS } from './aguData'
 import { PGM_BH_DISCIPLINAS } from './pgmBhData'
 import { PGM_CWB_DISCIPLINAS } from './pgmCuritibaData'
+import { CREAMG_DISCIPLINAS } from './creamgData'
 import EditalDetalhe from './EditalDetalhe'
 import SimilaridadeEditais from './SimilaridadeEditais'
 import { useUid } from '../../hooks/useUid'
@@ -89,13 +90,37 @@ function pgmCuritibaParaEdital(): EditalCadastrado {
   }
 }
 
+function creamgParaEdital(): EditalCadastrado {
+  return {
+    id: 'crea-mg-direito',
+    nome: 'CREA-MG — Direito',
+    orgao: 'CREA-MG',
+    cargo: 'Profissional de Nível Superior — Direito',
+    ano: '2026',
+    cor: '#ea580c',
+    descricao: 'Concurso Público nº 01/2026 do CREA-MG — cargo Profissional de Nível Superior — Direito (Fumarc).',
+    disciplinas: CREAMG_DISCIPLINAS.map(d => ({
+      id: d.id,
+      nome: d.nome,
+      cor: d.cor,
+      topicos: d.topicos.map(t => ({
+        id: t.id,
+        nome: t.nome,
+        subtopicos: t.subtopicos.map(s => ({ id: s.id, nome: s.nome })),
+      })),
+    })),
+    criadoEm: 3, // fixo para aparecer logo após a PGM-Curitiba
+  }
+}
+
 const AGU_EDITAL = aguParaEdital()
 const PGM_BH_EDITAL = pgmBhParaEdital()
 const PGM_CWB_EDITAL = pgmCuritibaParaEdital()
+const CREAMG_EDITAL = creamgParaEdital()
 
 // Reaproveitados no dashboard (card Editais) para listar todos os editais
-export const EDITAIS_BUILTIN: EditalCadastrado[] = [AGU_EDITAL, PGM_BH_EDITAL, PGM_CWB_EDITAL]
-export const EDITAIS_FIXOS_IDS = ['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador']
+export const EDITAIS_BUILTIN: EditalCadastrado[] = [AGU_EDITAL, PGM_BH_EDITAL, PGM_CWB_EDITAL, CREAMG_EDITAL]
+export const EDITAIS_FIXOS_IDS = ['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador', 'crea-mg-direito']
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function newId() { return Math.random().toString(36).slice(2, 10) }
@@ -405,7 +430,7 @@ function ModalEdital({ uid, edital, onClose }: {
 
         {/* Footer */}
         <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border-md)', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
-          <div>{isEdit && !['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador'].includes(edital.id) && (
+          <div>{isEdit && !['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador', 'crea-mg-direito'].includes(edital.id) && (
             <button onClick={del} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.06)', color: '#f87171', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}>Excluir Edital</button>
           )}</div>
           <div style={{ display: 'flex', gap: 10 }}>
@@ -430,7 +455,7 @@ function EditalCard({ edital, onAbrir, onEditar, hooks }: {
 }) {
   const allIds = edital.disciplinas.flatMap(d => d.topicos.flatMap(t => t.subtopicos.map(s => s.id)))
   const stats = hooks.getStats(allIds)
-  const isFixo = ['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador'].includes(edital.id)
+  const isFixo = ['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador', 'crea-mg-direito'].includes(edital.id)
   const diasProva = edital.dataProva
     ? Math.ceil((new Date(edital.dataProva).getTime() - Date.now()) / 86400000)
     : null
@@ -582,7 +607,7 @@ export default function GestorEditais() {
     if (!uid) return
     return onSnapshot(collection(db, 'users', uid, 'editais'), snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as EditalCadastrado))
-        .filter(e => !['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador'].includes(e.id)) // editais fixos já vêm hardcoded
+        .filter(e => !['agu-advogado-uniao', 'pgm-bh-procurador', 'pgm-curitiba-procurador', 'crea-mg-direito'].includes(e.id)) // editais fixos já vêm hardcoded
         .sort((a, b) => b.criadoEm - a.criadoEm)
       setEditaisCustom(list)
       setLoading(false)
