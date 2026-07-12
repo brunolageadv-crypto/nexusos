@@ -6,7 +6,7 @@
   "scope": "/nexusos/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#151e2d",
+  "background_color": "#e9eaea",
   "theme_color": "#151e2d",
   "icons": [
     {
@@ -19,7 +19,13 @@
       "src": "/nexusos/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/nexusos/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "categories": ["productivity", "utilities"],
