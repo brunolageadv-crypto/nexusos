@@ -31,7 +31,7 @@ const ACCENT = '#10b981'
 interface Pesagem { id: string; data: string; peso: number; criadoEm: number }
 interface Medida { id: string; data: string; pescoco: number; peito: number; cintura: number; abdomen: number; quadril: number; braco: number; coxa: number; panturrilha: number; criadoEm: number }
 interface FotoReg { id: string; data: string; frente?: string; perfil?: string; costas?: string; criadoEm: number }
-interface PesoConfig { pesoInicial: number; pesoDesejado: number; altura: number }
+interface PesoConfig { pesoInicial: number; pesoDesejado: number; altura: number; sexo: 'M' | 'F' }
 
 const MEDIDA_CAMPOS: { k: keyof Medida; l: string }[] = [
   { k: 'pescoco', l: 'Pescoço' }, { k: 'peito', l: 'Peito' }, { k: 'cintura', l: 'Cintura' },
@@ -73,7 +73,7 @@ export default function ControlePeso(props: any) {
   const [pesagens, setPesagens] = useState<Pesagem[]>([])
   const [medidas, setMedidas] = useState<Medida[]>([])
   const [fotos, setFotos] = useState<FotoReg[]>([])
-  const [config, setConfig] = useState<PesoConfig>({ pesoInicial: 0, pesoDesejado: 0, altura: 0 })
+  const [config, setConfig] = useState<PesoConfig>({ pesoInicial: 0, pesoDesejado: 0, altura: 0, sexo: 'M' })
 
   // peso registrado hoje na Saúde (integração)
   const pesoSaudeHoje = props?.saude?.reg?.peso || 0
@@ -91,7 +91,7 @@ export default function ControlePeso(props: any) {
     })
     const u4 = onSnapshot(doc(db, 'users', uid, 'config', 'peso'), s => {
       const d = s.data() as PesoConfig | undefined
-      if (d) setConfig({ pesoInicial: d.pesoInicial || 0, pesoDesejado: d.pesoDesejado || 0, altura: d.altura || 0 })
+      if (d) setConfig({ pesoInicial: d.pesoInicial || 0, pesoDesejado: d.pesoDesejado || 0, altura: d.altura || 0, sexo: d.sexo === 'F' ? 'F' : 'M' })
     })
     return () => { u1(); u2(); u3(); u4() }
   }, [uid])
@@ -118,7 +118,7 @@ export default function ControlePeso(props: any) {
 
   return (
     <Shell secao={secao} setSecao={setSecao}>
-      {secao === 'dashboard' && <SecDashboard der={der} ultimaData={der.ultima?.data} />}
+      {secao === 'dashboard' && <SecDashboard uid={uid} der={der} pesagens={pesagens} medidas={medidas} config={config} />}
       {secao === 'evolucao' && <SecEvolucao uid={uid} pesagens={pesagens} pesoSaudeHoje={pesoSaudeHoje} />}
       {secao === 'meta' && <SecMeta uid={uid} config={config} der={der} />}
       {secao === 'imc' && <SecIMC uid={uid} config={config} der={der} />}
@@ -154,21 +154,129 @@ function Shell({ secao, setSecao, children }: { secao: string; setSecao: (s: str
 }
 
 /* ── 1. DASHBOARD ────────────────────────────────────────── */
-function SecDashboard({ der, ultimaData }: { der: any; ultimaData?: string }) {
+function dateDiffDias(a: string, b: string) { return Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000) }
+function faixaSaudavel(alturaCm: number) { if (!alturaCm) return null; const h = alturaCm / 100; return { min: 18.5 * h * h, max: 24.9 * h * h } }
+function navyGordura(sexo: 'M' | 'F', altura: number, cintura: number, pescoco: number, quadril: number): number | null {
+  if (!altura || !cintura || !pescoco) return null
+  if (sexo === 'F' && !quadril) return null
+  let v: number
+  if (sexo === 'M') { if (cintura - pescoco <= 0) return null; v = 495 / (1.0324 - 0.19077 * Math.log10(cintura - pescoco) + 0.15456 * Math.log10(altura)) - 450 }
+  else { if (cintura + quadril - pescoco <= 0) return null; v = 495 / (1.29579 - 0.35004 * Math.log10(cintura + quadril - pescoco) + 0.22100 * Math.log10(altura)) - 450 }
+  return v > 0 && v < 70 ? v : null
+}
+
+function SecDashboard({ uid, der, pesagens, medidas, config }: any) {
   const imcCls = der.imc ? classificaIMC(der.imc) : null
+  const [novoPeso, setNovoPeso] = useState('')
+  async function registrarRapido() {
+    const p = Number(String(novoPeso).replace(',', '.'))
+    if (!p || p <= 0) return
+    const id = newId()
+    await setDoc(doc(db, 'users', uid, 'pesagens', id), clean({ id, data: today(), peso: p, criadoEm: Date.now() }))
+    setNovoPeso('')
+  }
+  const resumo = (dias: number) => {
+    if (!pesagens.length) return null
+    const limite = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10)
+    const jan = pesagens.filter((p: any) => p.data >= limite)
+    if (jan.length < 1) return null
+    return { varic: jan[jan.length - 1].peso - jan[0].peso, media: jan.reduce((a: number, p: any) => a + p.peso, 0) / jan.length, n: jan.length }
+  }
+  const semana = resumo(7), mes = resumo(30)
+  const proj = (() => {
+    if (pesagens.length < 2 || !der.pesoDesejado) return null
+    const ult = pesagens[pesagens.length - 1]
+    const base = [...pesagens].reverse().find((p: any) => dateDiffDias(ult.data, p.data) >= 10) || pesagens[0]
+    const dias = dateDiffDias(ult.data, base.data)
+    if (dias <= 0) return null
+    const ratedia = (base.peso - ult.peso) / dias
+    const restante = ult.peso - der.pesoDesejado
+    if (ratedia <= 0.001 || restante <= 0) return { sem: null as number | null, semana: ratedia * 7, alvo: '' }
+    const diasFalta = restante / ratedia
+    const alvo = new Date(new Date(ult.data).getTime() + diasFalta * 86400000).toISOString().slice(0, 10)
+    return { sem: diasFalta / 7, alvo, semana: ratedia * 7 }
+  })()
+  const faixa = faixaSaudavel(config.altura)
+  const um = medidas[medidas.length - 1]
+  const gordura = um ? navyGordura(config.sexo || 'M', config.altura, um.cintura, um.pescoco, um.quadril) : null
+  const rcq = um && um.cintura && um.quadril ? um.cintura / um.quadril : null
+  const rcqLim = (config.sexo || 'M') === 'M' ? 0.90 : 0.85
+  async function mudaSexo(sx: 'M' | 'F') { await setDoc(doc(db, 'users', uid, 'config', 'peso'), { sexo: sx }, { merge: true }) }
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
-      <Stat label="Peso atual" value={kg(der.pesoAtual || null)} cor={ACCENT} />
-      <Stat label="Meta de peso" value={kg(der.pesoDesejado || null)} />
-      <Stat label="Peso perdido" value={der.perdido ? `${der.perdido > 0 ? '-' : '+'}${Math.abs(der.perdido).toFixed(1).replace('.', ',')} kg` : '—'} cor={der.perdido > 0 ? '#10b981' : der.perdido < 0 ? '#ef4444' : undefined} sub="desde o início" />
-      <Stat label="Falta p/ meta" value={der.restante > 0 ? kg(der.restante) : (der.pesoDesejado ? '✓ atingida' : '—')} cor={der.restante > 0 ? '#f59e0b' : '#10b981'} />
-      <Stat label="IMC atual" value={der.imc ? der.imc.toFixed(1).replace('.', ',') : '—'} cor={imcCls?.cor} sub={imcCls?.label} />
-      <Stat label="Última pesagem" value={fmtData(ultimaData)} />
-    </div>
+    <>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input type="number" step={0.1} style={{ ...IS, flex: 1 }} value={novoPeso} onChange={e => setNovoPeso(e.target.value)} placeholder="Pesar hoje (kg)" />
+        <button onClick={registrarRapido} style={btnPri}>+ Registrar</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+        <Stat label="Peso atual" value={kg(der.pesoAtual || null)} cor={ACCENT} />
+        <Stat label="Meta de peso" value={kg(der.pesoDesejado || null)} />
+        <Stat label="Peso perdido" value={der.perdido ? `${der.perdido > 0 ? '-' : '+'}${Math.abs(der.perdido).toFixed(1).replace('.', ',')} kg` : '—'} cor={der.perdido > 0 ? '#10b981' : der.perdido < 0 ? '#ef4444' : undefined} sub="desde o início" />
+        <Stat label="Falta p/ meta" value={der.restante > 0 ? kg(der.restante) : (der.pesoDesejado ? '✓ atingida' : '—')} cor={der.restante > 0 ? '#f59e0b' : '#10b981'} />
+        <Stat label="IMC atual" value={der.imc ? der.imc.toFixed(1).replace('.', ',') : '—'} cor={imcCls?.cor} sub={imcCls?.label} />
+        <Stat label="Última pesagem" value={fmtData(der.ultima?.data)} />
+      </div>
+
+      {(semana || mes) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          {[{ t: '7 dias', r: semana }, { t: '30 dias', r: mes }].map(({ t, r }) => (
+            <div key={t} style={{ padding: '9px 11px', borderRadius: 11, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '0.56rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Últimos {t}</div>
+              {r ? (<>
+                <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1rem', color: r.varic < 0 ? '#10b981' : r.varic > 0 ? '#ef4444' : 'var(--text-primary)' }}>{r.varic > 0 ? '+' : ''}{r.varic.toFixed(1).replace('.', ',')} kg</div>
+                <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>média {r.media.toFixed(1).replace('.', ',')} · {r.n} reg</div>
+              </>) : <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>sem dados</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {proj && (
+        <div style={{ padding: '10px 12px', borderRadius: 11, background: `${ACCENT}0c`, border: `1px solid ${ACCENT}30` }}>
+          <div style={{ fontSize: '0.56rem', fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: '0.06em' }}>🎯 Projeção da meta</div>
+          {proj.sem ? (
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', marginTop: 3 }}>No ritmo atual (<b>{proj.semana.toFixed(1).replace('.', ',')} kg/sem</b>), meta em <b>~{Math.ceil(proj.sem)} semana{Math.ceil(proj.sem) !== 1 ? 's' : ''}</b> ({fmtData(proj.alvo)}).</div>
+          ) : (
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 3 }}>{der.restante <= 0 ? 'Meta atingida! 🎉' : 'Sem tendência de perda no período — registre mais pesagens.'}</div>
+          )}
+        </div>
+      )}
+
+      {faixa && (
+        <div style={{ padding: '10px 12px', borderRadius: 11, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.56rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Peso saudável · {config.altura}cm</span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: '0.82rem', color: '#10b981' }}>{faixa.min.toFixed(0)}–{faixa.max.toFixed(0)} kg</span>
+          </div>
+          {der.pesoAtual > 0 && (
+            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginTop: 3 }}>{der.pesoAtual < faixa.min ? `${(faixa.min - der.pesoAtual).toFixed(1).replace('.', ',')} kg abaixo da faixa.` : der.pesoAtual > faixa.max ? `Faltam ${(der.pesoAtual - faixa.max).toFixed(1).replace('.', ',')} kg para entrar na faixa.` : 'Dentro da faixa saudável. ✓'}</div>
+          )}
+        </div>
+      )}
+
+      <div style={{ padding: '10px 12px', borderRadius: 11, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <span style={{ fontSize: '0.56rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Composição corporal</span>
+          <span style={{ display: 'flex', gap: 4 }}>
+            {(['M', 'F'] as const).map(sx => (
+              <button key={sx} onClick={() => mudaSexo(sx)} style={{ padding: '2px 8px', borderRadius: 6, border: `1px solid ${(config.sexo || 'M') === sx ? ACCENT : 'var(--border)'}`, background: (config.sexo || 'M') === sx ? `${ACCENT}18` : 'transparent', color: (config.sexo || 'M') === sx ? ACCENT : 'var(--text-muted)', fontSize: '0.6rem', fontWeight: 700, cursor: 'pointer' }}>{sx === 'M' ? 'Masc' : 'Fem'}</button>
+            ))}
+          </span>
+        </div>
+        {(gordura != null || rcq != null) ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div><div style={{ fontSize: '0.56rem', color: 'var(--text-muted)' }}>% Gordura (Navy)</div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: 'var(--text-primary)' }}>{gordura != null ? `${gordura.toFixed(1).replace('.', ',')}%` : '—'}</div></div>
+            <div><div style={{ fontSize: '0.56rem', color: 'var(--text-muted)' }}>Cintura/Quadril</div><div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, color: rcq == null ? 'var(--text-primary)' : rcq > rcqLim ? '#ef4444' : '#10b981' }}>{rcq != null ? rcq.toFixed(2).replace('.', ',') : '—'}{rcq != null && <span style={{ fontSize: '0.58rem', fontWeight: 600, marginLeft: 4, color: 'var(--text-muted)' }}>{rcq > rcqLim ? 'risco' : 'ok'}</span>}</div></div>
+          </div>
+        ) : <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>Registre altura (aba Meta) e medidas (cintura, pescoço{(config.sexo || 'M') === 'F' ? ', quadril' : ''}) para calcular.</div>}
+      </div>
+    </>
   )
 }
 
-/* ── 2. EVOLUÇÃO ─────────────────────────────────────────── */
+/* ── 2. EVOLUCAO ── */
 function SecEvolucao({ uid, pesagens, pesoSaudeHoje }: { uid: string; pesagens: Pesagem[]; pesoSaudeHoje: number }) {
   const [data, setData] = useState(today())
   const [peso, setPeso] = useState('')
