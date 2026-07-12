@@ -1,4 +1,4 @@
-﻿const CACHE = 'nexusos-v5'
+﻿const CACHE = 'nexusos-v6'
 const OFFLINE_URL = '/nexusos/'
 
 self.addEventListener('install', e => {
