@@ -6,7 +6,7 @@
   "scope": "/nexusos/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#e9eaea",
+  "background_color": "#0d0f13",
   "theme_color": "#151e2d",
   "icons": [
     {
