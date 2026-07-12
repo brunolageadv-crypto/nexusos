@@ -4,10 +4,106 @@ export interface Disciplina { id: string; nome: string; cor: string; topicos: To
 
 /* Concurso Público nº 01/2026 — CREA-MG (Fumarc)
    Cargo: Profissional de Nível Superior — Direito
-   Inclui as disciplinas jurídicas específicas + Legislação/Sistema Confea/Crea. */
+   Matérias gerais (comuns a todos os cargos de nível superior) + disciplinas
+   jurídicas específicas + Legislação/Sistema Confea/Crea. */
 export const CREAMG_DISCIPLINAS: Disciplina[] = [
 
-  /* ═══ 1. DIREITO CIVIL ═══ */
+  /* ═══ 1. LÍNGUA PORTUGUESA ═══ */
+  { id: 'port', nome: 'Língua Portuguesa', cor: '#0ea5e9', topicos: [
+    { id: 'port1', nome: 'Língua, Linguagem e Fonologia', subtopicos: [
+      { id: 'port1.1', nome: 'Língua e linguagem' },
+      { id: 'port1.2', nome: 'Variações linguísticas' },
+      { id: 'port1.3', nome: 'Fonética' },
+      { id: 'port1.4', nome: 'Ortografia' },
+      { id: 'port1.5', nome: 'Acentuação gráfica' },
+    ]},
+    { id: 'port2', nome: 'Semântica', subtopicos: [
+      { id: 'port2.1', nome: 'Denotação e conotação' },
+      { id: 'port2.2', nome: 'Sinonímia e antonímia' },
+      { id: 'port2.3', nome: 'Paronímia e homonímia' },
+      { id: 'port2.4', nome: 'Ambiguidade' },
+    ]},
+    { id: 'port3', nome: 'Compreensão e Interpretação de Textos', subtopicos: [
+      { id: 'port3.1', nome: 'Compreensão e interpretação de textos' },
+      { id: 'port3.2', nome: 'Gêneros e tipologias textuais' },
+      { id: 'port3.3', nome: 'Coesão e coerência' },
+      { id: 'port3.4', nome: 'Pressupostos e subentendidos' },
+      { id: 'port3.5', nome: 'Funções da linguagem' },
+      { id: 'port3.6', nome: 'Intertextualidade' },
+    ]},
+    { id: 'port4', nome: 'Argumentação', subtopicos: [
+      { id: 'port4.1', nome: 'Argumentação' },
+      { id: 'port4.2', nome: 'Recursos argumentativos' },
+      { id: 'port4.3', nome: 'Falácias da argumentação' },
+    ]},
+    { id: 'port5', nome: 'Morfologia', subtopicos: [
+      { id: 'port5.1', nome: 'Estrutura e formação de palavras' },
+      { id: 'port5.2', nome: 'Classes de palavras' },
+    ]},
+    { id: 'port6', nome: 'Sintaxe', subtopicos: [
+      { id: 'port6.1', nome: 'Frase, oração e período' },
+      { id: 'port6.2', nome: 'Período simples' },
+      { id: 'port6.3', nome: 'Período composto por coordenação' },
+      { id: 'port6.4', nome: 'Período composto por subordinação' },
+      { id: 'port6.5', nome: 'Concordância verbal e nominal' },
+      { id: 'port6.6', nome: 'Regência verbal e nominal' },
+      { id: 'port6.7', nome: 'Crase' },
+      { id: 'port6.8', nome: 'Colocação pronominal' },
+    ]},
+    { id: 'port7', nome: 'Pontuação, Figuras e Discurso', subtopicos: [
+      { id: 'port7.1', nome: 'Sinais de pontuação' },
+      { id: 'port7.2', nome: 'Figuras de linguagem' },
+      { id: 'port7.3', nome: 'Discurso direto, indireto e indireto livre' },
+    ]},
+    { id: 'port8', nome: 'Linguagem Simples', subtopicos: [
+      { id: 'port8.1', nome: 'Linguagem simples (Lei nº 15.263/2025)' },
+    ]},
+  ]},
+
+  /* ═══ 2. RACIOCÍNIO LÓGICO ═══ */
+  { id: 'rl', nome: 'Raciocínio Lógico', cor: '#f59e0b', topicos: [
+    { id: 'rl1', nome: 'Lógica Proposicional', subtopicos: [
+      { id: 'rl1.1', nome: 'Estruturas lógicas' },
+      { id: 'rl1.2', nome: 'Lógica sentencial (ou proposicional)' },
+      { id: 'rl1.3', nome: 'Proposições simples e compostas' },
+    ]},
+    { id: 'rl2', nome: 'Lógica de Argumentação', subtopicos: [
+      { id: 'rl2.1', nome: 'Analogias, inferências, deduções e conclusões' },
+      { id: 'rl2.2', nome: 'Diagramas lógicos' },
+    ]},
+    { id: 'rl3', nome: 'Conjuntos', subtopicos: [
+      { id: 'rl3.1', nome: 'Operações com conjuntos' },
+    ]},
+    { id: 'rl4', nome: 'Raciocínio Aplicado', subtopicos: [
+      { id: 'rl4.1', nome: 'Raciocínio verbal' },
+      { id: 'rl4.2', nome: 'Raciocínio matemático' },
+      { id: 'rl4.3', nome: 'Raciocínio sequencial' },
+      { id: 'rl4.4', nome: 'Orientação espacial e temporal' },
+      { id: 'rl4.5', nome: 'Formação de conceitos e discriminação de elementos' },
+    ]},
+  ]},
+
+  /* ═══ 3. NOÇÕES DE INFORMÁTICA ═══ */
+  { id: 'inf', nome: 'Noções de Informática', cor: '#14b8a6', topicos: [
+    { id: 'inf1', nome: 'Sistema Operacional Windows', subtopicos: [
+      { id: 'inf1.1', nome: 'Windows: versões 10 e 11' },
+    ]},
+    { id: 'inf2', nome: 'Pacote Office 365', subtopicos: [
+      { id: 'inf2.1', nome: 'Word 365: edição e formatação de textos' },
+      { id: 'inf2.2', nome: 'Excel 365: tabelas, fórmulas e gráficos' },
+    ]},
+    { id: 'inf3', nome: 'Navegadores', subtopicos: [
+      { id: 'inf3.1', nome: 'Microsoft Edge e Google Chrome' },
+    ]},
+    { id: 'inf4', nome: 'Segurança da Informação', subtopicos: [
+      { id: 'inf4.1', nome: 'Princípios básicos: confidencialidade, integridade, disponibilidade e autenticidade' },
+      { id: 'inf4.2', nome: 'Vírus, worms, trojans, ransomware, spyware, adware, rootkits e phishing' },
+      { id: 'inf4.3', nome: 'Antivírus, firewall pessoal, criptografia, assinatura digital e certificados digitais' },
+      { id: 'inf4.4', nome: 'Gestão de senhas, backup (tipos e periodicidade) e navegação segura' },
+    ]},
+  ]},
+
+  /* ═══ 4. DIREITO CIVIL ═══ */
   { id: 'civ', nome: 'Direito Civil', cor: '#4f46e5', topicos: [
     { id: 'civ1', nome: 'Lei de Introdução às Normas do Direito Brasileiro', subtopicos: [
       { id: 'civ1.1', nome: 'Vigência, aplicação, obrigatoriedade, interpretação e integração das leis' },
@@ -104,7 +200,7 @@ export const CREAMG_DISCIPLINAS: Disciplina[] = [
     ]},
   ]},
 
-  /* ═══ 2. DIREITO PROCESSUAL CIVIL ═══ */
+  /* ═══ 5. DIREITO PROCESSUAL CIVIL ═══ */
   { id: 'pc', nome: 'Direito Processual Civil', cor: '#7c3aed', topicos: [
     { id: 'pc1', nome: 'Normas Fundamentais e Jurisdição (Lei nº 13.105/2015)', subtopicos: [
       { id: 'pc1.1', nome: 'Normas processuais civis' },
@@ -138,7 +234,7 @@ export const CREAMG_DISCIPLINAS: Disciplina[] = [
     ]},
   ]},
 
-  /* ═══ 3. DIREITO ADMINISTRATIVO ═══ */
+  /* ═══ 6. DIREITO ADMINISTRATIVO ═══ */
   { id: 'adm', nome: 'Direito Administrativo', cor: '#0891b2', topicos: [
     { id: 'adm1', nome: 'Introdução ao Direito Administrativo', subtopicos: [
       { id: 'adm1.1', nome: 'Origem, natureza jurídica e objeto do direito administrativo' },
@@ -231,7 +327,7 @@ export const CREAMG_DISCIPLINAS: Disciplina[] = [
     ]},
   ]},
 
-  /* ═══ 4. DIREITO CONSTITUCIONAL ═══ */
+  /* ═══ 7. DIREITO CONSTITUCIONAL ═══ */
   { id: 'con', nome: 'Direito Constitucional', cor: '#059669', topicos: [
     { id: 'con1', nome: 'Teoria da Constituição', subtopicos: [
       { id: 'con1.1', nome: 'Conceito e tipos de Constituição' },
@@ -294,7 +390,7 @@ export const CREAMG_DISCIPLINAS: Disciplina[] = [
     ]},
   ]},
 
-  /* ═══ 5. DIREITO TRIBUTÁRIO ═══ */
+  /* ═══ 8. DIREITO TRIBUTÁRIO ═══ */
   { id: 'trib', nome: 'Direito Tributário', cor: '#d97706', topicos: [
     { id: 'trib1', nome: 'Execução Fiscal', subtopicos: [
       { id: 'trib1.1', nome: 'Lei nº 6.830/1980' },
@@ -332,7 +428,7 @@ export const CREAMG_DISCIPLINAS: Disciplina[] = [
     ]},
   ]},
 
-  /* ═══ 6. DIREITO DO TRABALHO E PROCESSUAL DO TRABALHO ═══ */
+  /* ═══ 9. DIREITO DO TRABALHO E PROCESSUAL DO TRABALHO ═══ */
   { id: 'trab', nome: 'Direito do Trabalho e Processual do Trabalho', cor: '#dc2626', topicos: [
     { id: 'trab1', nome: 'Direito do Trabalho — Fundamentos', subtopicos: [
       { id: 'trab1.1', nome: 'Direito do Trabalho na Constituição Federal de 1988' },
@@ -368,7 +464,7 @@ export const CREAMG_DISCIPLINAS: Disciplina[] = [
     ]},
   ]},
 
-  /* ═══ 7. LEGISLAÇÃO E SISTEMA CONFEA/CREA ═══ */
+  /* ═══ 10. LEGISLAÇÃO E SISTEMA CONFEA/CREA ═══ */
   { id: 'cfc', nome: 'Legislação e Sistema Confea/Crea', cor: '#db2777', topicos: [
     { id: 'cfc1', nome: 'Legislação Profissional — Exercício das Profissões', subtopicos: [
       { id: 'cfc1.1', nome: 'Decreto nº 23.196/1933 (exercício da profissão agronômica)' },

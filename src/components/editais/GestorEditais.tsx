@@ -615,7 +615,7 @@ export default function GestorEditais() {
   }, [uid])
 
   // AGU sempre primeiro, depois os customizados
-  const todosEditais = [AGU_EDITAL, PGM_BH_EDITAL, PGM_CWB_EDITAL, ...editaisCustom]
+  const todosEditais = [AGU_EDITAL, PGM_BH_EDITAL, PGM_CWB_EDITAL, CREAMG_EDITAL, ...editaisCustom]
 
   // Se há um edital aberto, mostrar o detalhe
   if (editalAberto) {
