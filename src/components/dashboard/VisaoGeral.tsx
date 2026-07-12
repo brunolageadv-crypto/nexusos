@@ -1082,7 +1082,7 @@ const DEFAULT_LAYOUT = [
   { id: 'prazos-adm-kpi', w: 3, h: 1 }, { id: 'concursos-kpi', w: 3, h: 1 }, { id: 'agenda-hoje-kpi', w: 3, h: 1 }, { id: 'pdf-kpi', w: 3, h: 1 },
   { id: 'agu-disciplinas', w: 4, h: 3 }, { id: 'prontuario-prazos', w: 4, h: 3 }, { id: 'agenda-hoje-lista', w: 4, h: 3 },
   { id: 'agu-revisoes', w: 4, h: 3 }, { id: 'concursos-lista', w: 4, h: 2 }, { id: 'agenda-semana', w: 4, h: 2 },
-  { id: 'pdf-recentes', w: 4, h: 2 }, { id: 'notas-recentes', w: 4, h: 2 }, { id: 'peso', w: 4, h: 4 },
+  { id: 'pdf-recentes', w: 4, h: 2 }, { id: 'notas-recentes', w: 4, h: 2 }, { id: 'saude-hoje', w: 4, h: 2 },
   { id: 'arcade', w: 6, h: 4 },
 ]
 
@@ -1627,7 +1627,6 @@ export function PaginaInicial({ onNavigate }: { onNavigate: (id: string) => void
   const agu = useAguData()
   const agenda = useAgendaData()
   const saude = useSaudeData()
-  const { peso, pesoDelta, agua, ativHoje, passosSerie } = useSaudeSeries()
 
   const colProd = <>
     <Slot h={250}><HorasSemanaCard onNavigate={onNavigate} /></Slot>
@@ -1635,20 +1634,14 @@ export function PaginaInicial({ onNavigate }: { onNavigate: (id: string) => void
     <Slot h={212}><AgendaSemana agenda={agenda} onNavigate={onNavigate} /></Slot>
     <Slot h={212}><AguRevisoes agu={agu} onNavigate={onNavigate} /></Slot>
   </>
-  const colSaude = <>
-    <div style={{ flexShrink: 0 }}><SaudeHero reg={saude.reg} streak={saude.streak} onNavigate={onNavigate} /></div>
-    <Slot h={300}><PesoCard peso={peso} delta={pesoDelta} onNavigate={onNavigate} /></Slot>
-    <Slot h={ativHoje.length && passosSerie.length ? 270 : ativHoje.length ? 168 : passosSerie.length ? 212 : 150}><AtividadeCard ativHoje={ativHoje} passosSerie={passosSerie} onNavigate={onNavigate} /></Slot>
-    <Slot h={172}><SaudeHoje saude={saude} onNavigate={onNavigate} /></Slot>
-    {agua.length ? <Slot h={208}><AguaSerieCard agua={agua} onNavigate={onNavigate} /></Slot> : null}
-  </>
+  const colSaude = <div style={{ height: '100%', minHeight: 0 }}><ControlePeso saude={saude} /></div>
 
   if (narrow) {
     return (
       <div style={{ height: '100%', overflowY: 'auto', padding: '14px 14px 28px' }}>
         <div style={{ height: 118, marginBottom: 14 }}><Saudacao /></div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>{colProd}</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>{colSaude}</div>
+        <div style={{ height: 620, marginBottom: 14 }}>{colSaude}</div>
         <div style={{ height: 420 }}><ColAcessoRapido onNavigate={onNavigate} /></div>
       </div>
     )
@@ -1662,7 +1655,7 @@ export function PaginaInicial({ onNavigate }: { onNavigate: (id: string) => void
       {/* Coluna 2 · Produtividade */}
       <div style={{ gridColumn: 2, gridRow: 2, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colProd}</div>
       {/* Coluna 3 · Saúde — sobe ao topo, ocupa as 2 linhas */}
-      <div style={{ gridColumn: 3, gridRow: '1 / span 2', minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12, paddingRight: 2 }}>{colSaude}</div>
+      <div style={{ gridColumn: 3, gridRow: '1 / span 2', minHeight: 0 }}>{colSaude}</div>
     </div>
   )
 }
