@@ -420,6 +420,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
   const autosaveRef = useRef(autosave)
   const timerRef = useRef<any>(null)
   const obsRef = useRef<MutationObserver | null>(null)
+  const lastPosRef = useRef({ x: 0, y: 0 })
 
   const setAutosaveP = (v: boolean) => { setAutosave(v); autosaveRef.current = v; localStorage.setItem('nexus-biblio-autosave', v ? 'on' : 'off') }
   const getDoc = (): Document | null => iframeRef.current?.contentDocument ?? null
@@ -464,6 +465,107 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
     const obs = new MutationObserver(() => { if (readyRef.current && !suppressRef.current) marcarSujo() })
     obs.observe(d.documentElement, { subtree: true, childList: true, characterData: true, attributes: true })
     obsRef.current = obs
+    instalarFerramentas(d)
+  }
+
+  // ── Ferramentas injetadas no documento (sublinhado por Shift + post-its) ──
+  function instalarFerramentas(d: Document) {
+    d.addEventListener('mousemove', (e: MouseEvent) => { lastPosRef.current = { x: e.clientX, y: e.clientY } })
+    d.addEventListener('keydown', (e: KeyboardEvent) => {
+      // Shift (sozinho) sublinha a palavra sob o cursor — desativado enquanto edita/digita
+      if (e.key === 'Shift' && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && !editandoRef.current) {
+        const alvo = e.target as HTMLElement | null
+        if (alvo && (alvo.isContentEditable || alvo.closest('[data-nx-postit]'))) return
+        sublinharNoPonto(d, lastPosRef.current.x, lastPosRef.current.y)
+      }
+    })
+    // reativa post-its já salvos
+    if (d.querySelector('[data-nx-postit]')) garantirBodyRelativo(d)
+    d.querySelectorAll<HTMLElement>('[data-nx-postit]').forEach(el => attachPostit(el, d))
+  }
+
+  function rangeDoPonto(d: Document, x: number, y: number): Range | null {
+    const anyD = d as any
+    if (anyD.caretRangeFromPoint) return anyD.caretRangeFromPoint(x, y)
+    if (anyD.caretPositionFromPoint) { const p = anyD.caretPositionFromPoint(x, y); if (p) { const r = d.createRange(); r.setStart(p.offsetNode, p.offset); r.collapse(true); return r } }
+    return null
+  }
+
+  function sublinharNoPonto(d: Document, x: number, y: number) {
+    const cr = rangeDoPonto(d, x, y); if (!cr) return
+    const node = cr.startContainer
+    if (node.nodeType !== 3) return
+    const el = (node.parentElement)
+    if (el && el.closest('[data-nx-postit]')) return
+    // toggle: se já está dentro de um sublinhado, remove
+    const ja = el?.closest('[data-nx-u]') as HTMLElement | null
+    if (ja) {
+      const pai = ja.parentNode; if (!pai) return
+      while (ja.firstChild) pai.insertBefore(ja.firstChild, ja)
+      pai.removeChild(ja); (pai as HTMLElement).normalize?.()
+      marcarSujo(); return
+    }
+    const text = node.textContent || ''
+    const isW = (c: string) => /[\p{L}\p{N}]/u.test(c)
+    let i = cr.startOffset
+    if (i >= text.length) i = text.length - 1
+    if (i < 0 || !text[i] || !isW(text[i])) { if (i > 0 && isW(text[i - 1])) i -= 1; else return }
+    let s = i, e = i
+    while (s > 0 && isW(text[s - 1])) s--
+    while (e < text.length && isW(text[e])) e++
+    if (e <= s) return
+    try {
+      const span = d.createElement('span')
+      span.setAttribute('data-nx-u', '1')
+      span.style.textDecoration = 'underline'
+      span.style.textDecorationColor = '#111'
+      span.style.textDecorationThickness = '2px'
+      span.style.textUnderlineOffset = '2px'
+      const r = d.createRange(); r.setStart(node, s); r.setEnd(node, e)
+      r.surroundContents(span)
+      marcarSujo()
+    } catch { /* noop */ }
+  }
+
+  function garantirBodyRelativo(d: Document) {
+    if (d.body && d.defaultView && d.defaultView.getComputedStyle(d.body).position === 'static') d.body.style.position = 'relative'
+  }
+
+  function attachPostit(el: HTMLElement, d: Document) {
+    const bar = el.querySelector<HTMLElement>('[data-nx-bar]')
+    const del = el.querySelector<HTMLElement>('[data-nx-del]')
+    del?.addEventListener('click', ev => { ev.stopPropagation(); el.remove(); marcarSujo() })
+    bar?.addEventListener('mousedown', ev => {
+      ev.preventDefault()
+      const sx = ev.clientX, sy = ev.clientY
+      const x0 = parseFloat(el.style.left) || 0, y0 = parseFloat(el.style.top) || 0
+      const mv = (e2: MouseEvent) => { el.style.left = (x0 + (e2.clientX - sx)) + 'px'; el.style.top = (y0 + (e2.clientY - sy)) + 'px' }
+      const up = () => { d.removeEventListener('mousemove', mv); d.removeEventListener('mouseup', up); marcarSujo() }
+      d.addEventListener('mousemove', mv); d.addEventListener('mouseup', up)
+    })
+  }
+
+  const POSTIT_CORES = ['#fff9c4', '#ffd8b0', '#c9f7d4', '#cfe4ff', '#f7c9e3']
+  function criarPostit() {
+    const d = getDoc(); if (!d?.body) return
+    garantirBodyRelativo(d)
+    const cor = POSTIT_CORES[d.querySelectorAll('[data-nx-postit]').length % POSTIT_CORES.length]
+    const sX = d.documentElement.scrollLeft || d.body.scrollLeft || 0
+    const sY = d.documentElement.scrollTop || d.body.scrollTop || 0
+    const vw = iframeRef.current?.clientWidth || 640
+    const el = d.createElement('div')
+    el.setAttribute('data-nx-postit', '1')
+    el.style.cssText = `position:absolute;width:200px;min-height:130px;background:${cor};color:#4a3f00;border-radius:9px;box-shadow:0 10px 24px rgba(0,0,0,0.28);font-family:inherit;font-size:14px;line-height:1.45;z-index:2147483000;transform:rotate(-1.4deg);overflow:hidden;`
+    el.style.left = (sX + Math.max(20, (vw - 200) / 2)) + 'px'
+    el.style.top = (sY + 56) + 'px'
+    el.innerHTML =
+      '<div data-nx-bar style="height:24px;background:rgba(0,0,0,0.08);cursor:move;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:12px;color:rgba(0,0,0,0.45)">📌<span data-nx-del style="cursor:pointer;font-size:17px;line-height:1;font-weight:700">×</span></div>' +
+      '<div data-nx-body contenteditable="true" style="outline:none;padding:10px 12px 14px;min-height:86px">Escreva sua nota…</div>'
+    d.body.appendChild(el)
+    attachPostit(el, d)
+    const body = el.querySelector<HTMLElement>('[data-nx-body]')
+    if (body) { const r = d.createRange(); r.selectNodeContents(body); const sel = d.defaultView?.getSelection(); sel?.removeAllRanges(); sel?.addRange(r); body.focus() }
+    marcarSujo()
   }
 
   function toggleEdit() {
@@ -529,6 +631,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
         </label>
         <button onClick={() => salvar()} disabled={estado === 'saving'} style={{ ...btnTop, ...(dirty ? { background: 'linear-gradient(135deg,#647d72,#4c635a)', color: '#f3f7f4', borderColor: 'transparent' } : {}) }}>💾 Salvar</button>
         <button onClick={toggleEdit} style={{ ...btnTop, ...(editando ? { background: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' } : {}) }}>{editando ? '🖊 Anotando' : '✏️ Anotar'}</button>
+        <button onClick={criarPostit} style={btnTop} title="Adicionar nota post-it flutuante">🗒 Post-it</button>
         <button onClick={onEdit} style={btnTop} title="Editar o código-fonte HTML">⟨/⟩ Código</button>
         <button onClick={abrirNovaAba} style={btnTop}>⇱ Nova aba</button>
         <button onClick={() => fechar()} style={{ ...btnTop, background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' }}>✕ Fechar</button>
