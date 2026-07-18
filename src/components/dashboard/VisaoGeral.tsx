@@ -994,6 +994,7 @@ function Saudacao() {
 
 // — Atalhos —  (cor base neutra; ao passar o mouse, cada um ganha sua cor vibrante)
 const ATALHOS = [
+  { id: 'biblioteca', l: 'Biblioteca', i: '📚', c: '#4c635a' },
   { id: 'editais', l: 'Editais', i: '⚖', c: '#2563EB' }, { id: 'concursos', l: 'Concursos', i: '🎯', c: '#7C3AED' },
   { id: 'prontuario', l: 'Prontuário', i: '📋', c: '#4F46E5' }, { id: 'pdfreader', l: 'PDF Reader', i: '📖', c: '#0EA5E9' },
   { id: 'ponto', l: 'Ponto', i: '⊙', c: '#EA580C' },
@@ -1406,33 +1407,60 @@ function ColAcessoRapido({ onNavigate }: any) {
         <span style={{ color: '#5b5bd6' }}>▦</span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.62rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.09em' }}>Acesso Rápido</span>
       </div>
-      {/* Destaque · PDF Reader (linha inteira, acesso principal) */}
+      {/* Destaque · Biblioteca (linha inteira, acesso principal) */}
       <div style={{ flexShrink: 0, padding: '14px 14px 0' }}>
         <style>{`
-          .pdf-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:14px;width:100%;padding:16px 18px;border-radius:16px;border:1px solid rgba(124,148,135,0.5);cursor:pointer;text-align:left;color:#f3f7f4;background:linear-gradient(120deg,#647d72,#4c635a 52%,#39473f);box-shadow:0 8px 22px rgba(57,71,63,0.42);transition:transform .24s cubic-bezier(.34,1.42,.5,1),box-shadow .24s,filter .24s,border-color .24s}
-          .pdf-hero:hover{transform:translateY(-5px) scale(1.025);box-shadow:0 24px 54px rgba(57,71,63,0.7);filter:saturate(1.22) brightness(1.12);border-color:rgba(180,200,188,0.85)}
-          .pdf-hero:active{transform:translateY(-1px) scale(.998)}
-          .pdf-hero .pdf-glow{position:absolute;inset:0;pointer-events:none;opacity:.4;transition:opacity .3s;background:radial-gradient(circle at 88% -25%,rgba(255,255,255,0.35),transparent 58%)}
-          .pdf-hero:hover .pdf-glow{opacity:1}
-          .pdf-hero::before{content:'';position:absolute;top:-25%;left:-75%;width:60%;height:150%;background:linear-gradient(105deg,transparent,rgba(255,255,255,0.55),transparent);transform:skewX(-18deg);transition:left .62s cubic-bezier(.4,0,.2,1);pointer-events:none}
-          .pdf-hero:hover::before{left:140%}
-          .pdf-hero::after{content:'';position:absolute;inset:0;border-radius:16px;pointer-events:none;opacity:0;transition:opacity .3s;box-shadow:inset 0 0 0 1px rgba(255,255,255,0.35),inset 0 14px 30px rgba(255,255,255,0.12)}
-          .pdf-hero:hover::after{opacity:1}
-          .pdf-hero .pdf-ic{font-size:1.95rem;display:inline-flex;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.32));transition:transform .26s}
-          .pdf-hero:hover .pdf-ic{transform:scale(1.14) rotate(-5deg)}
+          .biblio-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:15px;width:100%;padding:18px 20px;border-radius:16px;border:1px solid rgba(160,140,100,0.45);cursor:pointer;text-align:left;color:#f6efe2;background:linear-gradient(118deg,#4f6257 0%,#3a4a40 46%,#4a3c2c 100%);box-shadow:0 8px 24px rgba(46,40,30,0.5);transition:transform .24s cubic-bezier(.34,1.42,.5,1),box-shadow .24s,filter .24s,border-color .24s}
+          .biblio-hero:hover{transform:translateY(-5px) scale(1.022);box-shadow:0 26px 56px rgba(46,40,30,0.72);filter:saturate(1.15) brightness(1.09);border-color:rgba(217,183,117,0.8)}
+          .biblio-hero:active{transform:translateY(-1px) scale(.998)}
+          /* luz quente de lâmpada de leitura */
+          .biblio-hero .bh-glow{position:absolute;inset:0;pointer-events:none;opacity:.55;transition:opacity .3s;background:radial-gradient(circle at 90% -10%,rgba(255,224,168,0.4),transparent 55%)}
+          .biblio-hero:hover .bh-glow{opacity:1}
+          /* estante decorativa à direita */
+          .biblio-hero .bh-shelf{position:absolute;right:0;top:0;bottom:0;width:52%;pointer-events:none;opacity:.5;-webkit-mask-image:linear-gradient(90deg,transparent,#000 55%);mask-image:linear-gradient(90deg,transparent,#000 55%);transition:opacity .3s}
+          .biblio-hero:hover .bh-shelf{opacity:.72}
+          .biblio-hero::before{content:'';position:absolute;top:-25%;left:-75%;width:55%;height:150%;background:linear-gradient(105deg,transparent,rgba(255,240,214,0.5),transparent);transform:skewX(-18deg);transition:left .62s cubic-bezier(.4,0,.2,1);pointer-events:none;z-index:2}
+          .biblio-hero:hover::before{left:150%}
+          .biblio-hero::after{content:'';position:absolute;inset:0;border-radius:16px;pointer-events:none;opacity:0;transition:opacity .3s;box-shadow:inset 0 0 0 1px rgba(255,240,214,0.32),inset 0 14px 30px rgba(255,240,214,0.1)}
+          .biblio-hero:hover::after{opacity:1}
+          .biblio-hero .bh-ic{position:relative;z-index:3;font-size:2rem;display:inline-flex;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.38));transition:transform .26s}
+          .biblio-hero:hover .bh-ic{transform:scale(1.12) rotate(-4deg)}
+          .biblio-hero .bh-txt{position:relative;z-index:3;flex:1;min-width:0}
+          .biblio-hero .bh-tag{position:relative;z-index:3;flex-shrink:0;font-size:0.56rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#e9d4a6;border:1px solid rgba(217,183,117,0.4);background:rgba(217,183,117,0.12);padding:4px 9px;border-radius:20px}
         `}</style>
-        <button onClick={() => onNavigate('pdfreader')} className="pdf-hero">
-          <span aria-hidden className="pdf-glow" />
-          <span className="pdf-ic">📖</span>
-          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.08rem', lineHeight: 1.1, letterSpacing: '0.01em' }}>PDF Reader</div>
-            <div style={{ fontSize: '0.68rem', opacity: 0.92, marginTop: 3 }}>Leitura, anotações, dicionário e mapas — seu hub principal</div>
+        <button onClick={() => onNavigate('biblioteca')} className="biblio-hero">
+          <span aria-hidden className="bh-glow" />
+          {/* Estante de livros (SVG decorativo) */}
+          <svg className="bh-shelf" viewBox="0 0 260 120" preserveAspectRatio="xMaxYMax slice" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+            <g>
+              {[
+                { x: 8, w: 15, h: 78, c: '#b98a4e' }, { x: 25, w: 11, h: 92, c: '#8fae9c' }, { x: 38, w: 17, h: 70, c: '#c76b52' },
+                { x: 57, w: 12, h: 88, c: '#d9b775' }, { x: 71, w: 14, h: 82, c: '#6e8a7b' }, { x: 87, w: 10, h: 95, c: '#a8552f' },
+                { x: 99, w: 16, h: 74, c: '#c9a86a' }, { x: 117, w: 12, h: 90, c: '#7f9c88' }, { x: 131, w: 15, h: 80, c: '#b5673f' },
+                { x: 148, w: 11, h: 96, c: '#dcc487' }, { x: 161, w: 17, h: 72, c: '#6b8674' }, { x: 180, w: 13, h: 86, c: '#bd8c50' },
+                { x: 195, w: 12, h: 92, c: '#c76b52' }, { x: 209, w: 16, h: 76, c: '#93b0a0' }, { x: 227, w: 11, h: 90, c: '#d9b775' },
+                { x: 240, w: 14, h: 82, c: '#8a5a34' },
+              ].map((b, i) => (
+                <g key={i}>
+                  <rect x={b.x} y={120 - b.h} width={b.w} height={b.h} rx={1.5} fill={b.c} />
+                  <rect x={b.x} y={120 - b.h} width={b.w} height={4} fill="rgba(255,255,255,0.25)" />
+                  <rect x={b.x + b.w * 0.3} y={120 - b.h + 12} width={b.w * 0.4} height={b.h - 26} rx={1} fill="rgba(0,0,0,0.12)" />
+                </g>
+              ))}
+              <rect x="0" y="116" width="260" height="4" fill="rgba(0,0,0,0.35)" />
+            </g>
+          </svg>
+          <span className="bh-ic">📚</span>
+          <div className="bh-txt">
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 900, fontSize: '1.12rem', lineHeight: 1.1, letterSpacing: '0.01em' }}>Biblioteca</div>
+            <div style={{ fontSize: '0.68rem', opacity: 0.92, marginTop: 3 }}>Seu acervo de materiais em HTML — estudo, resumos e mapas</div>
           </div>
+          <span className="bh-tag">Acervo</span>
         </button>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px,1fr))', gap: 10, alignContent: 'start' }}>
-        {ATALHOS.filter(a => a.id !== 'pdfreader').map(a => (
+        {ATALHOS.filter(a => a.id !== 'biblioteca').map(a => (
           <button key={a.id} onClick={() => onNavigate(a.id)}
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '16px 8px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all .18s cubic-bezier(.4,0,.2,1)', minHeight: 86 }}
             onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = `linear-gradient(135deg, ${a.c}22, ${a.c}0a)`; el.style.borderColor = a.c; el.style.color = a.c; el.style.transform = 'translateY(-3px) scale(1.03)'; el.style.boxShadow = `0 12px 26px ${a.c}40`; const ic = el.querySelector('.ar-ic') as HTMLElement; if (ic) ic.style.transform = 'scale(1.18)' }}

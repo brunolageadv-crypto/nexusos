@@ -23,6 +23,7 @@ import LinksInteresse from './components/links/LinksInteresse'
 import Agenda from './components/Agenda/Agenda'
 import Logs from './components/logs/Logs'
 import Geosfera from './components/geosfera/Geosfera'
+import Biblioteca from './components/biblioteca/Biblioteca'
 
 
 type Theme = 'dark' | 'light'
@@ -93,6 +94,7 @@ function IconEditais({ size = 18 }: { size?: number }) {
 const NAV = [
   { section: 'PRINCIPAL', items: [
     { id: 'dashboard',  label: 'Dashboard',         icon: '◈',  svgIcon: null },
+    { id: 'biblioteca', label: 'Biblioteca',        icon: '📚', svgIcon: null },
   ]},
   { section: 'JURÍDICO', items: [
     { id: 'editais',    label: 'Editais',            icon: null, svgIcon: 'editais' },
@@ -260,6 +262,7 @@ function AppShell() {
 
         <div className="page-content">
           {active === 'dashboard'  && <NexusDashboard onNavigate={setActive} dashView={dashView} />}
+          {active === 'biblioteca' && <Biblioteca />}
           {active === 'editais'    && <GestorEditais />}
           {active === 'concursos'  && <Concursos />}
           {active === 'financeiro' && <Financeiro />}
