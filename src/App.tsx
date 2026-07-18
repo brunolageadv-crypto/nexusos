@@ -53,24 +53,20 @@ function NexusLogo() {
     <div style={{ padding: '8px 0 6px', userSelect: 'none' }}>
       <svg width="200" height="46" viewBox="0 0 200 46" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <linearGradient id="ng1" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#c8cdd8"/><stop offset="100%" stopColor="#7a8394"/>
-          </linearGradient>
           <linearGradient id="ng2" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="#9aa3b2"/><stop offset="100%" stopColor="#5c6578"/>
           </linearGradient>
         </defs>
-        <polygon points="21,3 37,12 37,30 21,39 5,30 5,12" fill="none" stroke="#3a4050" strokeWidth="1.2"/>
-        <polygon points="21,9 32,15 32,27 21,33 10,27 10,15" fill="none" stroke="url(#ng1)" strokeWidth="1.5"/>
-        <line x1="21" y1="3"  x2="21" y2="9"  stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="37" y1="12" x2="32" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="37" y1="30" x2="32" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="21" y1="39" x2="21" y2="33" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="5"  y1="30" x2="10" y2="27" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <line x1="5"  y1="12" x2="10" y2="15" stroke="#c8cdd8" strokeWidth="0.8" opacity="0.6"/>
-        <circle cx="21" cy="21" r="2.5" fill="url(#ng1)"/>
-        <text x="48" y="27" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="19" letterSpacing="3" fill="#dde1eb">NEXUS</text>
-        <line x1="48" y1="33" x2="196" y2="33" stroke="url(#ng2)" strokeWidth="0.7"/>
+        <g transform="translate(1,7) scale(0.34)">
+          <rect x="8" y="8" width="84" height="68" rx="24" fill="#17808F"/>
+          <path d="M28 72L28 92L48 72Z" fill="#17808F"/>
+          <g transform="translate(0,-6)">
+            <path d="M50 41C44 36 32 35 22 38L22 64C32 61 44 62 50 67C56 62 68 61 78 64L78 38C68 35 56 36 50 41Z" fill="#F5F1E8"/>
+            <path d="M50 41L50 67" stroke="#0A424B" strokeWidth="4" fill="none" strokeLinecap="round"/>
+          </g>
+        </g>
+        <text x="44" y="27" fontFamily="Syne,sans-serif" fontWeight="800" fontSize="19" letterSpacing="3" fill="#dde1eb">NEXUS</text>
+        <line x1="44" y1="33" x2="196" y2="33" stroke="url(#ng2)" strokeWidth="0.7"/>
       </svg>
     </div>
   )

@@ -1,4 +1,4 @@
-﻿const CACHE = 'nexusos-v8'
+﻿const CACHE = 'nexusos-v9'
 const OFFLINE_URL = '/nexusos/'
 
 self.addEventListener('install', e => {
@@ -8,11 +8,13 @@ self.addEventListener('install', e => {
         '/nexusos/',
         '/nexusos/index.html',
         '/nexusos/manifest.json',
-        '/nexusos/favicon-v2.svg',
-        '/nexusos/favicon-v2.png',
-        '/nexusos/apple-touch-icon-v2.png',
-        '/nexusos/icon-192-v2.png',
-        '/nexusos/icon-512-v2.png',
+        '/nexusos/favicon-v3.svg',
+        '/nexusos/favicon-v3.png',
+        '/nexusos/favicon-32-v3.png',
+        '/nexusos/favicon-16-v3.png',
+        '/nexusos/apple-touch-icon-v3.png',
+        '/nexusos/icon-192-v3.png',
+        '/nexusos/icon-512-v3.png',
       ]).catch(() => cache.add('/nexusos/'))
     }).then(() => self.skipWaiting())
   )

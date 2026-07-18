@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="NEXUS">
+  <rect width="512" height="512" rx="112" fill="#0E1A24"/>
+  <g transform="translate(76,86) scale(3.6)">
+    <rect x="8" y="8" width="84" height="68" rx="24" fill="#0E5C68"/>
+    <path d="M28 72L28 92L48 72Z" fill="#0E5C68"/>
+    <g transform="translate(0,-6)">
+      <path d="M50 41C44 36 32 35 22 38L22 64C32 61 44 62 50 67C56 62 68 61 78 64L78 38C68 35 56 36 50 41Z" fill="#F5F1E8"/>
+      <path d="M50 41L50 67" stroke="#0A424B" stroke-width="4" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>
