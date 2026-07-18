@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp,
 } from 'firebase/firestore'
@@ -404,34 +404,173 @@ function ModalMaterial({ item, folders, folderAtual, onClose, onSave }: {
 // ══════════════════════════════════════════════════════════════════════════════
 //  VISUALIZADOR — abre o HTML em tela cheia
 // ══════════════════════════════════════════════════════════════════════════════
-function Visualizador({ item, onClose, onEdit }: { item: BiblioItem; onClose: () => void; onEdit: () => void }) {
+function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
+  item: BiblioItem; onClose: () => void; onEdit: () => void; onSaveHtml: (html: string) => Promise<void>
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const [editando, setEditando] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [estado, setEstado] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [autosave, setAutosave] = useState(() => localStorage.getItem('nexus-biblio-autosave') !== 'off')
+  const [msg, setMsg] = useState('')
+  const readyRef = useRef(false)
+  const dirtyRef = useRef(false)
+  const suppressRef = useRef(false)
+  const editandoRef = useRef(false)
+  const autosaveRef = useRef(autosave)
+  const timerRef = useRef<any>(null)
+  const obsRef = useRef<MutationObserver | null>(null)
+
+  const setAutosaveP = (v: boolean) => { setAutosave(v); autosaveRef.current = v; localStorage.setItem('nexus-biblio-autosave', v ? 'on' : 'off') }
+  const getDoc = (): Document | null => iframeRef.current?.contentDocument ?? null
+
+  function capturarHtml(): string | null {
+    const d = getDoc(); if (!d) return null
+    const body = d.body
+    const ce = body?.getAttribute('contenteditable')
+    if (body) body.removeAttribute('contenteditable')
+    const html = '<!DOCTYPE html>\n' + d.documentElement.outerHTML
+    if (editandoRef.current && body && ce != null) body.setAttribute('contenteditable', ce)
+    return html
+  }
+
+  const salvar = useCallback(async () => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null }
+    const html = capturarHtml(); if (html == null) return
+    if (bytesDe(html) > LIMITE) { setEstado('error'); setMsg(`Muito grande (${fmtTamanho(bytesDe(html))}). Limite ~1MB.`); return }
+    setEstado('saving'); setMsg('')
+    try {
+      await onSaveHtml(html)
+      dirtyRef.current = false; setDirty(false); setEstado('saved')
+      setTimeout(() => setEstado(s => (s === 'saved' ? 'idle' : s)), 1800)
+    } catch (e: any) {
+      setEstado('error'); setMsg(e?.code === 'permission-denied' ? 'Permissão negada pelo Firestore.' : 'Erro ao salvar.')
+    }
+  }, [onSaveHtml])
+
+  const marcarSujo = useCallback(() => {
+    dirtyRef.current = true; setDirty(true)
+    if (autosaveRef.current) {
+      if (timerRef.current) clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => { salvar() }, 2500)
+    }
+  }, [salvar])
+
+  function onLoadIframe() {
+    const d = getDoc(); if (!d) return
+    readyRef.current = false
+    setTimeout(() => { readyRef.current = true }, 900) // ignora renderização inicial dos scripts
+    obsRef.current?.disconnect()
+    const obs = new MutationObserver(() => { if (readyRef.current && !suppressRef.current) marcarSujo() })
+    obs.observe(d.documentElement, { subtree: true, childList: true, characterData: true, attributes: true })
+    obsRef.current = obs
+  }
+
+  function toggleEdit() {
+    const d = getDoc(); if (!d?.body) return
+    const novo = !editando
+    suppressRef.current = true
+    if (novo) { d.body.setAttribute('contenteditable', 'true'); d.body.style.outline = 'none' }
+    else { d.body.removeAttribute('contenteditable') }
+    editandoRef.current = novo; setEditando(novo)
+    setTimeout(() => { suppressRef.current = false; if (novo) iframeRef.current?.contentWindow?.focus() }, 60)
+  }
+
+  function cmd(action: string, value?: string) {
+    const d = getDoc(); if (!d) return
+    iframeRef.current?.contentWindow?.focus()
+    try { d.execCommand('styleWithCSS', false, 'true') } catch { /* noop */ }
+    try { d.execCommand(action, false, value) } catch { /* noop */ }
+    marcarSujo()
+  }
+  const inserirNota = () => cmd('insertHTML',
+    '<div style="border-left:4px solid #f59e0b;background:#fff7e6;color:#7c4a03;padding:10px 14px;margin:12px 0;border-radius:8px;font-family:inherit;font-size:0.95em"><strong>📝 Nota:</strong>&nbsp;escreva aqui…</div>&nbsp;')
+
   const abrirNovaAba = () => {
-    const blob = new Blob([item.html], { type: 'text/html' })
+    const html = editando ? (capturarHtml() ?? item.html) : item.html
+    const blob = new Blob([html], { type: 'text/html' })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
     setTimeout(() => URL.revokeObjectURL(url), 60000)
   }
+
+  const fechar = useCallback(async () => {
+    if (dirtyRef.current) { await salvar() }
+    onClose()
+  }, [salvar, onClose])
+
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') fechar()
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); salvar() }
+    }
     window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [onClose])
+    return () => {
+      window.removeEventListener('keydown', h)
+      obsRef.current?.disconnect()
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [fechar, salvar])
+
+  const statusTxt = estado === 'saving' ? 'Salvando…' : estado === 'saved' ? 'Salvo ✓' : estado === 'error' ? `⚠ ${msg}` : (dirty ? 'Alterações não salvas' : '')
+  const statusCor = estado === 'error' ? '#f87171' : estado === 'saved' ? '#34d399' : dirty ? '#fbbf24' : 'var(--text-muted)'
+
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--bg-0,#0c0d14)', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--card-bg,#14151f)' }}>
-        <span style={{ fontSize: '1.1rem' }}>📖</span>
+      {/* Cabeçalho */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: '1px solid var(--border)', background: 'var(--card-bg,#14151f)' }}>
+        <span style={{ fontSize: '1.05rem' }}>📖</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.92rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.titulo}</div>
-          <div style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>{item.categoria}{item.disciplina ? ` · ${item.disciplina}` : ''}</div>
+          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.titulo}</div>
+          <div style={{ fontSize: '0.62rem', color: statusCor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusTxt || `${item.categoria}${item.disciplina ? ` · ${item.disciplina}` : ''}`}</div>
         </div>
-        <button onClick={onEdit} style={btnTop}>✏️ Editar</button>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.68rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Salvar automaticamente enquanto edita">
+          <input type="checkbox" checked={autosave} onChange={e => setAutosaveP(e.target.checked)} /> Autosave
+        </label>
+        <button onClick={() => salvar()} disabled={estado === 'saving'} style={{ ...btnTop, ...(dirty ? { background: 'linear-gradient(135deg,#647d72,#4c635a)', color: '#f3f7f4', borderColor: 'transparent' } : {}) }}>💾 Salvar</button>
+        <button onClick={toggleEdit} style={{ ...btnTop, ...(editando ? { background: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' } : {}) }}>{editando ? '🖊 Anotando' : '✏️ Anotar'}</button>
+        <button onClick={onEdit} style={btnTop} title="Editar o código-fonte HTML">⟨/⟩ Código</button>
         <button onClick={abrirNovaAba} style={btnTop}>⇱ Nova aba</button>
-        <button onClick={onClose} style={{ ...btnTop, background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' }}>✕ Fechar</button>
+        <button onClick={() => fechar()} style={{ ...btnTop, background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' }}>✕ Fechar</button>
       </div>
-      <iframe title={item.titulo} sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals" srcDoc={item.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+
+      {/* Barra de ferramentas de anotação */}
+      {editando && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', flexWrap: 'wrap' }}>
+          <TBtn onClick={() => cmd('hiliteColor', '#fde68a')} title="Marca-texto amarelo"><span style={{ background: '#fde68a', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
+          <TBtn onClick={() => cmd('hiliteColor', '#bbf7d0')} title="Marca-texto verde"><span style={{ background: '#bbf7d0', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
+          <TBtn onClick={() => cmd('hiliteColor', '#bfdbfe')} title="Marca-texto azul"><span style={{ background: '#bfdbfe', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
+          <Sep />
+          <TBtn onClick={() => cmd('bold')} title="Negrito"><b>B</b></TBtn>
+          <TBtn onClick={() => cmd('italic')} title="Itálico"><i>I</i></TBtn>
+          <TBtn onClick={() => cmd('underline')} title="Sublinhado"><u>U</u></TBtn>
+          <TBtn onClick={() => cmd('foreColor', '#dc2626')} title="Texto vermelho"><span style={{ color: '#dc2626' }}>A</span></TBtn>
+          <Sep />
+          <TBtn onClick={inserirNota} title="Inserir nota">📝 Nota</TBtn>
+          <TBtn onClick={() => cmd('formatBlock', 'H2')} title="Título">H₂</TBtn>
+          <TBtn onClick={() => cmd('insertUnorderedList')} title="Lista">• Lista</TBtn>
+          <Sep />
+          <TBtn onClick={() => cmd('undo')} title="Desfazer">↶</TBtn>
+          <TBtn onClick={() => cmd('redo')} title="Refazer">↷</TBtn>
+          <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: 'var(--text-muted)' }}>Selecione um trecho e aplique · Ctrl+S salva</span>
+        </div>
+      )}
+
+      <iframe ref={iframeRef} title={item.titulo} onLoad={onLoadIframe}
+        sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
+        srcDoc={item.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
     </div>
   )
 }
+function TBtn({ onClick, title, children }: { onClick: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <button title={title} onMouseDown={e => e.preventDefault()} onClick={onClick}
+      style={{ minWidth: 30, height: 30, padding: '0 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+      {children}
+    </button>
+  )
+}
+function Sep() { return <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 3px' }} /> }
 
 // ─── Card de pasta ───────────────────────────────────────────────────────────
 function CardPasta({ folder, count, onOpen, onEdit, onDelete }: any) {
@@ -755,7 +894,9 @@ export default function Biblioteca() {
       {modalPasta.open && <ModalPasta pasta={modalPasta.pasta} parentId={pastaAtual}
         onClose={() => setModalPasta({ open: false, pasta: null })}
         onSave={async (nome, cor) => { if (modalPasta.pasta) await updateFolder(modalPasta.pasta.id, { nome, cor }); else await addFolder(nome, cor, pastaAtual) }} />}
-      {visor && <Visualizador item={visor} onClose={() => setVisor(null)} onEdit={() => { const it = visor; setVisor(null); setModal({ open: true, item: it }) }} />}
+      {visor && <Visualizador item={visor} onClose={() => setVisor(null)}
+        onEdit={() => { const it = visor; setVisor(null); setModal({ open: true, item: it }) }}
+        onSaveHtml={async (html) => { await updateMaterial(visor.id, { html, tamanho: bytesDe(html) }) }} />}
     </div>
   )
 }
