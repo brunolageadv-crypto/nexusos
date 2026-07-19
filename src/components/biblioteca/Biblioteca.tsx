@@ -27,6 +27,9 @@ interface BiblioItem {
   nomeArquivo: string
   tamanho: number
   folderId: string | null
+  ordem?: number
+  capaUrl?: string
+  capaPos?: number
   createdAt?: any
   updatedAt?: any
 }
@@ -37,12 +40,13 @@ interface BiblioFolder {
   nome: string
   cor: string
   parentId: string | null
+  ordem?: number
   createdAt?: any
   updatedAt?: any
 }
 
 type ViewMode = 'quadro' | 'lista' | 'ladoalado'
-type SortMode = 'recente' | 'titulo' | 'categoria'
+type SortMode = 'manual' | 'recente' | 'titulo' | 'categoria'
 
 // ─── Constantes ──────────────────────────────────────────────────────────────
 const CATEGORIAS = [
@@ -108,11 +112,19 @@ function useBiblioteca() {
   const materials = useMemo(() => docs.filter(d => d.kind === 'material') as BiblioItem[], [docs])
   const folders = useMemo(() => docs.filter(d => d.kind === 'folder') as BiblioFolder[], [docs])
 
+  const proxOrdem = (arr: { ordem?: number }[]) => arr.reduce((m, x) => Math.max(m, x.ordem ?? 0), 0) + 1
+
   async function addMaterial(data: Omit<BiblioItem, 'id' | 'userId' | 'kind' | 'createdAt' | 'updatedAt'>) {
     if (!user) throw new Error('Sem usuário autenticado.')
     await addDoc(collection(db, 'biblioteca'), {
-      ...data, kind: 'material', userId: user.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      ...data, ordem: data.ordem ?? proxOrdem(materials),
+      kind: 'material', userId: user.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
     })
+  }
+
+  // Grava só a ordem (sem tocar em updatedAt, para não bagunçar "Recentes")
+  async function setOrdem(id: string, ordem: number) {
+    await updateDoc(doc(db, 'biblioteca', id), { ordem })
   }
   async function updateMaterial(id: string, data: Partial<BiblioItem>) {
     await updateDoc(doc(db, 'biblioteca', id), { ...data, updatedAt: serverTimestamp() })
@@ -123,7 +135,7 @@ function useBiblioteca() {
   async function addFolder(nome: string, cor: string, parentId: string | null) {
     if (!user) throw new Error('Sem usuário autenticado.')
     await addDoc(collection(db, 'biblioteca'), {
-      kind: 'folder', nome, cor, parentId: parentId ?? null,
+      kind: 'folder', nome, cor, parentId: parentId ?? null, ordem: proxOrdem(folders),
       userId: user.uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
     })
   }
@@ -140,7 +152,7 @@ function useBiblioteca() {
     ])
     await deleteDoc(doc(db, 'biblioteca', f.id))
   }
-  return { materials, folders, loading, addMaterial, updateMaterial, removeMaterial, addFolder, updateFolder, removeFolder }
+  return { materials, folders, loading, addMaterial, updateMaterial, removeMaterial, addFolder, updateFolder, removeFolder, setOrdem }
 }
 
 // ─── Estilos base ────────────────────────────────────────────────────────────
@@ -270,6 +282,8 @@ function ModalMaterial({ item, folders, folderAtual, onClose, onSave }: {
   const [nomeArquivo, setNomeArquivo] = useState(item?.nomeArquivo ?? '')
   const [fonte, setFonte] = useState<'upload' | 'colado'>(item?.fonte ?? 'upload')
   const [folderId, setFolderId] = useState<string | null>(item ? (item.folderId ?? null) : folderAtual)
+  const [capaUrl, setCapaUrl] = useState(item?.capaUrl ?? '')
+  const [capaPos, setCapaPos] = useState<number>(item?.capaPos ?? 50)
   const [erro, setErro] = useState('')
   const [saving, setSaving] = useState(false)
   const [previewOn, setPreviewOn] = useState(false)
@@ -277,6 +291,12 @@ function ModalMaterial({ item, folders, folderAtual, onClose, onSave }: {
 
   const tamanho = bytesDe(html)
   const excedeu = tamanho > LIMITE
+  // Item fictício que alimenta a prévia ao vivo (mesmos componentes da biblioteca)
+  const itemPrevia = useMemo(() => ({
+    id: 'previa', titulo: titulo.trim() || 'Título do material', descricao, categoria,
+    disciplina: disciplina.trim(), tags: tagsStr.split(',').map(s => s.trim()).filter(Boolean),
+    favorito, capaUrl: capaUrl.trim(), capaPos, tamanho, updatedAt: null,
+  }), [titulo, descricao, categoria, disciplina, tagsStr, favorito, capaUrl, capaPos, tamanho])
   // opções de pasta ordenadas por caminho legível
   const opcoesPasta = useMemo(() => folders.map(f => ({
     id: f.id, label: caminhoPasta(folders, f.id).map(p => p.nome).join(' / '),
@@ -301,6 +321,7 @@ function ModalMaterial({ item, folders, folderAtual, onClose, onSave }: {
             titulo: extrairTitulo(txt) || f.name.replace(/\.html?$/i, ''),
             descricao, categoria, disciplina, tags, favorito,
             html: txt, fonte: 'upload', nomeArquivo: f.name, tamanho: bytesDe(txt), folderId,
+            capaUrl: capaUrl.trim(), capaPos,
           })
         }
         onClose()
@@ -319,6 +340,7 @@ function ModalMaterial({ item, folders, folderAtual, onClose, onSave }: {
       await onSave({
         titulo: titulo.trim(), descricao: descricao.trim(), categoria, disciplina: disciplina.trim(),
         tags, favorito, html, fonte, nomeArquivo, tamanho, folderId,
+        capaUrl: capaUrl.trim(), capaPos,
       }, item?.id)
       onClose()
     } catch (e: any) { setErro(msgErro(e)) }
@@ -384,8 +406,34 @@ function ModalMaterial({ item, folders, folderAtual, onClose, onSave }: {
             <div><Lbl>Disciplina</Lbl><input style={IS} value={disciplina} onChange={e => setDisciplina(e.target.value)} placeholder="Ex: Constitucional" list="disc-list" /></div>
             <div><Lbl>Tags (vírgula)</Lbl><input style={IS} value={tagsStr} onChange={e => setTagsStr(e.target.value)} placeholder="Ex: STF, súmula, revisão" /></div>
             <div style={{ gridColumn: 'span 2' }}><Lbl>Descrição</Lbl><input style={IS} value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Breve descrição do conteúdo" /></div>
+            <div style={{ gridColumn: 'span 2' }}>
+              <Lbl>Capa (link da imagem)</Lbl>
+              <input style={IS} value={capaUrl} onChange={e => setCapaUrl(e.target.value)} placeholder="https://… (cole o link de uma imagem)" />
+            </div>
+            {capaUrl.trim() && (
+              <div style={{ gridColumn: 'span 2' }}>
+                <Lbl>Enquadramento vertical · {capaPos}%</Lbl>
+                <input type="range" min={0} max={100} value={capaPos} onChange={e => setCapaPos(Number(e.target.value))} style={{ width: '100%', accentColor: '#4c635a' }} />
+                <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)', marginTop: 2 }}>Arraste para escolher que parte da imagem aparece na capa.</div>
+              </div>
+            )}
             <div style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', gap: 10 }}>
               <button onClick={() => setFavorito(f => !f)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 9, border: `1px solid ${favorito ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.12)'}`, background: favorito ? 'rgba(251,191,36,0.1)' : 'transparent', color: favorito ? '#fbbf24' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700 }}>{favorito ? '★' : '☆'} Favorito</button>
+            </div>
+          </div>
+
+          {/* Prévia ao vivo — exatamente como aparecerá na biblioteca */}
+          <div>
+            <Lbl>Prévia</Lbl>
+            <div style={{ display: 'grid', gridTemplateColumns: '218px 1fr', gap: 14, alignItems: 'start', padding: 14, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>▦ Quadro</div>
+                <CardMaterial preview item={itemPrevia} onOpen={() => {}} onEdit={() => {}} onDelete={() => {}} onToggleFav={() => {}} />
+              </div>
+              <div>
+                <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>☰ Lista</div>
+                <LinhaMaterial preview item={itemPrevia} onOpen={() => {}} onEdit={() => {}} onDelete={() => {}} onToggleFav={() => {}} />
+              </div>
             </div>
           </div>
 
@@ -676,10 +724,10 @@ function TBtn({ onClick, title, children }: { onClick: () => void; title: string
 function Sep() { return <span style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 3px' }} /> }
 
 // ─── Card de pasta ───────────────────────────────────────────────────────────
-function CardPasta({ folder, count, onOpen, onEdit, onDelete }: any) {
+function CardPasta({ folder, count, onOpen, onEdit, onDelete, drag, dragging, over }: any) {
   return (
-    <div onClick={onOpen}
-      style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 15px', borderRadius: 14, border: '1px solid var(--border)', background: `linear-gradient(135deg, ${folder.cor}14, transparent)`, cursor: 'pointer', transition: 'transform .18s, box-shadow .18s, border-color .18s' }}
+    <div onClick={onOpen} {...(drag || {})}
+      style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, padding: '16px 15px', borderRadius: 14, border: `1px solid ${over ? folder.cor : 'var(--border)'}`, background: `linear-gradient(135deg, ${folder.cor}14, transparent)`, cursor: 'pointer', opacity: dragging ? 0.4 : 1, boxShadow: over ? `0 0 0 2px ${folder.cor}55` : 'none', transition: 'transform .18s, box-shadow .18s, border-color .18s' }}
       onMouseEnter={e => { const el = e.currentTarget; el.style.transform = 'translateY(-4px)'; el.style.boxShadow = `0 16px 34px ${folder.cor}30`; el.style.borderColor = `${folder.cor}70` }}
       onMouseLeave={e => { const el = e.currentTarget; el.style.transform = 'none'; el.style.boxShadow = 'none'; el.style.borderColor = 'var(--border)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -696,10 +744,10 @@ function CardPasta({ folder, count, onOpen, onEdit, onDelete }: any) {
     </div>
   )
 }
-function LinhaPasta({ folder, count, onOpen, onEdit, onDelete }: any) {
+function LinhaPasta({ folder, count, onOpen, onEdit, onDelete, drag, dragging, over }: any) {
   return (
-    <div onClick={onOpen}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 11, border: '1px solid var(--border)', background: `linear-gradient(90deg, ${folder.cor}10, var(--card-bg) 40%)`, cursor: 'pointer' }}
+    <div onClick={onOpen} {...(drag || {})}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 11, border: `1px solid ${over ? folder.cor : 'var(--border)'}`, background: `linear-gradient(90deg, ${folder.cor}10, var(--card-bg) 40%)`, cursor: 'pointer', opacity: dragging ? 0.4 : 1, boxShadow: over ? `0 0 0 2px ${folder.cor}55` : 'none' }}
       onMouseEnter={e => { e.currentTarget.style.borderColor = `${folder.cor}60` }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)' }}>
       <span style={{ fontSize: '1.4rem' }}>📁</span>
@@ -716,17 +764,23 @@ function LinhaPasta({ folder, count, onOpen, onEdit, onDelete }: any) {
 }
 
 // ─── Card / Linha de material ────────────────────────────────────────────────
-function CardMaterial({ item, onOpen, onEdit, onDelete, onToggleFav }: any) {
+function CardMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, drag, dragging, over, preview }: any) {
   const c = corDe(item.categoria)
   return (
-    <div onClick={onOpen}
-      style={{ position: 'relative', display: 'flex', flexDirection: 'column', borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', transition: 'transform .18s, box-shadow .18s, border-color .18s' }}
-      onMouseEnter={e => { const el = e.currentTarget; el.style.transform = 'translateY(-4px)'; el.style.boxShadow = `0 16px 34px ${c}30`; el.style.borderColor = `${c}70` }}
-      onMouseLeave={e => { const el = e.currentTarget; el.style.transform = 'none'; el.style.boxShadow = 'none'; el.style.borderColor = 'var(--border)' }}>
+    <div onClick={preview ? undefined : onOpen} {...(drag || {})}
+      style={{ position: 'relative', display: 'flex', flexDirection: 'column', borderRadius: 14, overflow: 'hidden', border: `1px solid ${over ? c : 'var(--border)'}`, background: 'var(--card-bg)', cursor: preview ? 'default' : 'pointer', opacity: dragging ? 0.4 : 1, boxShadow: over ? `0 0 0 2px ${c}55` : 'none', transition: 'transform .18s, box-shadow .18s, border-color .18s' }}
+      onMouseEnter={e => { if (preview) return; const el = e.currentTarget; el.style.transform = 'translateY(-4px)'; el.style.boxShadow = `0 16px 34px ${c}30`; el.style.borderColor = `${c}70` }}
+      onMouseLeave={e => { if (preview) return; const el = e.currentTarget; el.style.transform = 'none'; el.style.boxShadow = 'none'; el.style.borderColor = 'var(--border)' }}>
       <div style={{ height: 96, position: 'relative', background: `linear-gradient(135deg, ${c}, ${c}bb 60%, ${c}88)`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 0, opacity: 0.25, background: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.14) 0 3px, transparent 3px 13px)' }} />
         <span style={{ fontSize: '2.1rem', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}>{iconeCat(item.categoria)}</span>
-        <button onClick={e => { e.stopPropagation(); onToggleFav() }} title="Favorito" style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(0,0,0,0.28)', color: item.favorito ? '#fbbf24' : '#fff', cursor: 'pointer', fontSize: '0.95rem' }}>{item.favorito ? '★' : '☆'}</button>
+        {item.capaUrl && (
+          <img src={item.capaUrl} alt="" draggable={false}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            onLoad={e => { (e.currentTarget as HTMLImageElement).style.display = 'block' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: `50% ${item.capaPos ?? 50}%` }} />
+        )}
+        <button onClick={e => { e.stopPropagation(); onToggleFav?.() }} title="Favorito" style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, borderRadius: 8, border: 'none', background: 'rgba(0,0,0,0.28)', color: item.favorito ? '#fbbf24' : '#fff', cursor: 'pointer', fontSize: '0.95rem' }}>{item.favorito ? '★' : '☆'}</button>
       </div>
       <div style={{ padding: '11px 13px 13px', display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
         <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.86rem', color: 'var(--text-primary)', lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.titulo}</div>
@@ -751,14 +805,21 @@ function CardMaterial({ item, onOpen, onEdit, onDelete, onToggleFav }: any) {
     </div>
   )
 }
-function LinhaMaterial({ item, onOpen, onEdit, onDelete, onToggleFav }: any) {
+function LinhaMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, drag, dragging, over, preview }: any) {
   const c = corDe(item.categoria)
   return (
-    <div onClick={onOpen}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 11, border: '1px solid var(--border)', background: 'var(--card-bg)', cursor: 'pointer', transition: 'background .15s, border-color .15s' }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = `${c}60`; e.currentTarget.style.background = 'var(--surface)' }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--card-bg)' }}>
-      <div style={{ width: 38, height: 46, borderRadius: 6, background: `linear-gradient(135deg, ${c}, ${c}99)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0, boxShadow: 'inset -3px 0 6px rgba(0,0,0,0.2)' }}>{iconeCat(item.categoria)}</div>
+    <div onClick={preview ? undefined : onOpen} {...(drag || {})}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 11, border: `1px solid ${over ? c : 'var(--border)'}`, background: 'var(--card-bg)', cursor: preview ? 'default' : 'pointer', opacity: dragging ? 0.4 : 1, boxShadow: over ? `0 0 0 2px ${c}55` : 'none', transition: 'background .15s, border-color .15s' }}
+      onMouseEnter={e => { if (preview) return; e.currentTarget.style.borderColor = `${c}60`; e.currentTarget.style.background = 'var(--surface)' }}
+      onMouseLeave={e => { if (preview) return; e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--card-bg)' }}>
+      <div style={{ position: 'relative', width: 38, height: 46, borderRadius: 6, background: `linear-gradient(135deg, ${c}, ${c}99)`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', flexShrink: 0, overflow: 'hidden', boxShadow: 'inset -3px 0 6px rgba(0,0,0,0.2)' }}>
+        {iconeCat(item.categoria)}
+        {item.capaUrl && (
+          <img src={item.capaUrl} alt="" draggable={false}
+            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: `50% ${item.capaPos ?? 50}%` }} />
+        )}
+      </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.titulo}</span>
@@ -784,13 +845,15 @@ function LinhaMaterial({ item, onOpen, onEdit, onDelete, onToggleFav }: any) {
 //  COMPONENTE PRINCIPAL
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Biblioteca() {
-  const { materials, folders, loading, addMaterial, updateMaterial, removeMaterial, addFolder, updateFolder, removeFolder } = useBiblioteca()
+  const { materials, folders, loading, addMaterial, updateMaterial, removeMaterial, addFolder, updateFolder, removeFolder, setOrdem } = useBiblioteca()
   const [modal, setModal] = useState<{ open: boolean; item: BiblioItem | null }>({ open: false, item: null })
   const [modalPasta, setModalPasta] = useState<{ open: boolean; pasta: BiblioFolder | null }>({ open: false, pasta: null })
   const [visor, setVisor] = useState<BiblioItem | null>(null)
   const [pastaAtual, setPastaAtual] = useState<string | null>(null)
   const [view, setView] = useState<ViewMode>(() => (localStorage.getItem('nexus-biblio-view') as ViewMode) ?? 'quadro')
-  const [sort, setSort] = useState<SortMode>('recente')
+  const [sort, setSort] = useState<SortMode>(() => (localStorage.getItem('nexus-biblio-sort') as SortMode) ?? 'manual')
+  const [drag, setDrag] = useState<{ id: string; tipo: 'folder' | 'material' } | null>(null)
+  const [over, setOver] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [fCat, setFCat] = useState('')
   const [fDisc, setFDisc] = useState('')
@@ -799,6 +862,30 @@ export default function Biblioteca() {
   const [sel, setSel] = useState<string | null>(null)
 
   const setViewP = (v: ViewMode) => { setView(v); localStorage.setItem('nexus-biblio-view', v) }
+  const setSortP = (v: SortMode) => { setSort(v); localStorage.setItem('nexus-biblio-sort', v) }
+
+  // ── Arrastar para reordenar (só no modo manual e sem filtros) ──
+  const podeArrastar = sort === 'manual' && !busca && !fCat && !fDisc && !fTag && !soFav
+  async function reordenar(lista: { id: string }[], fromId: string, toId: string) {
+    if (fromId === toId) return
+    const ids = lista.map(i => i.id)
+    const de = ids.indexOf(fromId), para = ids.indexOf(toId)
+    if (de < 0 || para < 0) return
+    ids.splice(para, 0, ids.splice(de, 1)[0])
+    await Promise.all(ids.map((id, i) => setOrdem(id, i)))
+  }
+  const dragProps = (id: string, tipo: 'folder' | 'material', lista: { id: string }[]) => podeArrastar ? {
+    draggable: true,
+    onDragStart: (e: React.DragEvent) => { e.stopPropagation(); setDrag({ id, tipo }) },
+    onDragEnd: () => { setDrag(null); setOver(null) },
+    onDragOver: (e: React.DragEvent) => { if (drag?.tipo === tipo && drag.id !== id) { e.preventDefault(); setOver(id) } },
+    onDragLeave: () => setOver(o => (o === id ? null : o)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault(); e.stopPropagation()
+      if (drag?.tipo === tipo) reordenar(lista, drag.id, id)
+      setDrag(null); setOver(null)
+    },
+  } : undefined
 
   const disciplinas = useMemo(() => [...new Set(materials.map(i => i.disciplina).filter(Boolean))].sort(), [materials])
   const todasTags = useMemo(() => [...new Set(materials.flatMap(i => i.tags ?? []))].sort(), [materials])
@@ -823,15 +910,17 @@ export default function Biblioteca() {
     return true
   }
   const ordenar = (arr: BiblioItem[]) => [...arr].sort((a, b) => {
-    if (sort === 'titulo') return a.titulo.localeCompare(b.titulo)
-    if (sort === 'categoria') return a.categoria.localeCompare(b.categoria) || a.titulo.localeCompare(b.titulo)
     const ta = a.updatedAt?.toDate ? a.updatedAt.toDate().getTime() : 0
     const tb = b.updatedAt?.toDate ? b.updatedAt.toDate().getTime() : 0
+    if (sort === 'manual') return (a.ordem ?? 1e12) - (b.ordem ?? 1e12) || (tb - ta)
+    if (sort === 'titulo') return a.titulo.localeCompare(b.titulo)
+    if (sort === 'categoria') return a.categoria.localeCompare(b.categoria) || a.titulo.localeCompare(b.titulo)
     return tb - ta
   })
 
   // Com filtro/busca: resultados GLOBAIS (todas as pastas). Sem filtro: conteúdo da pasta atual.
-  const subpastas = useMemo(() => folders.filter(f => f.parentId === pastaAtual).sort((a, b) => a.nome.localeCompare(b.nome)), [folders, pastaAtual])
+  const subpastas = useMemo(() => folders.filter(f => f.parentId === pastaAtual)
+    .sort((a, b) => (a.ordem ?? 1e12) - (b.ordem ?? 1e12) || a.nome.localeCompare(b.nome)), [folders, pastaAtual])
   const materiaisMostrados = useMemo(() => {
     const base = temFiltro ? materials.filter(passaFiltro) : materials.filter(m => (m.folderId ?? null) === pastaAtual)
     return ordenar(base)
@@ -910,8 +999,8 @@ export default function Biblioteca() {
         <button onClick={() => setSoFav(f => !f)} style={{ padding: '9px 13px', borderRadius: 9, border: `1px solid ${soFav ? 'rgba(251,191,36,0.5)' : 'var(--border)'}`, background: soFav ? 'rgba(251,191,36,0.1)' : 'var(--surface)', color: soFav ? '#fbbf24' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{soFav ? '★' : '☆'} Favoritos</button>
         {temFiltro && <button onClick={() => { setBusca(''); setFCat(''); setFDisc(''); setFTag(''); setSoFav(false) }} style={{ padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.74rem' }}>✕ Limpar</button>}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select value={sort} onChange={e => setSort(e.target.value as SortMode)} style={{ ...IS, width: 'auto', fontSize: '0.76rem', padding: '8px 10px' }}>
-            <option value="recente">↓ Recentes</option><option value="titulo">A–Z Título</option><option value="categoria">Categoria</option>
+          <select value={sort} onChange={e => setSortP(e.target.value as SortMode)} style={{ ...IS, width: 'auto', fontSize: '0.76rem', padding: '8px 10px' }}>
+            <option value="manual">↕ Minha ordem</option><option value="recente">↓ Recentes</option><option value="titulo">A–Z Título</option><option value="categoria">Categoria</option>
           </select>
           <div style={{ display: 'flex', gap: 3, padding: 3, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)' }}>
             {([['quadro', '▦', 'Quadro'], ['lista', '☰', 'Lista'], ['ladoalado', '◫', 'Lado a lado']] as const).map(([id, ic, t]) => (
@@ -922,6 +1011,10 @@ export default function Biblioteca() {
       </div>
 
       {temFiltro && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 12 }}>🔎 Mostrando resultados de toda a biblioteca ({materiaisMostrados.length}). Limpe os filtros para navegar pelas pastas.</div>}
+      {!temFiltro && podeArrastar && (subpastas.length + materiaisMostrados.length) > 1 && view !== 'ladoalado' &&
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 12 }}>↕ Arraste as pastas e os materiais para montar a sua ordem.</div>}
+      {!temFiltro && sort !== 'manual' && view !== 'ladoalado' &&
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: 12 }}>Para reordenar arrastando, selecione “↕ Minha ordem”.</div>}
 
       {/* Conteúdo */}
       {loading ? (
@@ -977,19 +1070,23 @@ export default function Biblioteca() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           {!temFiltro && subpastas.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 14 }}>
-              {subpastas.map(f => <CardPasta key={f.id} folder={f} count={contarPasta(f.id)} {...acoesPasta(f)} />)}
+              {subpastas.map(f => <CardPasta key={f.id} folder={f} count={contarPasta(f.id)} {...acoesPasta(f)}
+                drag={dragProps(f.id, 'folder', subpastas)} dragging={drag?.id === f.id} over={over === f.id} />)}
             </div>
           )}
           {materiaisMostrados.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 14 }}>
-              {materiaisMostrados.map(item => <CardMaterial key={item.id} item={item} {...acoes(item)} />)}
+              {materiaisMostrados.map(item => <CardMaterial key={item.id} item={item} {...acoes(item)}
+                drag={dragProps(item.id, 'material', materiaisMostrados)} dragging={drag?.id === item.id} over={over === item.id} />)}
             </div>
           )}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {!temFiltro && subpastas.map(f => <LinhaPasta key={f.id} folder={f} count={contarPasta(f.id)} {...acoesPasta(f)} />)}
-          {materiaisMostrados.map(item => <LinhaMaterial key={item.id} item={item} {...acoes(item)} />)}
+          {!temFiltro && subpastas.map(f => <LinhaPasta key={f.id} folder={f} count={contarPasta(f.id)} {...acoesPasta(f)}
+            drag={dragProps(f.id, 'folder', subpastas)} dragging={drag?.id === f.id} over={over === f.id} />)}
+          {materiaisMostrados.map(item => <LinhaMaterial key={item.id} item={item} {...acoes(item)}
+            drag={dragProps(item.id, 'material', materiaisMostrados)} dragging={drag?.id === item.id} over={over === item.id} />)}
         </div>
       )}
 
