@@ -528,7 +528,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
     // Estilo do realce de leitura (marcado como ferramenta → nunca é salvo)
     const st = d.createElement('style')
     st.setAttribute('data-nx-tool', '1')
-    st.textContent = '::highlight(nx-foco){background-color:rgba(23,128,143,0.16);-webkit-text-stroke:0.45px currentColor;text-shadow:0 0 0.01px currentColor}'
+    st.textContent = '::highlight(nx-foco){-webkit-text-stroke:0.72px currentColor;text-shadow:0 0 0.3px currentColor}'
     d.head?.appendChild(st)
 
     d.addEventListener('mousemove', (e: MouseEvent) => {
