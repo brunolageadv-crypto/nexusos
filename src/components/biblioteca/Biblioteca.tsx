@@ -460,6 +460,9 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
   const [dirty, setDirty] = useState(false)
   const [estado, setEstado] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const [autosave, setAutosave] = useState(() => localStorage.getItem('nexus-biblio-autosave') !== 'off')
+  const [foco, setFoco] = useState(() => localStorage.getItem('nexus-biblio-foco') !== 'off')
+  const focoRef = useRef(foco)
+  const ultimaPalavraRef = useRef('')
   const [msg, setMsg] = useState('')
   const readyRef = useRef(false)
   const dirtyRef = useRef(false)
@@ -471,16 +474,20 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
   const lastPosRef = useRef({ x: 0, y: 0 })
 
   const setAutosaveP = (v: boolean) => { setAutosave(v); autosaveRef.current = v; localStorage.setItem('nexus-biblio-autosave', v ? 'on' : 'off') }
+  const setFocoP = (v: boolean) => {
+    setFoco(v); focoRef.current = v; localStorage.setItem('nexus-biblio-foco', v ? 'on' : 'off')
+    if (!v) limparFoco()
+  }
   const getDoc = (): Document | null => iframeRef.current?.contentDocument ?? null
 
+  // Serializa a partir de um CLONE: nada do documento vivo é alterado e os
+  // elementos injetados pelas ferramentas ([data-nx-tool]) nunca são salvos.
   function capturarHtml(): string | null {
     const d = getDoc(); if (!d) return null
-    const body = d.body
-    const ce = body?.getAttribute('contenteditable')
-    if (body) body.removeAttribute('contenteditable')
-    const html = '<!DOCTYPE html>\n' + d.documentElement.outerHTML
-    if (editandoRef.current && body && ce != null) body.setAttribute('contenteditable', ce)
-    return html
+    const clone = d.documentElement.cloneNode(true) as HTMLElement
+    clone.querySelectorAll('[data-nx-tool]').forEach(n => n.remove())
+    clone.querySelector('body')?.removeAttribute('contenteditable')
+    return '<!DOCTYPE html>\n' + clone.outerHTML
   }
 
   const salvar = useCallback(async () => {
@@ -518,7 +525,17 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
 
   // ── Ferramentas injetadas no documento (sublinhado por Shift + post-its) ──
   function instalarFerramentas(d: Document) {
-    d.addEventListener('mousemove', (e: MouseEvent) => { lastPosRef.current = { x: e.clientX, y: e.clientY } })
+    // Estilo do realce de leitura (marcado como ferramenta → nunca é salvo)
+    const st = d.createElement('style')
+    st.setAttribute('data-nx-tool', '1')
+    st.textContent = '::highlight(nx-foco){background-color:rgba(23,128,143,0.16);-webkit-text-stroke:0.45px currentColor;text-shadow:0 0 0.01px currentColor}'
+    d.head?.appendChild(st)
+
+    d.addEventListener('mousemove', (e: MouseEvent) => {
+      lastPosRef.current = { x: e.clientX, y: e.clientY }
+      atualizarFoco(d, e.clientX, e.clientY)
+    })
+    d.addEventListener('mouseleave', () => limparFoco())
     d.addEventListener('keydown', (e: KeyboardEvent) => {
       // Shift (sozinho) sublinha a palavra sob o cursor — desativado enquanto edita/digita
       if (e.key === 'Shift' && !e.repeat && !e.ctrlKey && !e.altKey && !e.metaKey && !editandoRef.current) {
@@ -539,12 +556,48 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
     return null
   }
 
-  function sublinharNoPonto(d: Document, x: number, y: number) {
-    const cr = rangeDoPonto(d, x, y); if (!cr) return
+  // Range da palavra sob o ponto (usado pelo Shift e pelo realce de leitura)
+  function palavraRange(d: Document, x: number, y: number): Range | null {
+    const cr = rangeDoPonto(d, x, y); if (!cr) return null
     const node = cr.startContainer
-    if (node.nodeType !== 3) return
-    const el = (node.parentElement)
-    if (el && el.closest('[data-nx-postit]')) return
+    if (node.nodeType !== 3) return null
+    if (node.parentElement?.closest('[data-nx-postit]')) return null
+    const text = node.textContent || ''
+    const isW = (c: string) => /[\p{L}\p{N}]/u.test(c)
+    let i = cr.startOffset
+    if (i >= text.length) i = text.length - 1
+    if (i < 0 || !text[i] || !isW(text[i])) { if (i > 0 && isW(text[i - 1])) i -= 1; else return null }
+    let s = i, e = i
+    while (s > 0 && isW(text[s - 1])) s--
+    while (e < text.length && isW(text[e])) e++
+    if (e <= s) return null
+    const r = d.createRange(); r.setStart(node, s); r.setEnd(node, e)
+    return r
+  }
+
+  function limparFoco() {
+    const w = getDoc()?.defaultView as any
+    try { w?.CSS?.highlights?.delete('nx-foco') } catch { /* noop */ }
+    ultimaPalavraRef.current = ''
+  }
+
+  // Realce da palavra sob o cursor — pinta via Custom Highlight API,
+  // sem alterar o DOM (logo: não suja o arquivo) e sem reflow do texto.
+  function atualizarFoco(d: Document, x: number, y: number) {
+    const w = d.defaultView as any
+    if (!w?.CSS?.highlights || !w.Highlight) return
+    if (!focoRef.current || editandoRef.current) { limparFoco(); return }
+    const r = palavraRange(d, x, y)
+    if (!r) { limparFoco(); return }
+    const chave = `${r.startOffset}-${r.endOffset}-${(r.startContainer.textContent || '').slice(0, 24)}`
+    if (chave === ultimaPalavraRef.current) return
+    ultimaPalavraRef.current = chave
+    try { w.CSS.highlights.set('nx-foco', new w.Highlight(r)) } catch { /* noop */ }
+  }
+
+  function sublinharNoPonto(d: Document, x: number, y: number) {
+    const r = palavraRange(d, x, y); if (!r) return
+    const el = r.startContainer.parentElement
     // toggle: se já está dentro de um sublinhado, remove
     const ja = el?.closest('[data-nx-u]') as HTMLElement | null
     if (ja) {
@@ -553,15 +606,6 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
       pai.removeChild(ja); (pai as HTMLElement).normalize?.()
       marcarSujo(); return
     }
-    const text = node.textContent || ''
-    const isW = (c: string) => /[\p{L}\p{N}]/u.test(c)
-    let i = cr.startOffset
-    if (i >= text.length) i = text.length - 1
-    if (i < 0 || !text[i] || !isW(text[i])) { if (i > 0 && isW(text[i - 1])) i -= 1; else return }
-    let s = i, e = i
-    while (s > 0 && isW(text[s - 1])) s--
-    while (e < text.length && isW(text[e])) e++
-    if (e <= s) return
     try {
       const span = d.createElement('span')
       span.setAttribute('data-nx-u', '1')
@@ -569,8 +613,8 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
       span.style.textDecorationColor = '#111'
       span.style.textDecorationThickness = '2px'
       span.style.textUnderlineOffset = '2px'
-      const r = d.createRange(); r.setStart(node, s); r.setEnd(node, e)
       r.surroundContents(span)
+      limparFoco()
       marcarSujo()
     } catch { /* noop */ }
   }
@@ -677,6 +721,8 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
         <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.68rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Salvar automaticamente enquanto edita">
           <input type="checkbox" checked={autosave} onChange={e => setAutosaveP(e.target.checked)} /> Autosave
         </label>
+        <button onClick={() => setFocoP(!foco)} title="Realçar a palavra sob o cursor durante a leitura"
+          style={{ ...btnTop, ...(foco ? { background: 'rgba(23,128,143,0.16)', borderColor: 'rgba(23,128,143,0.45)', color: '#5fc6d6' } : {}) }}>🔦 Foco</button>
         <button onClick={() => salvar()} disabled={estado === 'saving'} style={{ ...btnTop, ...(dirty ? { background: 'linear-gradient(135deg,#647d72,#4c635a)', color: '#f3f7f4', borderColor: 'transparent' } : {}) }}>💾 Salvar</button>
         <button onClick={toggleEdit} style={{ ...btnTop, ...(editando ? { background: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' } : {}) }}>{editando ? '🖊 Anotando' : '✏️ Anotar'}</button>
         <button onClick={criarPostit} style={btnTop} title="Adicionar nota post-it flutuante">🗒 Post-it</button>
