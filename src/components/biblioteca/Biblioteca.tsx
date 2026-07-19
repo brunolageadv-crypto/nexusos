@@ -525,10 +525,11 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
 
   // ── Ferramentas injetadas no documento (sublinhado por Shift + post-its) ──
   function instalarFerramentas(d: Document) {
-    // Estilo do realce de leitura (marcado como ferramenta → nunca é salvo)
+    // Estilo do realce de leitura (marcado como ferramenta → nunca é salvo).
+    // A tinta se inverte conforme o fundo do material, para nunca sumir.
     const st = d.createElement('style')
     st.setAttribute('data-nx-tool', '1')
-    st.textContent = '::highlight(nx-foco){-webkit-text-stroke:0.72px currentColor;text-shadow:0 0 0.3px currentColor}'
+    st.textContent = cssFoco(fundoEscuro(d))
     d.head?.appendChild(st)
 
     d.addEventListener('mousemove', (e: MouseEvent) => {
@@ -547,6 +548,28 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
     // reativa post-its já salvos
     if (d.querySelector('[data-nx-postit]')) garantirBodyRelativo(d)
     d.querySelectorAll<HTMLElement>('[data-nx-postit]').forEach(el => attachPostit(el, d))
+  }
+
+  // Detecta se o material tem fundo escuro (para escolher tinta preta ou branca)
+  function fundoEscuro(d: Document): boolean {
+    const ler = (el: Element | null) => el ? d.defaultView?.getComputedStyle(el).backgroundColor ?? '' : ''
+    for (const cor of [ler(d.body), ler(d.documentElement)]) {
+      const m = cor.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/)
+      if (!m) continue
+      const alpha = m[4] === undefined ? 1 : Number(m[4])
+      if (alpha < 0.1) continue // transparente: tenta o próximo
+      const lum = 0.299 * Number(m[1]) + 0.587 * Number(m[2]) + 0.114 * Number(m[3])
+      return lum < 128
+    }
+    return false // sem fundo definido → assume papel claro
+  }
+
+  function cssFoco(escuro: boolean): string {
+    const tinta = escuro ? '#ffffff' : '#050506'
+    const brilho = escuro ? 'rgba(125,235,255,0.85)' : 'rgba(0,170,200,0.60)'
+    const halo = escuro ? 'rgba(125,235,255,0.45)' : 'rgba(0,150,180,0.32)'
+    return `::highlight(nx-foco){color:${tinta};-webkit-text-stroke:1px ${tinta};` +
+      `text-shadow:0 0 1px ${tinta},0 0 5px ${brilho},0 0 12px ${brilho},0 0 22px ${halo}}`
   }
 
   function rangeDoPonto(d: Document, x: number, y: number): Range | null {
