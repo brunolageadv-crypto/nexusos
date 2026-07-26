@@ -472,12 +472,18 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
   const timerRef = useRef<any>(null)
   const obsRef = useRef<MutationObserver | null>(null)
   const lastPosRef = useRef({ x: 0, y: 0 })
+  const ctrlLimpoRef = useRef(false) // true enquanto o Ctrl está "sozinho" (sem outra tecla junto)
+  const [pretoBranco, setPretoBranco] = useState(() => localStorage.getItem('nexus-biblio-pb') === 'on')
+  const [tituloOculto, setTituloOculto] = useState(() => localStorage.getItem('nexus-biblio-titulo-oculto') === 'on')
+  const [progresso, setProgresso] = useState(0) // % de leitura (0 no início, 100 no final) — nunca salvo no arquivo
 
   const setAutosaveP = (v: boolean) => { setAutosave(v); autosaveRef.current = v; localStorage.setItem('nexus-biblio-autosave', v ? 'on' : 'off') }
   const setFocoP = (v: boolean) => {
     setFoco(v); focoRef.current = v; localStorage.setItem('nexus-biblio-foco', v ? 'on' : 'off')
     if (!v) limparFoco()
   }
+  const setPretoBrancoP = (v: boolean) => { setPretoBranco(v); localStorage.setItem('nexus-biblio-pb', v ? 'on' : 'off') }
+  const setTituloOcultoP = (v: boolean) => { setTituloOculto(v); localStorage.setItem('nexus-biblio-titulo-oculto', v ? 'on' : 'off') }
   const getDoc = (): Document | null => iframeRef.current?.contentDocument ?? null
 
   // Serializa a partir de um CLONE: nada do documento vivo é alterado e os
@@ -523,7 +529,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
     instalarFerramentas(d)
   }
 
-  // ── Ferramentas injetadas no documento (sublinhado por Shift + post-its) ──
+  // ── Ferramentas injetadas no documento (destaque por Ctrl + sublinhado por Shift + post-its) ──
   function instalarFerramentas(d: Document) {
     // Estilo do realce de leitura (marcado como ferramenta → nunca é salvo).
     // A tinta se inverte conforme o fundo do material, para nunca sumir.
@@ -531,6 +537,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
     st.setAttribute('data-nx-tool', '1')
     st.textContent = cssFoco(fundoEscuro(d))
     d.head?.appendChild(st)
+    garantirEstiloMarcacoes(d)
 
     d.addEventListener('mousemove', (e: MouseEvent) => {
       lastPosRef.current = { x: e.clientX, y: e.clientY }
@@ -544,7 +551,32 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
         if (alvo && (alvo.isContentEditable || alvo.closest('[data-nx-postit]'))) return
         sublinharNoPonto(d, lastPosRef.current.x, lastPosRef.current.y)
       }
+      // Ctrl (toque isolado — apertar e soltar sem apertar outra tecla junto) destaca
+      // a palavra sob o cursor. Se vier acompanhado de outra tecla (Ctrl+C, Ctrl+S,
+      // Ctrl+A…) o toque é cancelado e o atalho original do navegador funciona normal.
+      if (e.key === 'Control' && !e.repeat) ctrlLimpoRef.current = true
+      else if (e.key !== 'Control' && (e.ctrlKey || e.metaKey)) ctrlLimpoRef.current = false
     })
+    d.addEventListener('keyup', (e: KeyboardEvent) => {
+      if (e.key !== 'Control') return
+      const limpo = ctrlLimpoRef.current
+      ctrlLimpoRef.current = false
+      if (!limpo || editandoRef.current) return
+      const alvo = e.target as HTMLElement | null
+      if (alvo && (alvo.isContentEditable || alvo.closest('[data-nx-postit]'))) return
+      destacarNoPonto(d, lastPosRef.current.x, lastPosRef.current.y)
+    })
+    // Barra de progresso de leitura (0–100%): recalcula a cada rolagem/redimensionamento.
+    // É só leitura de tela — nunca é escrita no arquivo salvo.
+    const atualizarProgresso = () => {
+      const de = d.scrollingElement || d.documentElement
+      const max = (de?.scrollHeight ?? 0) - (de?.clientHeight ?? 0)
+      const pct = max > 0 ? Math.min(100, Math.max(0, Math.round(((de?.scrollTop ?? 0) / max) * 100))) : 0
+      setProgresso(pct)
+    }
+    d.addEventListener('scroll', atualizarProgresso, true)
+    d.defaultView?.addEventListener('resize', atualizarProgresso)
+    atualizarProgresso()
     // reativa post-its já salvos
     if (d.querySelector('[data-nx-postit]')) garantirBodyRelativo(d)
     d.querySelectorAll<HTMLElement>('[data-nx-postit]').forEach(el => attachPostit(el, d))
@@ -618,28 +650,46 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
     try { w.CSS.highlights.set('nx-foco', new w.Highlight(r)) } catch { /* noop */ }
   }
 
-  function sublinharNoPonto(d: Document, x: number, y: number) {
-    const r = palavraRange(d, x, y); if (!r) return
-    const el = r.startContainer.parentElement
-    // toggle: se já está dentro de um sublinhado, remove
-    const ja = el?.closest('[data-nx-u]') as HTMLElement | null
-    if (ja) {
-      const pai = ja.parentNode; if (!pai) return
-      while (ja.firstChild) pai.insertBefore(ja.firstChild, ja)
-      pai.removeChild(ja); (pai as HTMLElement).normalize?.()
-      marcarSujo(); return
-    }
+  // Estilo compartilhado das marcações — inserido UMA vez por documento (idempotente).
+  // O custo de espaço fica só nesse bloco; cada marca individual depois custa apenas
+  // um atributo curto (ex. data-nx-u="1"), em vez de repetir estilo inline em cada uma.
+  function garantirEstiloMarcacoes(d: Document) {
+    if (d.querySelector('style[data-nx-marcas]')) return
+    const st = d.createElement('style')
+    st.setAttribute('data-nx-marcas', '1')
+    st.textContent = '[data-nx-u]{text-decoration:underline;text-decoration-color:#0ea5b0;text-decoration-thickness:2px;text-underline-offset:2px}[data-nx-h]{background:rgba(255,214,0,.55);border-radius:.15em}'
+    d.head?.appendChild(st)
+  }
+  function desfazerMarca(span: HTMLElement) {
+    const pai = span.parentNode; if (!pai) return
+    while (span.firstChild) pai.insertBefore(span.firstChild, span)
+    pai.removeChild(span); (pai as HTMLElement).normalize?.()
+  }
+  function aplicarMarca(d: Document, r: Range, attr: string) {
     try {
+      garantirEstiloMarcacoes(d)
       const span = d.createElement('span')
-      span.setAttribute('data-nx-u', '1')
-      span.style.textDecoration = 'underline'
-      span.style.textDecorationColor = '#111'
-      span.style.textDecorationThickness = '2px'
-      span.style.textUnderlineOffset = '2px'
+      span.setAttribute(attr, '1')
       r.surroundContents(span)
       limparFoco()
       marcarSujo()
     } catch { /* noop */ }
+  }
+  // Shift: sublinha a palavra sob o cursor (toggle — remove se já estiver sublinhada)
+  function sublinharNoPonto(d: Document, x: number, y: number) {
+    const r = palavraRange(d, x, y); if (!r) return
+    const el = r.startContainer.parentElement
+    const ja = el?.closest('[data-nx-u]') as HTMLElement | null
+    if (ja) { desfazerMarca(ja); marcarSujo(); return }
+    aplicarMarca(d, r, 'data-nx-u')
+  }
+  // Ctrl: destaca (highlight) a palavra sob o cursor (toggle — remove se já estiver destacada)
+  function destacarNoPonto(d: Document, x: number, y: number) {
+    const r = palavraRange(d, x, y); if (!r) return
+    const el = r.startContainer.parentElement
+    const ja = el?.closest('[data-nx-h]') as HTMLElement | null
+    if (ja) { desfazerMarca(ja); marcarSujo(); return }
+    aplicarMarca(d, r, 'data-nx-h')
   }
 
   function garantirBodyRelativo(d: Document) {
@@ -738,20 +788,35 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: '1px solid var(--border)', background: 'var(--card-bg,#14151f)' }}>
         <span style={{ fontSize: '1.05rem' }}>📖</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.titulo}</div>
+          <div onMouseEnter={e => { if (tituloOculto) e.currentTarget.style.filter = 'none' }}
+            onMouseLeave={e => { if (tituloOculto) e.currentTarget.style.filter = 'blur(6px)' }}
+            title={tituloOculto ? 'Título oculto — passe o mouse para revelar' : undefined}
+            style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', filter: tituloOculto ? 'blur(6px)' : 'none', transition: 'filter .15s', userSelect: tituloOculto ? 'none' : 'auto' }}>
+            {tituloOculto ? '••• título oculto •••' : item.titulo}
+          </div>
           <div style={{ fontSize: '0.62rem', color: statusCor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusTxt || `${item.categoria}${item.disciplina ? ` · ${item.disciplina}` : ''}`}</div>
         </div>
+        <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }} title="Progresso de leitura">{progresso}%</span>
         <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.68rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Salvar automaticamente enquanto edita">
           <input type="checkbox" checked={autosave} onChange={e => setAutosaveP(e.target.checked)} /> Autosave
         </label>
         <button onClick={() => setFocoP(!foco)} title="Realçar a palavra sob o cursor durante a leitura"
           style={{ ...btnTop, ...(foco ? { background: 'rgba(23,128,143,0.16)', borderColor: 'rgba(23,128,143,0.45)', color: '#5fc6d6' } : {}) }}>🔦 Foco</button>
+        <button onClick={() => setPretoBrancoP(!pretoBranco)} title="Alternar modo preto e branco"
+          style={{ ...btnTop, ...(pretoBranco ? { background: 'rgba(148,163,184,0.16)', borderColor: 'rgba(148,163,184,0.4)', color: '#cbd5e1' } : {}) }}>◐ P&amp;B</button>
+        <button onClick={() => setTituloOcultoP(!tituloOculto)} title="Ocultar o título deste material na tela (privacidade)"
+          style={{ ...btnTop, ...(tituloOculto ? { background: 'rgba(148,163,184,0.16)', borderColor: 'rgba(148,163,184,0.4)', color: '#cbd5e1' } : {}) }}>{tituloOculto ? '🙈' : '👁'} Título</button>
         <button onClick={() => salvar()} disabled={estado === 'saving'} style={{ ...btnTop, ...(dirty ? { background: 'linear-gradient(135deg,#647d72,#4c635a)', color: '#f3f7f4', borderColor: 'transparent' } : {}) }}>💾 Salvar</button>
         <button onClick={toggleEdit} style={{ ...btnTop, ...(editando ? { background: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' } : {}) }}>{editando ? '🖊 Anotando' : '✏️ Anotar'}</button>
         <button onClick={criarPostit} style={btnTop} title="Adicionar nota post-it flutuante">🗒 Post-it</button>
         <button onClick={onEdit} style={btnTop} title="Editar o código-fonte HTML">⟨/⟩ Código</button>
         <button onClick={abrirNovaAba} style={btnTop}>⇱ Nova aba</button>
         <button onClick={() => fechar()} style={{ ...btnTop, background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' }}>✕ Fechar</button>
+      </div>
+
+      {/* Barra de progresso de leitura (0 no início, 100 no final) */}
+      <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        <div style={{ height: '100%', width: `${progresso}%`, background: 'linear-gradient(90deg,#4c635a,#8fb3a3)', transition: 'width .12s linear' }} />
       </div>
 
       {/* Barra de ferramentas de anotação */}
@@ -776,9 +841,9 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
         </div>
       )}
 
-      <iframe ref={iframeRef} title={item.titulo} onLoad={onLoadIframe}
+      <iframe ref={iframeRef} title={tituloOculto ? 'Documento' : item.titulo} onLoad={onLoadIframe}
         sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
-        srcDoc={item.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+        srcDoc={item.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff', filter: pretoBranco ? 'grayscale(1)' : 'none' }} />
     </div>
   )
 }
