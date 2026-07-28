@@ -4,6 +4,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import { useAuth } from '../../hooks/useAuth'
+import { callLLM3D, iaConfigurada } from '../projetos3d/ai3d'
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  BIBLIOTECA — acervo de materiais em HTML organizados em pastas.
@@ -30,6 +31,7 @@ interface BiblioItem {
   ordem?: number
   capaUrl?: string
   capaPos?: number
+  perguntasIA?: string
   createdAt?: any
   updatedAt?: any
 }
@@ -89,6 +91,46 @@ function iconeCat(cat: string): string {
   return m[cat] ?? '📄'
 }
 const LIMITE = 1024 * 1024 // ~1MB (limite do documento Firestore)
+
+// ─── IA · Gerar perguntas a partir do trecho selecionado no material ──────────
+function promptPerguntasBiblioteca(trecho: string, titulo: string): string {
+  return [
+    'Você é um assistente de estudos que cria perguntas de revisão a partir de um trecho de texto.',
+    titulo ? `Documento: "${titulo}".` : '',
+    'Com base ESTRITAMENTE no TRECHO abaixo (não invente nada fora dele), gere de 4 a 8 perguntas de estudo claras e objetivas sobre o tema, cobrindo definições, conceitos, características e aplicações relevantes.',
+    'FORMATO OBRIGATÓRIO: responda começando DIRETAMENTE pela pergunta nº 1, numeradas (1., 2., 3., …), uma por linha. É PROIBIDO escrever saudação, introdução, respostas ou qualquer comentário — devolva APENAS as perguntas.',
+    'Responda em português.',
+    'TRECHO:', '"""', (trecho || '').slice(0, 6000), '"""',
+  ].filter(Boolean).join('\n')
+}
+function limparRespostaPerguntas(txt: string): string {
+  let s = (txt || '').replace(/\r/g, '').trim()
+  s = s.replace(/^```[a-z]*\s*/i, '').replace(/\s*```$/i, '').trim()
+  const linhas = s.split('\n')
+  let ini = linhas.findIndex(l => /^\s*\d+\s*[.)–-]/.test(l))
+  if (ini < 0) ini = linhas.findIndex(l => /\?\s*$/.test(l))
+  if (ini > 0) s = linhas.slice(ini).join('\n').trim()
+  return s
+}
+async function gerarPerguntasSelecaoIA(trecho: string, titulo: string): Promise<string> {
+  const raw = await callLLM3D(promptPerguntasBiblioteca(trecho, titulo))
+  return limparRespostaPerguntas(raw)
+}
+
+// ─── Exportar perguntas (Word / PDF) ──────────────────────────────────────────
+function escaparHtmlBib(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+function wordDocBib(innerHTML: string, titulo: string): string {
+  const t = (titulo || 'Perguntas').replace(/[<>]/g, '')
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${t}</title>` +
+    `<style>body{font-family:Calibri,'Segoe UI',Arial,sans-serif;font-size:11pt;color:#1a1a1a;}h1{font-size:16pt}p{margin:0 0 8pt}</style></head><body><h1>${t}</h1>${innerHTML}</body></html>`
+}
+function downloadBib(name: string, content: string, mime: string) {
+  const blob = new Blob(['﻿', content], { type: mime })
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000)
+}
+function perguntasParaHtml(texto: string): string {
+  return (texto || '').split('\n').map(l => `<p>${escaparHtmlBib(l) || '&nbsp;'}</p>`).join('')
+}
 
 // ─── Hook Firestore ──────────────────────────────────────────────────────────
 function useBiblioteca() {
@@ -452,8 +494,9 @@ function ModalMaterial({ item, folders, folderAtual, onClose, onSave }: {
 // ══════════════════════════════════════════════════════════════════════════════
 //  VISUALIZADOR — abre o HTML em tela cheia
 // ══════════════════════════════════════════════════════════════════════════════
-function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
+function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
   item: BiblioItem; onClose: () => void; onEdit: () => void; onSaveHtml: (html: string) => Promise<void>
+  onSavePerguntas: (perguntasIA: string) => Promise<void>
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const [editando, setEditando] = useState(false)
@@ -476,6 +519,52 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
   const [pretoBranco, setPretoBranco] = useState(() => localStorage.getItem('nexus-biblio-pb') === 'on')
   const [tituloOculto, setTituloOculto] = useState(() => localStorage.getItem('nexus-biblio-titulo-oculto') === 'on')
   const [progresso, setProgresso] = useState(0) // % de leitura (0 no início, 100 no final) — nunca salvo no arquivo
+
+  // ── IA · Perguntas geradas a partir do trecho selecionado (feature discreta na barra) ──
+  const [perguntas, setPerguntas] = useState(item.perguntasIA ?? '')
+  const [painelQ, setPainelQ] = useState(false)
+  const [gerandoQ, setGerandoQ] = useState(false)
+  const [qDirty, setQDirty] = useState(false)
+  const qSaveT = useRef<any>(null)
+  const salvarPerguntas = useCallback(async (texto: string) => {
+    try { await onSavePerguntas(texto); setQDirty(false) } catch { /* noop */ }
+  }, [onSavePerguntas])
+  const agendarSalvarPerguntas = useCallback((texto: string) => {
+    setQDirty(true)
+    if (qSaveT.current) clearTimeout(qSaveT.current)
+    qSaveT.current = setTimeout(() => salvarPerguntas(texto), 1200)
+  }, [salvarPerguntas])
+  useEffect(() => () => { if (qSaveT.current) clearTimeout(qSaveT.current) }, [])
+
+  // Gera perguntas por IA a partir do trecho atualmente selecionado dentro do material
+  const gerarPerguntasSelecao = async () => {
+    if (gerandoQ) return
+    const d = getDoc()
+    const trecho = d?.getSelection()?.toString().trim() || ''
+    if (!trecho) { alert('Selecione um trecho do texto no material antes de gerar perguntas.'); return }
+    if (!iaConfigurada()) { alert('IA não configurada. Configure em Ajustes (mesma configuração usada no Leitor de PDF).'); return }
+    setGerandoQ(true)
+    try {
+      const r = await gerarPerguntasSelecaoIA(trecho, tituloOculto ? '' : item.titulo)
+      setPerguntas(p => {
+        const novo = (p && p.trim()) ? `${p.trim()}\n\n${r}` : r
+        agendarSalvarPerguntas(novo)
+        return novo
+      })
+      setPainelQ(true)
+    } catch (e: any) { alert('Falha ao gerar perguntas: ' + (e?.message || e)) }
+    setGerandoQ(false)
+  }
+  const onPerguntasChange = (v: string) => { setPerguntas(v); agendarSalvarPerguntas(v) }
+  const limparPainelPerguntas = () => {
+    if (!perguntas.trim() || confirm('Apagar todas as perguntas geradas/editadas neste painel?')) { setPerguntas(''); agendarSalvarPerguntas('') }
+  }
+  const slugQ = (item.titulo || 'perguntas').replace(/[^\w\-]+/g, '_')
+  const exportarPerguntasWord = () => downloadBib(`${slugQ}-perguntas.doc`, wordDocBib(perguntasParaHtml(perguntas), `${item.titulo} — Perguntas`), 'application/msword;charset=utf-8')
+  const exportarPerguntasPDF = () => {
+    const w = window.open('', '_blank'); if (!w) return
+    w.document.write(wordDocBib(perguntasParaHtml(perguntas), `${item.titulo} — Perguntas`)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
+  }
 
   const setAutosaveP = (v: boolean) => { setAutosave(v); autosaveRef.current = v; localStorage.setItem('nexus-biblio-autosave', v ? 'on' : 'off') }
   const setFocoP = (v: boolean) => {
@@ -809,6 +898,17 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
         <button onClick={() => salvar()} disabled={estado === 'saving'} style={{ ...btnTop, ...(dirty ? { background: 'linear-gradient(135deg,#647d72,#4c635a)', color: '#f3f7f4', borderColor: 'transparent' } : {}) }}>💾 Salvar</button>
         <button onClick={toggleEdit} style={{ ...btnTop, ...(editando ? { background: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' } : {}) }}>{editando ? '🖊 Anotando' : '✏️ Anotar'}</button>
         <button onClick={criarPostit} style={btnTop} title="Adicionar nota post-it flutuante">🗒 Post-it</button>
+        <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 1px', opacity: 0.6 }} />
+        <button onMouseDown={e => e.preventDefault()} onClick={gerarPerguntasSelecao} disabled={gerandoQ}
+          title="Selecione um trecho do texto e clique aqui para a IA gerar perguntas de estudo sobre o tema"
+          style={{ ...btnTop, width: 30, padding: 0, opacity: 0.55, fontSize: '0.78rem' }}>{gerandoQ ? '⏳' : '❓✨'}</button>
+        <button onClick={() => setPainelQ(p => !p)}
+          title="Ver/editar as perguntas geradas e exportar em Word ou PDF"
+          style={{ ...btnTop, width: 30, padding: 0, opacity: 0.55, fontSize: '0.78rem', position: 'relative', ...(painelQ ? { background: 'rgba(91,91,214,0.14)', borderColor: 'rgba(91,91,214,0.4)', opacity: 1 } : {}) }}>
+          📋
+          {perguntas.trim() !== '' && <span style={{ position: 'absolute', top: 2, right: 2, width: 6, height: 6, borderRadius: '50%', background: '#5b5bd6' }} />}
+        </button>
+        <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 1px', opacity: 0.6 }} />
         <button onClick={onEdit} style={btnTop} title="Editar o código-fonte HTML">⟨/⟩ Código</button>
         <button onClick={abrirNovaAba} style={btnTop}>⇱ Nova aba</button>
         <button onClick={() => fechar()} style={{ ...btnTop, background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' }}>✕ Fechar</button>
@@ -844,6 +944,27 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml }: {
       <iframe ref={iframeRef} title={tituloOculto ? 'Documento' : item.titulo} onLoad={onLoadIframe}
         sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
         srcDoc={item.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff', filter: pretoBranco ? 'grayscale(1)' : 'none' }} />
+
+      {/* Painel discreto — perguntas geradas por IA a partir de trechos selecionados (editável e exportável) */}
+      {painelQ && (
+        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(420px,92vw)', zIndex: 10050, background: 'var(--card-bg,#14151f)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', boxShadow: '-14px 0 40px rgba(0,0,0,0.4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>❓ Perguntas (IA)</span>
+            <span style={{ flex: 1 }} />
+            <button onClick={exportarPerguntasWord} disabled={!perguntas.trim()} title="Exportar como Word (.doc)" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: perguntas.trim() ? 1 : 0.4 }}>⬇ Word</button>
+            <button onClick={exportarPerguntasPDF} disabled={!perguntas.trim()} title="Exportar/imprimir como PDF" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: perguntas.trim() ? 1 : 0.4 }}>⬇ PDF</button>
+            <button onClick={limparPainelPerguntas} title="Limpar todas as perguntas" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>🗑</button>
+            <button onClick={() => setPainelQ(false)} style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>✕</button>
+          </div>
+          <div style={{ padding: '8px 14px 0', fontSize: '0.64rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            Selecione um trecho no material e clique em <b>❓✨</b> na barra para a IA gerar novas perguntas sobre o tema. Edite livremente abaixo antes de exportar.
+          </div>
+          <textarea value={perguntas} onChange={e => onPerguntasChange(e.target.value)}
+            placeholder="Nenhuma pergunta ainda.&#10;&#10;Selecione um trecho de texto no material e clique em ❓✨ na barra de ferramentas para gerar perguntas de estudo com IA."
+            style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-primary)', padding: '10px 14px 14px', fontSize: '0.82rem', lineHeight: 1.6, fontFamily: 'inherit' }} />
+          <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border)', fontSize: '0.62rem', color: qDirty ? '#fbbf24' : '#34d399' }}>{qDirty ? 'Salvando…' : (perguntas.trim() ? 'Salvo ✓' : '')}</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1230,7 +1351,8 @@ export default function Biblioteca() {
         onSave={async (nome, cor) => { if (modalPasta.pasta) await updateFolder(modalPasta.pasta.id, { nome, cor }); else await addFolder(nome, cor, pastaAtual) }} />}
       {visor && <Visualizador item={visor} onClose={() => setVisor(null)}
         onEdit={() => { const it = visor; setVisor(null); setModal({ open: true, item: it }) }}
-        onSaveHtml={async (html) => { await updateMaterial(visor.id, { html, tamanho: bytesDe(html) }) }} />}
+        onSaveHtml={async (html) => { await updateMaterial(visor.id, { html, tamanho: bytesDe(html) }) }}
+        onSavePerguntas={async (perguntasIA) => { await updateMaterial(visor.id, { perguntasIA }) }} />}
     </div>
   )
 }
