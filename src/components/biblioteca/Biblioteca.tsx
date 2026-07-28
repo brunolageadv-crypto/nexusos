@@ -118,7 +118,6 @@ async function gerarPerguntasSelecaoIA(trecho: string, titulo: string): Promise<
 }
 
 // ─── Exportar perguntas (Word / PDF) ──────────────────────────────────────────
-function escaparHtmlBib(s: string): string { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
 function wordDocBib(innerHTML: string, titulo: string): string {
   const t = (titulo || 'Perguntas').replace(/[<>]/g, '')
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${t}</title>` +
@@ -127,9 +126,6 @@ function wordDocBib(innerHTML: string, titulo: string): string {
 function downloadBib(name: string, content: string, mime: string) {
   const blob = new Blob(['﻿', content], { type: mime })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000)
-}
-function perguntasParaHtml(texto: string): string {
-  return (texto || '').split('\n').map(l => `<p>${escaparHtmlBib(l) || '&nbsp;'}</p>`).join('')
 }
 
 // ─── Hook Firestore ──────────────────────────────────────────────────────────
@@ -520,21 +516,27 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
   const [tituloOculto, setTituloOculto] = useState(() => localStorage.getItem('nexus-biblio-titulo-oculto') === 'on')
   const [progresso, setProgresso] = useState(0) // % de leitura (0 no início, 100 no final) — nunca salvo no arquivo
 
-  // ── IA · Perguntas geradas a partir do trecho selecionado (feature discreta na barra) ──
-  const [perguntas, setPerguntas] = useState(item.perguntasIA ?? '')
+  // ── IA · Painel de perguntas (perguntas geradas + vínculo com trechos do texto) ──
+  // Guardado como HTML mínimo (parágrafos), igual ao padrão já usado no editor do Leitor de PDF:
+  // o DOM é a fonte da verdade (evita reflows/perda de cursor); só lemos o innerHTML ao salvar/exportar.
+  const qRef = useRef<HTMLDivElement>(null)
   const [painelQ, setPainelQ] = useState(false)
   const [gerandoQ, setGerandoQ] = useState(false)
   const [qDirty, setQDirty] = useState(false)
+  const [temPerguntas, setTemPerguntas] = useState(() => !!(item.perguntasIA || '').replace(/<[^>]+>/g, '').trim())
   const qSaveT = useRef<any>(null)
-  const salvarPerguntas = useCallback(async (texto: string) => {
-    try { await onSavePerguntas(texto); setQDirty(false) } catch { /* noop */ }
+  const salvarPerguntasAgora = useCallback(async () => {
+    if (qSaveT.current) { clearTimeout(qSaveT.current); qSaveT.current = null }
+    const html = qRef.current?.innerHTML ?? ''
+    try { await onSavePerguntas(html); setQDirty(false) } catch { /* noop */ }
   }, [onSavePerguntas])
-  const agendarSalvarPerguntas = useCallback((texto: string) => {
+  const marcarSujoPerguntas = useCallback(() => {
     setQDirty(true)
     if (qSaveT.current) clearTimeout(qSaveT.current)
-    qSaveT.current = setTimeout(() => salvarPerguntas(texto), 1200)
-  }, [salvarPerguntas])
+    qSaveT.current = setTimeout(() => salvarPerguntasAgora(), 1200)
+  }, [salvarPerguntasAgora])
   useEffect(() => () => { if (qSaveT.current) clearTimeout(qSaveT.current) }, [])
+  const onInputPerguntas = () => { marcarSujoPerguntas(); setTemPerguntas(!!qRef.current?.textContent?.trim()) }
 
   // Gera perguntas por IA a partir do trecho atualmente selecionado dentro do material
   const gerarPerguntasSelecao = async () => {
@@ -546,24 +548,133 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     setGerandoQ(true)
     try {
       const r = await gerarPerguntasSelecaoIA(trecho, tituloOculto ? '' : item.titulo)
-      setPerguntas(p => {
-        const novo = (p && p.trim()) ? `${p.trim()}\n\n${r}` : r
-        agendarSalvarPerguntas(novo)
-        return novo
-      })
+      const ed = qRef.current
+      if (ed) {
+        if (!ed.textContent?.trim()) ed.innerHTML = ''
+        r.split('\n').map(l => l.trim()).filter(Boolean).forEach(linha => { const p = document.createElement('p'); p.textContent = linha; ed.appendChild(p) })
+        marcarSujoPerguntas(); setTemPerguntas(true)
+      }
       setPainelQ(true)
     } catch (e: any) { alert('Falha ao gerar perguntas: ' + (e?.message || e)) }
     setGerandoQ(false)
   }
-  const onPerguntasChange = (v: string) => { setPerguntas(v); agendarSalvarPerguntas(v) }
   const limparPainelPerguntas = () => {
-    if (!perguntas.trim() || confirm('Apagar todas as perguntas geradas/editadas neste painel?')) { setPerguntas(''); agendarSalvarPerguntas('') }
+    const ed = qRef.current
+    if (!ed?.textContent?.trim() || confirm('Apagar todas as perguntas e vínculos deste painel?')) {
+      if (ed) ed.innerHTML = '<p><br></p>'
+      setTemPerguntas(false); marcarSujoPerguntas()
+    }
+  }
+  // Insere uma linha divisória (separar partes/tópicos) na posição do cursor
+  const inserirSeparadorQ = () => {
+    const ed = qRef.current; if (!ed) return
+    ed.focus()
+    try { document.execCommand('insertHTML', false, '<hr>') } catch { ed.appendChild(document.createElement('hr')) }
+    marcarSujoPerguntas()
+  }
+  // Renumera as perguntas (parágrafos) selecionadas — ou todas, se não houver seleção — em sequência
+  const renumerarPerguntasQ = () => {
+    const ed = qRef.current; if (!ed) return
+    const sel = window.getSelection()
+    const comSelecao = !!(sel && sel.rangeCount && !sel.isCollapsed && ed.contains(sel.anchorNode))
+    const resp = prompt(comSelecao ? 'Renumerar as perguntas SELECIONADAS começando em qual número?' : 'Renumerar TODAS as perguntas do painel começando em qual número?\n(sem seleção prévia = todas)', '1')
+    if (resp == null) return
+    let n = parseInt(resp, 10); if (!Number.isFinite(n) || n < 1) n = 1
+    const todos = Array.from(ed.querySelectorAll('p'))
+    const range = comSelecao ? sel!.getRangeAt(0) : null
+    const alvo = range ? todos.filter(p => range.intersectsNode(p)) : todos
+    if (!alvo.length) { alert('Nenhuma pergunta encontrada' + (comSelecao ? ' na seleção.' : '. Gere ou escreva perguntas primeiro.')); return }
+    alvo.forEach(p => {
+      // preserva o ícone de vínculo (contenteditable=false), se houver — só renumera o texto
+      const textNodes = Array.from(p.childNodes).filter(no => no.nodeType === 3) as Text[]
+      if (!textNodes.length) { const t = document.createTextNode(''); p.appendChild(t); textNodes.push(t) }
+      const cheio = textNodes.map(t => t.textContent || '').join('')
+      const resto = cheio.replace(/^\s*\d+\s*[.)]\s*/, '')
+      textNodes[0].textContent = `${n}. ${resto}`
+      for (let i = 1; i < textNodes.length; i++) textNodes[i].textContent = ''
+      n++
+    })
+    marcarSujoPerguntas()
   }
   const slugQ = (item.titulo || 'perguntas').replace(/[^\w\-]+/g, '_')
-  const exportarPerguntasWord = () => downloadBib(`${slugQ}-perguntas.doc`, wordDocBib(perguntasParaHtml(perguntas), `${item.titulo} — Perguntas`), 'application/msword;charset=utf-8')
+  // exporta uma cópia limpa (sem os ícones de vínculo 🔗) em Word/PDF
+  const htmlPerguntasExport = () => {
+    const ed = qRef.current; if (!ed) return ''
+    const clone = ed.cloneNode(true) as HTMLElement
+    clone.querySelectorAll('[data-nx-jump]').forEach(n => n.remove())
+    return clone.innerHTML
+  }
+  const exportarPerguntasWord = () => downloadBib(`${slugQ}-perguntas.doc`, wordDocBib(htmlPerguntasExport(), `${item.titulo} — Perguntas`), 'application/msword;charset=utf-8')
   const exportarPerguntasPDF = () => {
     const w = window.open('', '_blank'); if (!w) return
-    w.document.write(wordDocBib(perguntasParaHtml(perguntas), `${item.titulo} — Perguntas`)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
+    w.document.write(wordDocBib(htmlPerguntasExport(), `${item.titulo} — Perguntas`)); w.document.close(); w.focus(); setTimeout(() => w.print(), 300)
+  }
+
+  // ── Vincular um trecho destacado no texto a uma pergunta específica do painel ──
+  // Enquanto o leitor normal exibe o trecho sem NENHUM estilo (data-nx-a é "invisível"),
+  // clicar no 🔗 da pergunta rola até o trecho, acende um realce elegante por instantes
+  // e desenha uma linha ligando a pergunta ao trecho — sem poluir a leitura normal.
+  const [vinculando, setVinculando] = useState<{ range: Range; texto: string } | null>(null)
+  const vinculandoRef = useRef<typeof vinculando>(null)
+  const setVinculandoP = (v: typeof vinculando) => { vinculandoRef.current = v; setVinculando(v) }
+  const [linkLinha, setLinkLinha] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const linkLinhaT = useRef<any>(null)
+  useEffect(() => () => { if (linkLinhaT.current) clearTimeout(linkLinhaT.current) }, [])
+
+  const iniciarVinculo = () => {
+    if (vinculando) { setVinculandoP(null); return }
+    const d = getDoc()
+    const sel = d?.getSelection()
+    const texto = sel?.toString().trim() || ''
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !texto) { alert('Selecione um trecho de resposta no texto do material antes de vincular.'); return }
+    if (!qRef.current?.textContent?.trim()) { alert('Escreva ou gere ao menos uma pergunta no painel antes de vincular.'); return }
+    setVinculandoP({ range: sel.getRangeAt(0).cloneRange(), texto })
+    setPainelQ(true)
+  }
+  const finalizarVinculo = (p: HTMLElement) => {
+    const d = getDoc(); const v = vinculandoRef.current; if (!d || !v) return
+    const id = Math.random().toString(36).slice(2, 6)
+    try {
+      const span = d.createElement('span')
+      span.setAttribute('data-nx-a', id)
+      v.range.surroundContents(span)
+      marcarSujo()
+    } catch {
+      alert('Não foi possível vincular esse trecho (a seleção atravessa vários elementos). Tente selecionar um trecho mais simples.')
+      setVinculandoP(null); return
+    }
+    p.querySelectorAll('[data-nx-jump]').forEach(n => n.remove())
+    // ícone mínimo: só o atributo com o id + contenteditable=false — todo o estilo/tooltip vem do CSS do painel (.nx-qpanel), sem custo de espaço por vínculo
+    const icone = document.createElement('span')
+    icone.setAttribute('data-nx-jump', id)
+    icone.setAttribute('contenteditable', 'false')
+    icone.textContent = '🔗'
+    p.insertBefore(icone, p.firstChild)
+    setVinculandoP(null)
+    marcarSujoPerguntas()
+  }
+  // Rola o material até o trecho vinculado e desenha a linha de ligação até a pergunta
+  const irParaResposta = (id: string, origemEl: HTMLElement) => {
+    const d = getDoc(); if (!d || !id) return
+    const alvo = d.querySelector(`[data-nx-a="${id}"]`) as HTMLElement | null
+    if (!alvo) { alert('O trecho vinculado não foi encontrado (pode ter sido removido do texto).'); return }
+    alvo.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    alvo.setAttribute('data-nx-a-ativo', '1')
+    if (linkLinhaT.current) clearTimeout(linkLinhaT.current)
+    setTimeout(() => {
+      const iframeR = iframeRef.current?.getBoundingClientRect()
+      const alvoR = alvo.getBoundingClientRect()
+      const qR = (origemEl.closest('p') || origemEl).getBoundingClientRect()
+      if (iframeR) setLinkLinha({ x1: qR.left, y1: qR.top + qR.height / 2, x2: iframeR.left + alvoR.left + alvoR.width / 2, y2: iframeR.top + alvoR.top + alvoR.height / 2 })
+      linkLinhaT.current = setTimeout(() => { setLinkLinha(null); alvo.removeAttribute('data-nx-a-ativo') }, 2600)
+    }, 380)
+  }
+  const onClickPainelPerguntas = (e: React.MouseEvent) => {
+    const jumpEl = (e.target as HTMLElement).closest('[data-nx-jump]') as HTMLElement | null
+    if (jumpEl && !vinculando) { irParaResposta(jumpEl.getAttribute('data-nx-jump') || '', jumpEl); return }
+    if (!vinculando) return
+    const p = (e.target as HTMLElement).closest('p')
+    if (p && qRef.current?.contains(p)) finalizarVinculo(p)
   }
 
   const setAutosaveP = (v: boolean) => { setAutosave(v); autosaveRef.current = v; localStorage.setItem('nexus-biblio-autosave', v ? 'on' : 'off') }
@@ -581,6 +692,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     const d = getDoc(); if (!d) return null
     const clone = d.documentElement.cloneNode(true) as HTMLElement
     clone.querySelectorAll('[data-nx-tool]').forEach(n => n.remove())
+    clone.querySelectorAll('[data-nx-a-ativo]').forEach(n => n.removeAttribute('data-nx-a-ativo')) // realce transitório do vínculo — nunca salvo
     clone.querySelector('body')?.removeAttribute('contenteditable')
     return '<!DOCTYPE html>\n' + clone.outerHTML
   }
@@ -746,7 +858,9 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     if (d.querySelector('style[data-nx-marcas]')) return
     const st = d.createElement('style')
     st.setAttribute('data-nx-marcas', '1')
-    st.textContent = '[data-nx-u]{text-decoration:underline;text-decoration-color:#0ea5b0;text-decoration-thickness:2px;text-underline-offset:2px}[data-nx-h]{background:rgba(255,214,0,.55);border-radius:.15em}'
+    // [data-nx-a] (trecho vinculado a uma pergunta) fica de propósito SEM estilo — invisível na leitura normal.
+    // [data-nx-a-ativo] é ligado por instantes via JS ao clicar no 🔗 da pergunta (nunca é salvo).
+    st.textContent = '[data-nx-u]{text-decoration:underline;text-decoration-color:#0ea5b0;text-decoration-thickness:2px;text-underline-offset:2px}[data-nx-h]{background:rgba(255,214,0,.55);border-radius:.15em}[data-nx-a-ativo]{background:rgba(217,119,6,.24);box-shadow:0 0 0 3px rgba(217,119,6,.4);border-radius:.15em;transition:background .6s ease,box-shadow .6s ease}'
     d.head?.appendChild(st)
   }
   function desfazerMarca(span: HTMLElement) {
@@ -857,7 +971,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') fechar()
+      if (e.key === 'Escape') { if (vinculandoRef.current) { setVinculandoP(null); return } fechar() }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); salvar() }
     }
     window.addEventListener('keydown', h)
@@ -872,98 +986,126 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
   const statusCor = estado === 'error' ? '#f87171' : estado === 'saved' ? '#34d399' : dirty ? '#fbbf24' : 'var(--text-muted)'
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--bg-0,#0c0d14)', display: 'flex', flexDirection: 'column' }}>
-      {/* Cabeçalho */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: '1px solid var(--border)', background: 'var(--card-bg,#14151f)' }}>
-        <span style={{ fontSize: '1.05rem' }}>📖</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div onMouseEnter={e => { if (tituloOculto) e.currentTarget.style.filter = 'none' }}
-            onMouseLeave={e => { if (tituloOculto) e.currentTarget.style.filter = 'blur(6px)' }}
-            title={tituloOculto ? 'Título oculto — passe o mouse para revelar' : undefined}
-            style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', filter: tituloOculto ? 'blur(6px)' : 'none', transition: 'filter .15s', userSelect: tituloOculto ? 'none' : 'auto' }}>
-            {tituloOculto ? '••• título oculto •••' : item.titulo}
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'var(--bg-0,#0c0d14)', display: 'flex', flexDirection: 'row' }}>
+      {/* Coluna principal (cabeçalho + material) — recua/estreita quando o painel de perguntas abre, para os dois serem lidos juntos */}
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {/* Cabeçalho */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', borderBottom: '1px solid var(--border)', background: 'var(--card-bg,#14151f)' }}>
+          <span style={{ fontSize: '1.05rem' }}>📖</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div onMouseEnter={e => { if (tituloOculto) e.currentTarget.style.filter = 'none' }}
+              onMouseLeave={e => { if (tituloOculto) e.currentTarget.style.filter = 'blur(6px)' }}
+              title={tituloOculto ? 'Título oculto — passe o mouse para revelar' : undefined}
+              style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', filter: tituloOculto ? 'blur(6px)' : 'none', transition: 'filter .15s', userSelect: tituloOculto ? 'none' : 'auto' }}>
+              {tituloOculto ? '••• título oculto •••' : item.titulo}
+            </div>
+            <div style={{ fontSize: '0.62rem', color: statusCor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusTxt || `${item.categoria}${item.disciplina ? ` · ${item.disciplina}` : ''}`}</div>
           </div>
-          <div style={{ fontSize: '0.62rem', color: statusCor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusTxt || `${item.categoria}${item.disciplina ? ` · ${item.disciplina}` : ''}`}</div>
+          <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }} title="Progresso de leitura">{progresso}%</span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.68rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Salvar automaticamente enquanto edita">
+            <input type="checkbox" checked={autosave} onChange={e => setAutosaveP(e.target.checked)} /> Autosave
+          </label>
+          <button onClick={() => setFocoP(!foco)} title="Realçar a palavra sob o cursor durante a leitura"
+            style={{ ...btnTop, ...(foco ? { background: 'rgba(23,128,143,0.16)', borderColor: 'rgba(23,128,143,0.45)', color: '#5fc6d6' } : {}) }}>🔦 Foco</button>
+          <button onClick={() => setPretoBrancoP(!pretoBranco)} title="Alternar modo preto e branco"
+            style={{ ...btnTop, ...(pretoBranco ? { background: 'rgba(148,163,184,0.16)', borderColor: 'rgba(148,163,184,0.4)', color: '#cbd5e1' } : {}) }}>◐ P&amp;B</button>
+          <button onClick={() => setTituloOcultoP(!tituloOculto)} title="Ocultar o título deste material na tela (privacidade)"
+            style={{ ...btnTop, ...(tituloOculto ? { background: 'rgba(148,163,184,0.16)', borderColor: 'rgba(148,163,184,0.4)', color: '#cbd5e1' } : {}) }}>{tituloOculto ? '🙈' : '👁'} Título</button>
+          <button onClick={() => salvar()} disabled={estado === 'saving'} style={{ ...btnTop, ...(dirty ? { background: 'linear-gradient(135deg,#647d72,#4c635a)', color: '#f3f7f4', borderColor: 'transparent' } : {}) }}>💾 Salvar</button>
+          <button onClick={toggleEdit} style={{ ...btnTop, ...(editando ? { background: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' } : {}) }}>{editando ? '🖊 Anotando' : '✏️ Anotar'}</button>
+          <button onClick={criarPostit} style={btnTop} title="Adicionar nota post-it flutuante">🗒 Post-it</button>
+          <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 1px', opacity: 0.6 }} />
+          <button onMouseDown={e => e.preventDefault()} onClick={gerarPerguntasSelecao} disabled={gerandoQ}
+            title="Selecione um trecho do texto e clique aqui para a IA gerar perguntas de estudo sobre o tema"
+            style={{ ...btnTop, width: 30, padding: 0, opacity: 0.55, fontSize: '0.78rem' }}>{gerandoQ ? '⏳' : '❓✨'}</button>
+          <button onMouseDown={e => e.preventDefault()} onClick={iniciarVinculo}
+            title="Selecione um trecho de resposta no texto e clique aqui para vincular a uma pergunta do painel"
+            style={{ ...btnTop, width: 30, padding: 0, fontSize: '0.78rem', opacity: vinculando ? 1 : 0.55, ...(vinculando ? { background: 'rgba(217,119,6,0.16)', borderColor: 'rgba(217,119,6,0.4)' } : {}) }}>🔗</button>
+          <button onClick={() => setPainelQ(p => !p)}
+            title="Ver/editar as perguntas geradas e exportar em Word ou PDF"
+            style={{ ...btnTop, width: 30, padding: 0, opacity: 0.55, fontSize: '0.78rem', position: 'relative', ...(painelQ ? { background: 'rgba(91,91,214,0.14)', borderColor: 'rgba(91,91,214,0.4)', opacity: 1 } : {}) }}>
+            📋
+            {temPerguntas && <span style={{ position: 'absolute', top: 2, right: 2, width: 6, height: 6, borderRadius: '50%', background: '#5b5bd6' }} />}
+          </button>
+          <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 1px', opacity: 0.6 }} />
+          <button onClick={onEdit} style={btnTop} title="Editar o código-fonte HTML">⟨/⟩ Código</button>
+          <button onClick={abrirNovaAba} style={btnTop}>⇱ Nova aba</button>
+          <button onClick={() => fechar()} style={{ ...btnTop, background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' }}>✕ Fechar</button>
         </div>
-        <span style={{ fontSize: '0.66rem', color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }} title="Progresso de leitura">{progresso}%</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.68rem', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }} title="Salvar automaticamente enquanto edita">
-          <input type="checkbox" checked={autosave} onChange={e => setAutosaveP(e.target.checked)} /> Autosave
-        </label>
-        <button onClick={() => setFocoP(!foco)} title="Realçar a palavra sob o cursor durante a leitura"
-          style={{ ...btnTop, ...(foco ? { background: 'rgba(23,128,143,0.16)', borderColor: 'rgba(23,128,143,0.45)', color: '#5fc6d6' } : {}) }}>🔦 Foco</button>
-        <button onClick={() => setPretoBrancoP(!pretoBranco)} title="Alternar modo preto e branco"
-          style={{ ...btnTop, ...(pretoBranco ? { background: 'rgba(148,163,184,0.16)', borderColor: 'rgba(148,163,184,0.4)', color: '#cbd5e1' } : {}) }}>◐ P&amp;B</button>
-        <button onClick={() => setTituloOcultoP(!tituloOculto)} title="Ocultar o título deste material na tela (privacidade)"
-          style={{ ...btnTop, ...(tituloOculto ? { background: 'rgba(148,163,184,0.16)', borderColor: 'rgba(148,163,184,0.4)', color: '#cbd5e1' } : {}) }}>{tituloOculto ? '🙈' : '👁'} Título</button>
-        <button onClick={() => salvar()} disabled={estado === 'saving'} style={{ ...btnTop, ...(dirty ? { background: 'linear-gradient(135deg,#647d72,#4c635a)', color: '#f3f7f4', borderColor: 'transparent' } : {}) }}>💾 Salvar</button>
-        <button onClick={toggleEdit} style={{ ...btnTop, ...(editando ? { background: 'rgba(251,191,36,0.14)', borderColor: 'rgba(251,191,36,0.4)', color: '#fbbf24' } : {}) }}>{editando ? '🖊 Anotando' : '✏️ Anotar'}</button>
-        <button onClick={criarPostit} style={btnTop} title="Adicionar nota post-it flutuante">🗒 Post-it</button>
-        <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 1px', opacity: 0.6 }} />
-        <button onMouseDown={e => e.preventDefault()} onClick={gerarPerguntasSelecao} disabled={gerandoQ}
-          title="Selecione um trecho do texto e clique aqui para a IA gerar perguntas de estudo sobre o tema"
-          style={{ ...btnTop, width: 30, padding: 0, opacity: 0.55, fontSize: '0.78rem' }}>{gerandoQ ? '⏳' : '❓✨'}</button>
-        <button onClick={() => setPainelQ(p => !p)}
-          title="Ver/editar as perguntas geradas e exportar em Word ou PDF"
-          style={{ ...btnTop, width: 30, padding: 0, opacity: 0.55, fontSize: '0.78rem', position: 'relative', ...(painelQ ? { background: 'rgba(91,91,214,0.14)', borderColor: 'rgba(91,91,214,0.4)', opacity: 1 } : {}) }}>
-          📋
-          {perguntas.trim() !== '' && <span style={{ position: 'absolute', top: 2, right: 2, width: 6, height: 6, borderRadius: '50%', background: '#5b5bd6' }} />}
-        </button>
-        <span style={{ width: 1, height: 18, background: 'var(--border)', margin: '0 1px', opacity: 0.6 }} />
-        <button onClick={onEdit} style={btnTop} title="Editar o código-fonte HTML">⟨/⟩ Código</button>
-        <button onClick={abrirNovaAba} style={btnTop}>⇱ Nova aba</button>
-        <button onClick={() => fechar()} style={{ ...btnTop, background: 'rgba(248,113,113,0.12)', borderColor: 'rgba(248,113,113,0.3)', color: '#f87171' }}>✕ Fechar</button>
+
+        {/* Barra de progresso de leitura (0 no início, 100 no final) */}
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }}>
+          <div style={{ height: '100%', width: `${progresso}%`, background: 'linear-gradient(90deg,#4c635a,#8fb3a3)', transition: 'width .12s linear' }} />
+        </div>
+
+        {/* Barra de ferramentas de anotação */}
+        {editando && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', flexWrap: 'wrap' }}>
+            <TBtn onClick={() => cmd('hiliteColor', '#fde68a')} title="Marca-texto amarelo"><span style={{ background: '#fde68a', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
+            <TBtn onClick={() => cmd('hiliteColor', '#bbf7d0')} title="Marca-texto verde"><span style={{ background: '#bbf7d0', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
+            <TBtn onClick={() => cmd('hiliteColor', '#bfdbfe')} title="Marca-texto azul"><span style={{ background: '#bfdbfe', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
+            <Sep />
+            <TBtn onClick={() => cmd('bold')} title="Negrito"><b>B</b></TBtn>
+            <TBtn onClick={() => cmd('italic')} title="Itálico"><i>I</i></TBtn>
+            <TBtn onClick={() => cmd('underline')} title="Sublinhado"><u>U</u></TBtn>
+            <TBtn onClick={() => cmd('foreColor', '#dc2626')} title="Texto vermelho"><span style={{ color: '#dc2626' }}>A</span></TBtn>
+            <Sep />
+            <TBtn onClick={inserirNota} title="Inserir nota">📝 Nota</TBtn>
+            <TBtn onClick={() => cmd('formatBlock', 'H2')} title="Título">H₂</TBtn>
+            <TBtn onClick={() => cmd('insertUnorderedList')} title="Lista">• Lista</TBtn>
+            <Sep />
+            <TBtn onClick={() => cmd('undo')} title="Desfazer">↶</TBtn>
+            <TBtn onClick={() => cmd('redo')} title="Refazer">↷</TBtn>
+            <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: 'var(--text-muted)' }}>Selecione um trecho e aplique · Ctrl+S salva</span>
+          </div>
+        )}
+
+        <iframe ref={iframeRef} title={tituloOculto ? 'Documento' : item.titulo} onLoad={onLoadIframe}
+          sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
+          srcDoc={item.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff', filter: pretoBranco ? 'grayscale(1)' : 'none' }} />
       </div>
 
-      {/* Barra de progresso de leitura (0 no início, 100 no final) */}
-      <div style={{ height: 3, background: 'rgba(255,255,255,0.06)', flexShrink: 0 }}>
-        <div style={{ height: '100%', width: `${progresso}%`, background: 'linear-gradient(90deg,#4c635a,#8fb3a3)', transition: 'width .12s linear' }} />
-      </div>
-
-      {/* Barra de ferramentas de anotação */}
-      {editando && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface)', flexWrap: 'wrap' }}>
-          <TBtn onClick={() => cmd('hiliteColor', '#fde68a')} title="Marca-texto amarelo"><span style={{ background: '#fde68a', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
-          <TBtn onClick={() => cmd('hiliteColor', '#bbf7d0')} title="Marca-texto verde"><span style={{ background: '#bbf7d0', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
-          <TBtn onClick={() => cmd('hiliteColor', '#bfdbfe')} title="Marca-texto azul"><span style={{ background: '#bfdbfe', color: '#000', padding: '0 5px', borderRadius: 3 }}>H</span></TBtn>
-          <Sep />
-          <TBtn onClick={() => cmd('bold')} title="Negrito"><b>B</b></TBtn>
-          <TBtn onClick={() => cmd('italic')} title="Itálico"><i>I</i></TBtn>
-          <TBtn onClick={() => cmd('underline')} title="Sublinhado"><u>U</u></TBtn>
-          <TBtn onClick={() => cmd('foreColor', '#dc2626')} title="Texto vermelho"><span style={{ color: '#dc2626' }}>A</span></TBtn>
-          <Sep />
-          <TBtn onClick={inserirNota} title="Inserir nota">📝 Nota</TBtn>
-          <TBtn onClick={() => cmd('formatBlock', 'H2')} title="Título">H₂</TBtn>
-          <TBtn onClick={() => cmd('insertUnorderedList')} title="Lista">• Lista</TBtn>
-          <Sep />
-          <TBtn onClick={() => cmd('undo')} title="Desfazer">↶</TBtn>
-          <TBtn onClick={() => cmd('redo')} title="Refazer">↷</TBtn>
-          <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: 'var(--text-muted)' }}>Selecione um trecho e aplique · Ctrl+S salva</span>
-        </div>
-      )}
-
-      <iframe ref={iframeRef} title={tituloOculto ? 'Documento' : item.titulo} onLoad={onLoadIframe}
-        sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
-        srcDoc={item.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff', filter: pretoBranco ? 'grayscale(1)' : 'none' }} />
-
-      {/* Painel discreto — perguntas geradas por IA a partir de trechos selecionados (editável e exportável) */}
-      {painelQ && (
-        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(420px,92vw)', zIndex: 10050, background: 'var(--card-bg,#14151f)', borderLeft: '1px solid var(--border)', display: 'flex', flexDirection: 'column', boxShadow: '-14px 0 40px rgba(0,0,0,0.4)' }}>
+      {/* Painel de perguntas — sempre montado (preserva o conteúdo/edição), só a largura anima ao abrir/fechar */}
+      <div style={{ width: painelQ ? 'min(400px,38vw)' : 0, flexShrink: 0, overflow: 'hidden', transition: 'width .18s ease', borderLeft: painelQ ? '1px solid var(--border)' : 'none', background: 'var(--card-bg,#14151f)' }}>
+        <div style={{ width: 'min(400px,38vw)', height: '100%', display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>❓ Perguntas (IA)</span>
             <span style={{ flex: 1 }} />
-            <button onClick={exportarPerguntasWord} disabled={!perguntas.trim()} title="Exportar como Word (.doc)" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: perguntas.trim() ? 1 : 0.4 }}>⬇ Word</button>
-            <button onClick={exportarPerguntasPDF} disabled={!perguntas.trim()} title="Exportar/imprimir como PDF" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: perguntas.trim() ? 1 : 0.4 }}>⬇ PDF</button>
+            <button onClick={renumerarPerguntasQ} title="Renumerar as perguntas selecionadas (ou todas) em sequência" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>№</button>
+            <button onClick={inserirSeparadorQ} title="Inserir linha divisória (separar partes/tópicos)" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>➖</button>
+            <button onClick={exportarPerguntasWord} disabled={!temPerguntas} title="Exportar como Word (.doc)" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: temPerguntas ? 1 : 0.4 }}>⬇ Word</button>
+            <button onClick={exportarPerguntasPDF} disabled={!temPerguntas} title="Exportar/imprimir como PDF" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: temPerguntas ? 1 : 0.4 }}>⬇ PDF</button>
             <button onClick={limparPainelPerguntas} title="Limpar todas as perguntas" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>🗑</button>
             <button onClick={() => setPainelQ(false)} style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>✕</button>
           </div>
-          <div style={{ padding: '8px 14px 0', fontSize: '0.64rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
-            Selecione um trecho no material e clique em <b>❓✨</b> na barra para a IA gerar novas perguntas sobre o tema. Edite livremente abaixo antes de exportar.
-          </div>
-          <textarea value={perguntas} onChange={e => onPerguntasChange(e.target.value)}
-            placeholder="Nenhuma pergunta ainda.&#10;&#10;Selecione um trecho de texto no material e clique em ❓✨ na barra de ferramentas para gerar perguntas de estudo com IA."
-            style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-primary)', padding: '10px 14px 14px', fontSize: '0.82rem', lineHeight: 1.6, fontFamily: 'inherit' }} />
-          <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border)', fontSize: '0.62rem', color: qDirty ? '#fbbf24' : '#34d399' }}>{qDirty ? 'Salvando…' : (perguntas.trim() ? 'Salvo ✓' : '')}</div>
+          {vinculando ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'rgba(217,119,6,0.12)', borderBottom: '1px solid rgba(217,119,6,0.3)', fontSize: '0.66rem', color: '#d97706', fontWeight: 700 }}>
+              <span>🔗 Clique na pergunta que corresponde ao trecho selecionado</span>
+              <span style={{ flex: 1 }} />
+              <button onClick={() => setVinculandoP(null)} style={{ ...btnTop, padding: '0 6px', fontSize: '0.62rem' }}>✕</button>
+            </div>
+          ) : (
+            <div style={{ padding: '8px 14px 0', fontSize: '0.64rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+              Selecione um trecho no material e clique em <b>❓✨</b> para gerar perguntas. Selecione a resposta e clique em <b>🔗</b> para vincular a uma pergunta abaixo.
+            </div>
+          )}
+          <style>{'.nx-qpanel hr{border:none;border-top:1px solid var(--border);margin:10px 0}.nx-qpanel p{margin:0 0 8px}' +
+            '.nx-qpanel [data-nx-jump]{cursor:pointer;margin-right:5px;opacity:.6;user-select:none}.nx-qpanel [data-nx-jump]:hover{opacity:1}'}</style>
+          <div ref={qRef} className="nx-qpanel" contentEditable suppressContentEditableWarning onInput={onInputPerguntas} onClick={onClickPainelPerguntas}
+            dangerouslySetInnerHTML={{ __html: item.perguntasIA || '<p><br></p>' }}
+            style={{ flex: 1, overflowY: 'auto', outline: 'none', padding: '10px 14px 14px', fontSize: '0.82rem', lineHeight: 1.6, color: 'var(--text-primary)', cursor: vinculando ? 'crosshair' : 'text' }} />
+          <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border)', fontSize: '0.62rem', color: qDirty ? '#fbbf24' : '#34d399' }}>{qDirty ? 'Salvando…' : (temPerguntas ? 'Salvo ✓' : '')}</div>
         </div>
+      </div>
+
+      {/* Linha elegante ligando a pergunta ao trecho destacado (aparece só por instantes ao clicar no 🔗) */}
+      {linkLinha && (
+        <svg style={{ position: 'fixed', inset: 0, zIndex: 10060, pointerEvents: 'none' }} width="100%" height="100%">
+          <line x1={linkLinha.x1} y1={linkLinha.y1} x2={linkLinha.x2} y2={linkLinha.y2}
+            stroke="#d97706" strokeWidth={2} strokeDasharray="5 4" style={{ filter: 'drop-shadow(0 0 3px rgba(217,119,6,.5))' }} />
+          <circle cx={linkLinha.x1} cy={linkLinha.y1} r={3.5} fill="#d97706" />
+          <circle cx={linkLinha.x2} cy={linkLinha.y2} r={5} fill="#d97706" />
+        </svg>
       )}
     </div>
   )
