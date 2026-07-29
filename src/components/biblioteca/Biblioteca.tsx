@@ -548,6 +548,38 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
   }, [salvarPerguntasAgora])
   useEffect(() => () => { if (qSaveT.current) clearTimeout(qSaveT.current) }, [])
   const onInputPerguntas = () => { marcarSujoPerguntas(); setTemPerguntas(!!qRef.current?.textContent?.trim()) }
+  // Formatação (negrito / cor da fonte) no trecho selecionado dentro do painel — custo de espaço mínimo (só o <b>/<span style> do trecho marcado)
+  const cmdQ = (action: string, value?: string) => {
+    const ed = qRef.current; if (!ed) return
+    ed.focus()
+    try { document.execCommand('styleWithCSS', false, 'true') } catch { /* noop */ }
+    try { document.execCommand(action, false, value) } catch { /* noop */ }
+    marcarSujoPerguntas()
+  }
+  // Enter numa pergunta COM vínculo: faz o split manualmente para o 🔗 nunca se perder/duplicar —
+  // ele sempre continua no primeiro trecho (o ícone é sempre o 1º filho do parágrafo original).
+  const onKeyDownPainelPerguntas = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter' || e.shiftKey) return
+    const sel = window.getSelection()
+    if (!sel || !sel.rangeCount || !qRef.current) return
+    const range = sel.getRangeAt(0)
+    const startEl = (range.startContainer.nodeType === 1 ? range.startContainer as HTMLElement : range.startContainer.parentElement)
+    const p = startEl?.closest('p')
+    if (!p || !qRef.current.contains(p) || !p.querySelector('[data-nx-jump]')) return // sem vínculo: Enter nativo normal
+    e.preventDefault()
+    if (!range.collapsed) range.deleteContents()
+    if (!p.lastChild) return
+    const depois = range.cloneRange()
+    depois.setEndAfter(p.lastChild)
+    const frag = depois.extractContents()
+    const novo = document.createElement('p')
+    novo.appendChild(frag)
+    if (!novo.hasChildNodes() || !novo.textContent) novo.appendChild(document.createElement('br'))
+    p.after(novo)
+    const r = document.createRange(); r.setStart(novo, 0); r.collapse(true)
+    sel.removeAllRanges(); sel.addRange(r)
+    marcarSujoPerguntas()
+  }
 
   // Gera perguntas por IA a partir do trecho atualmente selecionado dentro do material
   const gerarPerguntasSelecao = async () => {
@@ -613,6 +645,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     const ed = qRef.current; if (!ed) return ''
     const clone = ed.cloneNode(true) as HTMLElement
     clone.querySelectorAll('[data-nx-jump]').forEach(n => n.remove())
+    clone.querySelectorAll('[data-nx-num]').forEach(n => n.replaceWith(document.createTextNode(n.textContent || ''))) // segurança: nunca exporta o envoltório temporário do modo de vínculo
     return clone.innerHTML
   }
   const exportarPerguntasWord = () => downloadBib(`${slugQ}-perguntas.doc`, wordDocBib(htmlPerguntasExport(), `${item.titulo} — Perguntas`), 'application/msword;charset=utf-8')
@@ -903,8 +936,10 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     const st = d.createElement('style')
     st.setAttribute('data-nx-marcas', '1')
     // [data-nx-a] (trecho vinculado a uma pergunta) fica de propósito SEM estilo — invisível na leitura normal.
-    // [data-nx-a-ativo] é ligado por instantes via JS ao clicar no 🔗 da pergunta (nunca é salvo).
-    st.textContent = '[data-nx-u]{text-decoration:underline;text-decoration-color:#0ea5b0;text-decoration-thickness:2px;text-underline-offset:2px}[data-nx-h]{background:rgba(255,214,0,.55);border-radius:.15em}[data-nx-a-ativo]{background:rgba(217,119,6,.24);box-shadow:0 0 0 3px rgba(217,119,6,.4);border-radius:.15em;transition:background .6s ease,box-shadow .6s ease}'
+    // [data-nx-a-ativo] é ligado por instantes via JS ao clicar no 🔗 da pergunta (nunca é salvo) — realce forte + pulso, para achar fácil o trecho.
+    st.textContent = '[data-nx-u]{text-decoration:underline;text-decoration-color:#0ea5b0;text-decoration-thickness:2px;text-underline-offset:2px}[data-nx-h]{background:rgba(255,214,0,.55);border-radius:.15em}' +
+      '@keyframes nxPulso{0%,100%{background:rgba(217,119,6,.4);box-shadow:0 0 0 4px rgba(217,119,6,.5)}50%{background:rgba(217,119,6,.22);box-shadow:0 0 0 8px rgba(217,119,6,.22)}}' +
+      '[data-nx-a-ativo]{border-radius:.2em;box-decoration-break:clone;-webkit-box-decoration-break:clone;animation:nxPulso 1.1s ease-in-out 2}'
     d.head?.appendChild(st)
   }
   function desfazerMarca(span: HTMLElement) {
@@ -1138,7 +1173,18 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
             '.nx-qpanel[data-vinculando] p{color:var(--text-muted)}' +
             '.nx-qpanel[data-vinculando] [data-nx-num]{cursor:pointer;background:#d97706;color:#fff;font-weight:800;padding:2px 8px;border-radius:6px;box-shadow:0 0 0 3px rgba(217,119,6,.28);transition:transform .12s ease}' +
             '.nx-qpanel[data-vinculando] [data-nx-num]:hover{transform:scale(1.12)}'}</style>
-          <div ref={qRef} className="nx-qpanel" contentEditable suppressContentEditableWarning onInput={onInputPerguntas} onClick={onClickPainelPerguntas}
+          {!vinculando && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderBottom: '1px solid var(--border)' }}>
+              <TBtn onClick={() => cmdQ('bold')} title="Negrito no trecho selecionado"><b>B</b></TBtn>
+              <Sep />
+              <TBtn onClick={() => cmdQ('foreColor', '#dc2626')} title="Vermelho"><span style={{ color: '#dc2626', fontWeight: 800 }}>A</span></TBtn>
+              <TBtn onClick={() => cmdQ('foreColor', '#d97706')} title="Laranja"><span style={{ color: '#d97706', fontWeight: 800 }}>A</span></TBtn>
+              <TBtn onClick={() => cmdQ('foreColor', '#059669')} title="Verde"><span style={{ color: '#059669', fontWeight: 800 }}>A</span></TBtn>
+              <TBtn onClick={() => cmdQ('foreColor', '#2563eb')} title="Azul"><span style={{ color: '#2563eb', fontWeight: 800 }}>A</span></TBtn>
+              <TBtn onClick={() => cmdQ('foreColor', 'inherit')} title="Remover cor"><span style={{ color: 'var(--text-muted)' }}>A̶</span></TBtn>
+            </div>
+          )}
+          <div ref={qRef} className="nx-qpanel" contentEditable suppressContentEditableWarning onInput={onInputPerguntas} onClick={onClickPainelPerguntas} onKeyDown={onKeyDownPainelPerguntas}
             dangerouslySetInnerHTML={{ __html: normalizarPerguntasHtml(item.perguntasIA) }}
             style={{ flex: 1, overflowY: 'auto', outline: 'none', padding: '10px 14px 14px', fontSize: '0.82rem', lineHeight: 1.6, color: 'var(--text-primary)', cursor: vinculando ? 'crosshair' : 'text' }} />
           <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border)', fontSize: '0.62rem', color: qDirty ? '#fbbf24' : '#34d399' }}>{qDirty ? 'Salvando…' : (temPerguntas ? 'Salvo ✓' : '')}</div>
