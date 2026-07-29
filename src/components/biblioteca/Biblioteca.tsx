@@ -127,6 +127,17 @@ function downloadBib(name: string, content: string, mime: string) {
   const blob = new Blob(['﻿', content], { type: mime })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000)
 }
+// Compatibilidade: a 1ª versão do painel guardava as perguntas como texto puro (sem <p>).
+// Ao carregar, se detectar texto puro (sem tags de bloco), converte 1 parágrafo por linha —
+// resolve o "uma do lado da outra" (o HTML ignora quebras de linha soltas) e permite clicar em cada uma.
+function normalizarPerguntasHtml(raw?: string): string {
+  const s = (raw || '').trim()
+  if (!s) return '<p><br></p>'
+  if (/<(p|div|hr|li)[\s/>]/i.test(s)) return s
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const paras = s.split('\n').map(l => l.trim()).filter(Boolean).map(l => `<p>${esc(l)}</p>`).join('')
+  return paras || '<p><br></p>'
+}
 
 // ─── Hook Firestore ──────────────────────────────────────────────────────────
 function useBiblioteca() {
@@ -621,6 +632,35 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
   const linkLinhaT = useRef<any>(null)
   useEffect(() => () => { if (linkLinhaT.current) clearTimeout(linkLinhaT.current) }, [])
 
+  // Enquanto "vinculando", envolve o número de cada pergunta (ex.: "1.") num <span data-nx-num>
+  // só para ficar ressaltado/clicável — é desfeito (sem deixar rastro no HTML salvo) ao sair do modo.
+  useEffect(() => {
+    const ed = qRef.current; if (!ed) return
+    if (vinculando) {
+      ed.setAttribute('data-vinculando', '1')
+      ed.querySelectorAll('p').forEach(p => {
+        if (p.querySelector('[data-nx-num]')) return
+        const first = Array.from(p.childNodes).find(no => no.nodeType === 3) as Text | undefined
+        if (!first) return
+        const m = (first.textContent || '').match(/^(\s*\d+\s*[.)])/)
+        if (!m) return
+        const span = document.createElement('span')
+        span.setAttribute('data-nx-num', '1')
+        span.setAttribute('contenteditable', 'false')
+        span.textContent = m[1]
+        const resto = document.createTextNode((first.textContent || '').slice(m[1].length))
+        first.replaceWith(span, resto)
+      })
+    } else {
+      ed.removeAttribute('data-vinculando')
+      ed.querySelectorAll('[data-nx-num]').forEach(span => {
+        const p = span.parentElement
+        span.replaceWith(document.createTextNode(span.textContent || ''))
+        p?.normalize()
+      })
+    }
+  }, [vinculando])
+
   const iniciarVinculo = () => {
     if (vinculando) { setVinculandoP(null); return }
     const d = getDoc()
@@ -670,10 +710,14 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     }, 380)
   }
   const onClickPainelPerguntas = (e: React.MouseEvent) => {
-    const jumpEl = (e.target as HTMLElement).closest('[data-nx-jump]') as HTMLElement | null
-    if (jumpEl && !vinculando) { irParaResposta(jumpEl.getAttribute('data-nx-jump') || '', jumpEl); return }
-    if (!vinculando) return
-    const p = (e.target as HTMLElement).closest('p')
+    if (!vinculando) {
+      const jumpEl = (e.target as HTMLElement).closest('[data-nx-jump]') as HTMLElement | null
+      if (jumpEl) irParaResposta(jumpEl.getAttribute('data-nx-jump') || '', jumpEl)
+      return
+    }
+    // em modo de vínculo, só o NÚMERO ressaltado da pergunta é clicável (mais preciso e intuitivo)
+    const num = (e.target as HTMLElement).closest('[data-nx-num]')
+    const p = num?.closest('p')
     if (p && qRef.current?.contains(p)) finalizarVinculo(p)
   }
 
@@ -1071,8 +1115,8 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)' }}>❓ Perguntas (IA)</span>
             <span style={{ flex: 1 }} />
-            <button onClick={renumerarPerguntasQ} title="Renumerar as perguntas selecionadas (ou todas) em sequência" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>№</button>
-            <button onClick={inserirSeparadorQ} title="Inserir linha divisória (separar partes/tópicos)" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>➖</button>
+            <button onClick={renumerarPerguntasQ} disabled={!!vinculando} title="Renumerar as perguntas selecionadas (ou todas) em sequência" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: vinculando ? 0.4 : 1 }}>№</button>
+            <button onClick={inserirSeparadorQ} disabled={!!vinculando} title="Inserir linha divisória (separar partes/tópicos)" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: vinculando ? 0.4 : 1 }}>➖</button>
             <button onClick={exportarPerguntasWord} disabled={!temPerguntas} title="Exportar como Word (.doc)" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: temPerguntas ? 1 : 0.4 }}>⬇ Word</button>
             <button onClick={exportarPerguntasPDF} disabled={!temPerguntas} title="Exportar/imprimir como PDF" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem', opacity: temPerguntas ? 1 : 0.4 }}>⬇ PDF</button>
             <button onClick={limparPainelPerguntas} title="Limpar todas as perguntas" style={{ ...btnTop, padding: '0 8px', fontSize: '0.68rem' }}>🗑</button>
@@ -1080,7 +1124,7 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
           </div>
           {vinculando ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'rgba(217,119,6,0.12)', borderBottom: '1px solid rgba(217,119,6,0.3)', fontSize: '0.66rem', color: '#d97706', fontWeight: 700 }}>
-              <span>🔗 Clique na pergunta que corresponde ao trecho selecionado</span>
+              <span>🔗 Clique no <b>número</b> ressaltado da pergunta correspondente</span>
               <span style={{ flex: 1 }} />
               <button onClick={() => setVinculandoP(null)} style={{ ...btnTop, padding: '0 6px', fontSize: '0.62rem' }}>✕</button>
             </div>
@@ -1089,10 +1133,13 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
               Selecione um trecho no material e clique em <b>❓✨</b> para gerar perguntas. Selecione a resposta e clique em <b>🔗</b> para vincular a uma pergunta abaixo.
             </div>
           )}
-          <style>{'.nx-qpanel hr{border:none;border-top:1px solid var(--border);margin:10px 0}.nx-qpanel p{margin:0 0 8px}' +
-            '.nx-qpanel [data-nx-jump]{cursor:pointer;margin-right:5px;opacity:.6;user-select:none}.nx-qpanel [data-nx-jump]:hover{opacity:1}'}</style>
+          <style>{'.nx-qpanel hr{border:none;border-top:1px solid var(--border);margin:10px 0}.nx-qpanel p{display:block;margin:0 0 10px}' +
+            '.nx-qpanel [data-nx-jump]{cursor:pointer;margin-right:5px;opacity:.6;user-select:none}.nx-qpanel [data-nx-jump]:hover{opacity:1}' +
+            '.nx-qpanel[data-vinculando] p{color:var(--text-muted)}' +
+            '.nx-qpanel[data-vinculando] [data-nx-num]{cursor:pointer;background:#d97706;color:#fff;font-weight:800;padding:2px 8px;border-radius:6px;box-shadow:0 0 0 3px rgba(217,119,6,.28);transition:transform .12s ease}' +
+            '.nx-qpanel[data-vinculando] [data-nx-num]:hover{transform:scale(1.12)}'}</style>
           <div ref={qRef} className="nx-qpanel" contentEditable suppressContentEditableWarning onInput={onInputPerguntas} onClick={onClickPainelPerguntas}
-            dangerouslySetInnerHTML={{ __html: item.perguntasIA || '<p><br></p>' }}
+            dangerouslySetInnerHTML={{ __html: normalizarPerguntasHtml(item.perguntasIA) }}
             style={{ flex: 1, overflowY: 'auto', outline: 'none', padding: '10px 14px 14px', fontSize: '0.82rem', lineHeight: 1.6, color: 'var(--text-primary)', cursor: vinculando ? 'crosshair' : 'text' }} />
           <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border)', fontSize: '0.62rem', color: qDirty ? '#fbbf24' : '#34d399' }}>{qDirty ? 'Salvando…' : (temPerguntas ? 'Salvo ✓' : '')}</div>
         </div>
