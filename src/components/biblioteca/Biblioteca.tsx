@@ -547,7 +547,18 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     qSaveT.current = setTimeout(() => salvarPerguntasAgora(), 1200)
   }, [salvarPerguntasAgora])
   useEffect(() => () => { if (qSaveT.current) clearTimeout(qSaveT.current) }, [])
-  const onInputPerguntas = () => { marcarSujoPerguntas(); setTemPerguntas(!!qRef.current?.textContent?.trim()) }
+  const onInputPerguntas = () => {
+    // rede de segurança: se algum navegador duplicar o ícone de vínculo ao quebrar um parágrafo, mantém só a 1ª ocorrência de cada id
+    const ed = qRef.current
+    if (ed) {
+      const vistos = new Set<string>()
+      ed.querySelectorAll('[data-nx-jump]').forEach(el => {
+        const id = el.getAttribute('data-nx-jump') || ''
+        if (vistos.has(id)) el.remove(); else vistos.add(id)
+      })
+    }
+    marcarSujoPerguntas(); setTemPerguntas(!!ed?.textContent?.trim())
+  }
   // Formatação (negrito / cor da fonte) no trecho selecionado dentro do painel — custo de espaço mínimo (só o <b>/<span style> do trecho marcado)
   const cmdQ = (action: string, value?: string) => {
     const ed = qRef.current; if (!ed) return
@@ -567,17 +578,22 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     const p = startEl?.closest('p')
     if (!p || !qRef.current.contains(p) || !p.querySelector('[data-nx-jump]')) return // sem vínculo: Enter nativo normal
     e.preventDefault()
-    if (!range.collapsed) range.deleteContents()
-    if (!p.lastChild) return
-    const depois = range.cloneRange()
-    depois.setEndAfter(p.lastChild)
-    const frag = depois.extractContents()
-    const novo = document.createElement('p')
-    novo.appendChild(frag)
-    if (!novo.hasChildNodes() || !novo.textContent) novo.appendChild(document.createElement('br'))
-    p.after(novo)
-    const r = document.createRange(); r.setStart(novo, 0); r.collapse(true)
-    sel.removeAllRanges(); sel.addRange(r)
+    try {
+      if (!range.collapsed) range.deleteContents()
+      const novo = document.createElement('p')
+      if (p.lastChild) {
+        const depois = range.cloneRange()
+        depois.setEndAfter(p.lastChild)
+        novo.appendChild(depois.extractContents())
+      }
+      if (!novo.textContent || !novo.textContent.trim()) { novo.innerHTML = ''; novo.appendChild(document.createElement('br')) }
+      p.after(novo)
+      const r = document.createRange(); r.setStart(novo, 0); r.collapse(true)
+      sel.removeAllRanges(); sel.addRange(r)
+    } catch {
+      // rede de segurança: se a cirurgia manual falhar por algum motivo, ao menos garante a quebra de linha nativa
+      try { document.execCommand('insertParagraph') } catch { /* noop */ }
+    }
     marcarSujoPerguntas()
   }
 
@@ -710,10 +726,18 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     try {
       const span = d.createElement('span')
       span.setAttribute('data-nx-a', id)
-      v.range.surroundContents(span)
+      try {
+        // caminho normal — funciona quando a seleção não atravessa parcialmente outro elemento
+        v.range.surroundContents(span)
+      } catch {
+        // trecho com formatação (negrito, span, etc.) dentro — surroundContents recusa; envolve via extractContents (mais tolerante)
+        const frag = v.range.extractContents()
+        span.appendChild(frag)
+        v.range.insertNode(span)
+      }
       marcarSujo()
     } catch {
-      alert('Não foi possível vincular esse trecho (a seleção atravessa vários elementos). Tente selecionar um trecho mais simples.')
+      alert('Não foi possível vincular esse trecho. Tente selecionar um trecho mais simples (evite começar/terminar bem na borda de uma formatação).')
       setVinculandoP(null); return
     }
     p.querySelectorAll('[data-nx-jump]').forEach(n => n.remove())
@@ -732,14 +756,26 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     const alvo = d.querySelector(`[data-nx-a="${id}"]`) as HTMLElement | null
     if (!alvo) { alert('O trecho vinculado não foi encontrado (pode ter sido removido do texto).'); return }
     alvo.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    alvo.setAttribute('data-nx-a-ativo', '1')
-    if (linkLinhaT.current) clearTimeout(linkLinhaT.current)
+    // Realce aplicado via estilo INLINE com !important (alta especificidade — nunca é ofuscado pelo CSS
+    // do próprio material, ao contrário de uma regra por atributo). Um "pulso" simples com 2 passos, sem depender de @keyframes.
+    const ligar = (forte: boolean) => {
+      alvo.style.setProperty('background', forte ? 'rgba(217,119,6,.5)' : 'rgba(217,119,6,.24)', 'important')
+      alvo.style.setProperty('box-shadow', forte ? '0 0 0 5px rgba(217,119,6,.55)' : '0 0 0 3px rgba(217,119,6,.3)', 'important')
+      alvo.style.setProperty('border-radius', '.2em', 'important')
+      alvo.style.setProperty('transition', 'background .45s ease, box-shadow .45s ease', 'important')
+    }
+    const limparRealce = () => { alvo.style.removeProperty('background'); alvo.style.removeProperty('box-shadow'); alvo.style.removeProperty('border-radius'); alvo.style.removeProperty('transition') }
+    if (linkLinhaT.current) { clearTimeout(linkLinhaT.current); linkLinhaT.current = null }
+    ligar(true)
+    const pulso1 = setTimeout(() => ligar(false), 500)
+    const pulso2 = setTimeout(() => ligar(true), 1000)
+    const pulso3 = setTimeout(() => ligar(false), 1500)
     setTimeout(() => {
       const iframeR = iframeRef.current?.getBoundingClientRect()
       const alvoR = alvo.getBoundingClientRect()
       const qR = (origemEl.closest('p') || origemEl).getBoundingClientRect()
       if (iframeR) setLinkLinha({ x1: qR.left, y1: qR.top + qR.height / 2, x2: iframeR.left + alvoR.left + alvoR.width / 2, y2: iframeR.top + alvoR.top + alvoR.height / 2 })
-      linkLinhaT.current = setTimeout(() => { setLinkLinha(null); alvo.removeAttribute('data-nx-a-ativo') }, 2600)
+      linkLinhaT.current = setTimeout(() => { clearTimeout(pulso1); clearTimeout(pulso2); clearTimeout(pulso3); setLinkLinha(null); limparRealce() }, 2400)
     }, 380)
   }
   const onClickPainelPerguntas = (e: React.MouseEvent) => {
@@ -769,7 +805,12 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     const d = getDoc(); if (!d) return null
     const clone = d.documentElement.cloneNode(true) as HTMLElement
     clone.querySelectorAll('[data-nx-tool]').forEach(n => n.remove())
-    clone.querySelectorAll('[data-nx-a-ativo]').forEach(n => n.removeAttribute('data-nx-a-ativo')) // realce transitório do vínculo — nunca salvo
+    // realce transitório do vínculo (estilo inline aplicado por instantes via JS) — nunca é salvo
+    clone.querySelectorAll('[data-nx-a]').forEach(n => {
+      const el = n as HTMLElement
+      el.style.removeProperty('background'); el.style.removeProperty('box-shadow'); el.style.removeProperty('border-radius'); el.style.removeProperty('transition')
+      if (!el.getAttribute('style')) el.removeAttribute('style')
+    })
     clone.querySelector('body')?.removeAttribute('contenteditable')
     return '<!DOCTYPE html>\n' + clone.outerHTML
   }
@@ -936,10 +977,9 @@ function Visualizador({ item, onClose, onEdit, onSaveHtml, onSavePerguntas }: {
     const st = d.createElement('style')
     st.setAttribute('data-nx-marcas', '1')
     // [data-nx-a] (trecho vinculado a uma pergunta) fica de propósito SEM estilo — invisível na leitura normal.
-    // [data-nx-a-ativo] é ligado por instantes via JS ao clicar no 🔗 da pergunta (nunca é salvo) — realce forte + pulso, para achar fácil o trecho.
-    st.textContent = '[data-nx-u]{text-decoration:underline;text-decoration-color:#0ea5b0;text-decoration-thickness:2px;text-underline-offset:2px}[data-nx-h]{background:rgba(255,214,0,.55);border-radius:.15em}' +
-      '@keyframes nxPulso{0%,100%{background:rgba(217,119,6,.4);box-shadow:0 0 0 4px rgba(217,119,6,.5)}50%{background:rgba(217,119,6,.22);box-shadow:0 0 0 8px rgba(217,119,6,.22)}}' +
-      '[data-nx-a-ativo]{border-radius:.2em;box-decoration-break:clone;-webkit-box-decoration-break:clone;animation:nxPulso 1.1s ease-in-out 2}'
+    // O realce ao clicar no 🔗 é aplicado por instantes via estilo INLINE (irParaResposta), não por CSS aqui —
+    // assim ele nunca é ofuscado pelo próprio CSS do material (alta especificidade, com !important).
+    st.textContent = '[data-nx-u]{text-decoration:underline;text-decoration-color:#0ea5b0;text-decoration-thickness:2px;text-underline-offset:2px}[data-nx-h]{background:rgba(255,214,0,.55);border-radius:.15em}'
     d.head?.appendChild(st)
   }
   function desfazerMarca(span: HTMLElement) {
