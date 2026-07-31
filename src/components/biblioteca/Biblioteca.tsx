@@ -127,6 +127,19 @@ function downloadBib(name: string, content: string, mime: string) {
   const blob = new Blob(['﻿', content], { type: mime })
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000)
 }
+// Nome de arquivo para o download da página HTML de um material da biblioteca
+const DIACRITICOS_RE = new RegExp('[' + String.fromCharCode(0x0300) + '-' + String.fromCharCode(0x036f) + ']', 'g')
+function nomeArquivoHtml(item: { titulo?: string; nomeArquivo?: string }): string {
+  if (item.nomeArquivo && /\.html?$/i.test(item.nomeArquivo)) return item.nomeArquivo
+  const slug = (item.titulo || 'material').trim()
+    .normalize('NFD').replace(DIACRITICOS_RE, '')
+    .replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').slice(0, 80)
+  return `${slug || 'material'}.html`
+}
+// Baixa o HTML de um material da biblioteca como página .html independente
+function baixarMaterialHtml(item: { titulo?: string; nomeArquivo?: string; html: string }) {
+  downloadBib(nomeArquivoHtml(item), item.html, 'text/html;charset=utf-8')
+}
 // Compatibilidade: a 1ª versão do painel guardava as perguntas como texto puro (sem <p>).
 // Ao carregar, se detectar texto puro (sem tags de bloco), converte 1 parágrafo por linha —
 // resolve o "uma do lado da outra" (o HTML ignora quebras de linha soltas) e permite clicar em cada uma.
@@ -1294,7 +1307,7 @@ function LinhaPasta({ folder, count, onOpen, onEdit, onDelete, drag, dragging, o
 }
 
 // ─── Card / Linha de material ────────────────────────────────────────────────
-function CardMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, drag, dragging, over, preview }: any) {
+function CardMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, onDownload, drag, dragging, over, preview }: any) {
   const c = corDe(item.categoria)
   return (
     <div onClick={preview ? undefined : onOpen} {...(drag || {})}
@@ -1327,6 +1340,7 @@ function CardMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, drag, dragg
         <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6, borderTop: '1px solid var(--border)' }}>
           <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{fmtTamanho(item.tamanho)} · {fmtData(item.updatedAt)}</span>
           <div style={{ display: 'flex', gap: 4 }}>
+            <button onClick={e => { e.stopPropagation(); onDownload?.() }} title="Baixar como página HTML" style={iconBtn}>⬇</button>
             <button onClick={e => { e.stopPropagation(); onEdit() }} title="Editar" style={iconBtn}>✏️</button>
             <button onClick={e => { e.stopPropagation(); onDelete() }} title="Excluir" style={iconBtn}>🗑</button>
           </div>
@@ -1335,7 +1349,7 @@ function CardMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, drag, dragg
     </div>
   )
 }
-function LinhaMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, drag, dragging, over, preview }: any) {
+function LinhaMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, onDownload, drag, dragging, over, preview }: any) {
   const c = corDe(item.categoria)
   return (
     <div onClick={preview ? undefined : onOpen} {...(drag || {})}
@@ -1364,6 +1378,7 @@ function LinhaMaterial({ item, onOpen, onEdit, onDelete, onToggleFav, drag, drag
       <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtData(item.updatedAt)}</span>
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
         <button onClick={e => { e.stopPropagation(); onToggleFav() }} title="Favorito" style={{ ...iconBtn, color: item.favorito ? '#fbbf24' : 'var(--text-muted)' }}>{item.favorito ? '★' : '☆'}</button>
+        <button onClick={e => { e.stopPropagation(); onDownload?.() }} title="Baixar como página HTML" style={iconBtn}>⬇</button>
         <button onClick={e => { e.stopPropagation(); onEdit() }} title="Editar" style={iconBtn}>✏️</button>
         <button onClick={e => { e.stopPropagation(); onDelete() }} title="Excluir" style={iconBtn}>🗑</button>
       </div>
@@ -1473,6 +1488,7 @@ export default function Biblioteca() {
     onEdit: () => setModal({ open: true, item }),
     onDelete: () => excluir(item),
     onToggleFav: () => updateMaterial(item.id, { favorito: !item.favorito }),
+    onDownload: () => baixarMaterialHtml(item),
   })
   const acoesPasta = (f: BiblioFolder) => ({
     onOpen: () => { setPastaAtual(f.id); setSel(null) },
@@ -1589,6 +1605,7 @@ export default function Biblioteca() {
                     <div style={{ fontSize: '0.63rem', color: 'var(--text-muted)' }}>{fmtTamanho(selItem.tamanho)} · atualizado {fmtData(selItem.updatedAt)}</div>
                   </div>
                   <button onClick={() => setVisor(selItem)} style={btnTop}>⛶ Tela cheia</button>
+                  <button onClick={() => baixarMaterialHtml(selItem)} title="Baixar como página HTML" style={btnTop}>⬇</button>
                   <button onClick={() => setModal({ open: true, item: selItem })} style={btnTop}>✏️</button>
                 </div>
                 <iframe title={selItem.titulo} sandbox="allow-scripts allow-same-origin" srcDoc={selItem.html} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
